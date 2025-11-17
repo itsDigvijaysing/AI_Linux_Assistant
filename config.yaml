@@ -1,0 +1,58 @@
+# AI Voice Assistant Configuration
+
+# Audio Settings
+audio:
+  sample_rate: 16000
+  dtype: "int16"
+  channels: 1
+  chunk_duration: 0.1  # seconds
+  min_audio_size: 0  # minimum audio array size to process
+
+# Whisper STT Settings
+whisper:
+  model: "base.en"  # Options: tiny.en, base.en, small.en, medium.en, large
+  fp16: false  # Set to true if using GPU
+  language: "en"
+
+# Ollama LLM Settings
+ollama:
+  model: "llama3.2"  # Default Ollama model
+  base_url: null  # Optional: specify custom Ollama server URL
+  temperature: 0.7
+  max_tokens: 100
+  verbose: false
+
+# TTS Settings
+tts:
+  device: "auto"  # Options: auto, cuda, cpu
+  model: "suno/bark-small"  # Bark model
+  voice_preset: "v2/en_speaker_1"
+  sample_rate: 24000
+  silence_duration: 0.25  # seconds between sentences
+
+# LLM Prompt Template
+prompt:
+  system_message: |
+    You are an AI assistant. You strive to be helpful, friendly, and provide concise responses within 20 words.
+    Your goal is to provide accurate and useful information in a concise manner.
+  ai_prefix: "Assistant:"
+
+# Logging Settings
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Optional: path to log file, null for console only
+
+# Performance Settings
+performance:
+  max_queue_size: 100
+  thread_timeout: 30  # seconds
+  enable_gc: true  # Enable garbage collection after processing
+
+# UI Settings
+ui:
+  use_rich: true
+  spinner: "earth"
+  show_transcription: true
+  show_response: true
+  show_timings: false  # Show processing time for each step
