@@ -49,6 +49,20 @@ performance:
   thread_timeout: 30  # seconds
   enable_gc: true  # Enable garbage collection after processing
 
+# NVIDIA PersonaPlex Settings (speech-to-speech model)
+personaplex:
+  voice_preset: "NATF2"  # Options: NATF0-3, NATM0-3, VARF0-4, VARM0-4
+  text_prompt: "You are a helpful, friendly AI assistant. Answer questions clearly and concisely."
+  gpu_id: 2  # GPU device ID (GPUs 2,3 are typically free)
+  seed: 42424242
+  cpu_offload: false  # Enable if GPU memory is insufficient
+
+# Frontend Settings
+frontend:
+  server_port: 7860
+  share: false  # Set to true to create a public Gradio link
+  default_pipeline: "classic"  # Options: classic, personaplex
+
 # UI Settings
 ui:
   use_rich: true

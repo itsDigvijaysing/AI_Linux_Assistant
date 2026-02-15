@@ -20,10 +20,17 @@ import numpy as np
 import whisper
 import sounddevice as sd
 from rich.console import Console
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-from langchain.prompts import PromptTemplate
-from langchain_community.llms import Ollama
+try:
+    from langchain_classic.memory import ConversationBufferMemory
+    from langchain_classic.chains import ConversationChain
+except ImportError:
+    from langchain.memory import ConversationBufferMemory
+    from langchain.chains import ConversationChain
+from langchain_core.prompts import PromptTemplate
+try:
+    from langchain_ollama import OllamaLLM
+except ImportError:
+    from langchain_community.llms import Ollama as OllamaLLM
 
 from utils import ConfigManager, setup_logging, validate_audio_input, cleanup_resources
 from tts_improved import TextToSpeechService
@@ -122,13 +129,17 @@ Please provide your response:
         if base_url:
             ollama_config["base_url"] = base_url
 
+        max_tokens = self.config.get("ollama.max_tokens")
+        if max_tokens:
+            ollama_config["num_predict"] = max_tokens
+
         self.logger.info(f"Initializing Ollama with model: {ollama_config['model']}")
 
         self.chain = ConversationChain(
             prompt=prompt,
             verbose=self.config.get("ollama.verbose", False),
             memory=ConversationBufferMemory(ai_prefix=ai_prefix),
-            llm=Ollama(**ollama_config),
+            llm=OllamaLLM(**ollama_config),
         )
 
         self.logger.info("LLM chain initialized successfully")
@@ -212,7 +223,8 @@ Please provide your response:
 
         try:
             self.logger.debug(f"Generating response for: {text}")
-            response = self.chain.predict(input=text)
+            result = self.chain.invoke({"input": text})
+            response = result if isinstance(result, str) else result.get("response", str(result))
 
             # Clean up response prefix if present
             ai_prefix = self.config.get("prompt.ai_prefix", "Assistant:")
@@ -255,7 +267,7 @@ Please provide your response:
         """
         try:
             console.input(
-                "[cyan]Press Enter to start recording, then press Enter again to stop.[/cyan]"
+                "[cyan]Press Enter to start recording...[/cyan]"
             )
 
             # Setup recording
@@ -270,6 +282,7 @@ Please provide your response:
                 daemon=True,
             )
             self.recording_thread.start()
+            console.print("[green]Recording... Press Enter to stop.[/green]")
 
             # Wait for user to stop recording
             input()
