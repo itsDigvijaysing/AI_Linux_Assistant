@@ -11,7 +11,7 @@ audio:
 # Whisper STT Settings
 whisper:
   model: "base.en"  # Options: tiny.en, base.en, small.en, medium.en, large
-  fp16: false  # Set to true if using GPU
+  fp16: true  # Use fp16 on GPU for faster inference
   language: "en"
 
 # Ollama LLM Settings
@@ -56,6 +56,8 @@ personaplex:
   gpu_id: 2  # GPU device ID (GPUs 2,3 are typically free)
   seed: 42424242
   cpu_offload: false  # Enable if GPU memory is insufficient
+  server_port: 8998
+  server_host: "0.0.0.0"
 
 # Frontend Settings
 frontend:

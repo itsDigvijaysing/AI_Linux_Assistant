@@ -21,6 +21,8 @@ This module provides:
 import os
 import sys
 import json
+import time
+import atexit
 import logging
 import subprocess
 import tempfile
@@ -268,6 +270,189 @@ class PersonaPlexPipeline:
         except Exception as e:
             logger.error(f"Failed to start PersonaPlex server: {e}")
             return None
+
+
+class PersonaPlexServerManager:
+    """Manages the PersonaPlex moshi.server process for real-time conversation."""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> "PersonaPlexServerManager":
+        """Singleton to prevent multiple server instances."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self):
+        self._process: Optional[subprocess.Popen] = None
+        self._port: int = 8998
+        self._gpu_id: int = 2
+        self._host: str = "0.0.0.0"
+        self._ssl_dir: Optional[str] = None
+        self._log_lines: list = []
+        atexit.register(self._cleanup)
+
+    @property
+    def is_running(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    def start(
+        self,
+        port: int = 8998,
+        gpu_id: int = 2,
+        host: str = "0.0.0.0",
+        cpu_offload: bool = False,
+    ) -> Tuple[bool, str]:
+        """Start the moshi.server. Returns (success, status_message)."""
+        if self.is_running:
+            url = self._get_url()
+            return True, f"Server already running at {url}"
+
+        if not is_personaplex_installed():
+            return False, (
+                "PersonaPlex (moshi) is not installed.\n"
+                "Run: pip install personaplex/moshi/."
+            )
+
+        if not check_hf_token():
+            return False, (
+                "HF_TOKEN not set. PersonaPlex needs a HuggingFace token.\n"
+                "Run: export HF_TOKEN=<your_token>"
+            )
+
+        self._port = port
+        self._gpu_id = gpu_id
+        self._host = host
+        self._log_lines = []
+
+        # Run without SSL (avoids mkcert needing sudo)
+        # Microphone access works on localhost without HTTPS
+        cmd = [
+            sys.executable, "-m", "moshi.server",
+            "--host", host,
+            "--port", str(port),
+            "--device", "cuda",
+        ]
+        if cpu_offload:
+            cmd.append("--cpu-offload")
+
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+
+        logger.info(f"Starting PersonaPlex server: {' '.join(cmd)}")
+        logger.info(f"CUDA_VISIBLE_DEVICES={gpu_id}")
+
+        try:
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                text=True,
+                bufsize=1,
+            )
+
+            # Wait a moment and check it didn't crash instantly
+            time.sleep(3)
+            if self._process.poll() is not None:
+                output = self._process.stdout.read() if self._process.stdout else ""
+                self._process = None
+                return False, f"Server exited immediately:\n{output[-1000:]}"
+
+            # Read initial log lines to show download/loading progress
+            initial_logs = self._read_available_lines(timeout=2)
+
+            url = self._get_url()
+            status = (
+                f"Server starting on GPU {gpu_id} (port {port})...\n"
+                f"First run downloads model weights (~14GB) from HuggingFace.\n"
+                f"Subsequent starts are faster (weights cached).\n"
+                f"Click 'Refresh Logs' to monitor progress.\n\n"
+                f"URL: {url}"
+            )
+            if initial_logs:
+                status += f"\n\n--- Server Output ---\n{initial_logs}"
+            return True, status
+
+        except Exception as e:
+            self._process = None
+            return False, f"Failed to start server: {e}"
+
+    def stop(self) -> str:
+        """Stop the server process."""
+        if not self.is_running:
+            return "Server is not running."
+
+        logger.info("Stopping PersonaPlex server...")
+        self._process.terminate()
+        try:
+            self._process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+            self._process.wait(timeout=5)
+
+        self._process = None
+        return "Server stopped."
+
+    def get_status(self) -> str:
+        """Get current server status with recent log output."""
+        if not self.is_running:
+            return "Not running."
+
+        # Read any available output (non-blocking)
+        status = f"Running on port {self._port}, GPU {self._gpu_id}"
+        url = self._get_url()
+        status += f"\nURL: {url}"
+
+        return status
+
+    def _read_available_lines(self, timeout: float = 0.5) -> str:
+        """Read available stdout lines without blocking forever."""
+        if self._process is None or self._process.stdout is None:
+            return ""
+        import fcntl
+        try:
+            fd = self._process.stdout.fileno()
+            fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    line = self._process.stdout.readline()
+                    if not line:
+                        time.sleep(0.1)
+                        continue
+                    self._log_lines.append(line.rstrip())
+                    if len(self._log_lines) > 200:
+                        self._log_lines = self._log_lines[-200:]
+                except (IOError, OSError):
+                    time.sleep(0.1)
+            fcntl.fcntl(fd, fcntl.F_SETFL, fl)
+        except Exception:
+            pass
+        return "\n".join(self._log_lines[-30:])
+
+    def get_recent_logs(self, max_lines: int = 30) -> str:
+        """Read recent log output from the server process."""
+        self._read_available_lines(timeout=1.0)
+        return "\n".join(self._log_lines[-max_lines:])
+
+    def _get_url(self) -> str:
+        """Get the server URL (plain HTTP, no SSL)."""
+        return f"http://localhost:{self._port}"
+
+    def _cleanup(self):
+        """Cleanup on exit."""
+        if self.is_running:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=5)
+            except Exception:
+                try:
+                    self._process.kill()
+                except Exception:
+                    pass
 
 
 def convert_audio_to_wav24k(input_path: str, output_path: str) -> bool:

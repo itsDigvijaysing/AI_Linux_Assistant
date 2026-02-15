@@ -54,10 +54,16 @@ class TextToSpeechService:
             import torch
             from transformers import AutoProcessor, BarkModel
 
-            logger.info(f"Loading TTS model: {self.model_name}")
+            logger.info(f"Loading TTS model: {self.model_name} on {self.device}")
 
             self.processor = AutoProcessor.from_pretrained(self.model_name)
-            self.model = BarkModel.from_pretrained(self.model_name)
+            # Use fp16 on CUDA for faster inference and lower memory
+            if "cuda" in self.device:
+                self.model = BarkModel.from_pretrained(
+                    self.model_name, torch_dtype=torch.float16
+                )
+            else:
+                self.model = BarkModel.from_pretrained(self.model_name)
             self.model.to(self.device)
 
             self._initialized = True

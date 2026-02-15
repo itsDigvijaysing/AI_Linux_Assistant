@@ -17,6 +17,7 @@ import logging
 from queue import Queue, Empty
 from typing import Optional, Tuple
 import numpy as np
+import torch
 import whisper
 import sounddevice as sd
 from rich.console import Console
@@ -68,9 +69,10 @@ class VoiceAssistant:
         try:
             # Load Whisper STT
             whisper_model = self.config.get("whisper.model", "base.en")
-            self.logger.info(f"Loading Whisper model: {whisper_model}")
-            self.stt = whisper.load_model(whisper_model)
-            self.logger.info("Whisper model loaded successfully")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.logger.info(f"Loading Whisper model: {whisper_model} on {device}")
+            self.stt = whisper.load_model(whisper_model, device=device)
+            self.logger.info(f"Whisper model loaded on {device}")
 
         except Exception as e:
             self.logger.error(f"Failed to load Whisper model: {e}")
