@@ -123,6 +123,13 @@ GLaDOS is the engine. We copy its MIT source in and own it here (manual upstream
 - Newelle-style approve-before-exec gate; RealtimeVoiceChat `turndetect` for barge-in.
 - Retire superseded legacy files (awaiting your OK).
 
+## 2e. Phases 2–4 status — code complete, run later (2026-06-15)
+
+- **Phase 2 (voice loop):** `configs/ai_linux_config.yaml` — neutral persona, llama3.2 via Ollama, Kokoro `af_bella`, CPU `ctc` ASR, `input_mode: both`, barge-in on, built-in info MCP tools. Validated by GladosConfig. Commit `e17ab56`.
+- **Phase 3 (hands + safety):** `core/tool_safety.py` confirm-before-execute gate, hooked into `tool_executor.run()` (auto-deny in autonomy, y/N otherwise, fail-safe deny, graceful LLM rejection). computer-use-linux MCP entry added (commented — enable after installing the binary). Gate unit-tested. Commit `02a4f24`.
+- **Phase 4 (polish + skills):** barge-in already implemented (`interruptible`), wake-word supported (`wake_word`, currently always-listening); `skills/` procedure seed added (retrieval wiring is Phase 6).
+- **Still requires your live run** (deferred per instruction): first `glados` run downloads ONNX weights; needs Ollama + `llama3.2`; install the computer-use-linux binary to enable desktop control.
+
 ## 3. Architecture
 
 ```
