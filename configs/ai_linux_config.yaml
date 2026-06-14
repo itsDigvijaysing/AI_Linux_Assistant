@@ -1,0 +1,36 @@
+# AI Linux Assistant — primary config (vendored GLaDOS engine)
+# Run:  conda activate AI_Linux  &&  glados start --config configs/ai_linux_config.yaml
+Glados:
+  llm_model: "llama3.2"                                  # local Ollama model (brain, on GPU)
+  completion_url: "http://localhost:11434/api/chat"      # Ollama endpoint
+  api_key: null
+  interruptible: true                                    # barge-in: user can interrupt TTS
+  audio_io: "sounddevice"
+  input_mode: "both"                                     # voice + text
+  tts_enabled: true
+  asr_muted: false
+  asr_engine: "ctc"                                      # CPU ASR (faster); "tdt" = more accurate
+  wake_word: null                                        # always-listening for now (set a phrase later)
+  voice: "af_bella"                                      # Kokoro voice (CPU TTS)
+  announcement: "AI Linux Assistant is online and listening."
+  tui_theme: "mono"
+  # Brain on GPU (Ollama); ASR + TTS run on CPU (ONNX) to fit the 6 GB VRAM budget.
+  personality_preprompt:
+    - system: "You are a helpful local AI assistant running on the user's Linux laptop (Ubuntu, GNOME, Wayland). You are concise, friendly, and practical. You can answer questions and, when asked, perform simple desktop and system tasks by calling your available tools. Keep replies short, one or two sentences. Never speak in ALL CAPS, the speech engine mishandles it. If a request needs a capability or tool you do not have, say so plainly instead of pretending."
+    - user: "What can you do?"
+    - assistant: "I can chat, answer questions, and run simple tasks on your computer when you ask. What would you like to do?"
+  # Safe, built-in info tools (no external binary). Desktop control (computer_use) is
+  # added in Phase 3 behind a confirm-before-execute gate.
+  mcp_servers:
+    - name: "system_info"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.system_info_server"]
+    - name: "time_info"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.time_info_server"]
+    - name: "memory"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.memory_server"]
