@@ -130,6 +130,16 @@ GLaDOS is the engine. We copy its MIT source in and own it here (manual upstream
 - **Phase 4 (polish + skills):** barge-in already implemented (`interruptible`), wake-word supported (`wake_word`, currently always-listening); `skills/` procedure seed added (retrieval wiring is Phase 6).
 - **Still requires your live run** (deferred per instruction): first `glados` run downloads ONNX weights; needs Ollama + `llama3.2`; install the computer-use-linux binary to enable desktop control.
 
+## 2f. Phases 5–7 status — DONE, lean/efficient build (2026-06-15)
+
+Decision driver: efficiency + the stated goal (simple/regular tasks, **not** heavy agentic work).
+
+- **Phase 5 — executor:** a lean **gated shell executor** `mcp/shell_server.py` (`mcp.shell.run_command`), confirm-gated exactly like computer_use. Chosen **over installing gptme/OpenCode/Goose** — those are heavyweight agent frameworks for complex work the goal excludes (Node runtime / strong-model assumptions / large dep surface). They remain documented drop-ins behind the same MCP/Executor interface for later. Commit `55abaf1`.
+- **Phase 6 — memory & skills:** a tiny keyword **skills retriever** `mcp/skills_server.py` (`list_skills`, `find_skill`) over `skills/`, alongside GLaDOS's existing `memory` server. **No AIChat/Fabric install** (over-engineering); can grow into hybrid RAG behind the same interface. Commit `c2578a0`.
+- **Phase 7 — stronger brain:** **no new code/deps** — it's a config swap (`completion_url`/`api_key`/`llm_headers`). Local llama3.2 stays default; cloud/OpenAI-compatible example documented in `configs/ai_linux_config.yaml`.
+
+**Active MCP servers:** system_info, time_info, memory, **shell**, **skills**, computer_use. Confirm-gated: `mcp.shell.*` + `mcp.computer_use.*`.
+
 ## 3. Architecture
 
 ```

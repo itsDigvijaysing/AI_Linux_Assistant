@@ -4,6 +4,11 @@ Glados:
   llm_model: "llama3.2"                                  # local Ollama model (brain, on GPU)
   completion_url: "http://localhost:11434/api/chat"      # Ollama endpoint
   api_key: null
+  # Stronger brain (Phase 7, optional) — local by default. For harder tasks, point
+  # these at a cloud / OpenAI-compatible endpoint; no code or dependency change:
+  #   llm_model: "gpt-4o-mini"
+  #   completion_url: "https://api.openai.com/v1/chat/completions"
+  #   api_key: "sk-..."        # llm_headers: {...} for OpenRouter etc.
   interruptible: true                                    # barge-in: user can interrupt TTS
   audio_io: "sounddevice"
   input_mode: "both"                                     # voice + text
