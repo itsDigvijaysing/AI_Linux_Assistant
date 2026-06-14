@@ -10,6 +10,7 @@ from loguru import logger
 from ..mcp import MCPManager
 from ..observability import ObservabilityBus, trim_message
 from ..tools import all_tools, tool_classes
+from .tool_safety import confirm_tool_call, requires_confirmation
 
 # Callback signature: (event_type: str, tool_name: str) -> None
 ToolEventCallback = Callable[[str, str], None]
@@ -100,6 +101,34 @@ class ToolExecutor:
                         f"{tool_call['function']['arguments']}"
                     )
                     args = {}
+
+                # --- AI_Linux: confirm-before-execute safety gate ---
+                if requires_confirmation(tool) and not confirm_tool_call(
+                    tool, args, autonomy_mode=autonomy_mode
+                ):
+                    rejection = f"error: tool '{tool}' was not approved by the user"
+                    logger.warning("ToolExecutor: {}", rejection)
+                    if self._observability_bus:
+                        self._observability_bus.emit(
+                            source="tool",
+                            kind="error",
+                            message=rejection,
+                            level="warning",
+                            meta={"tool": tool, "tool_call_id": tool_call_id, "rejected": True},
+                        )
+                    self._emit_tool_event("tool_rejected", tool)
+                    self._enqueue(
+                        llm_queue,
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": rejection,
+                            "type": "function_call_output",
+                            **autonomy_flag,
+                        },
+                        lane=lane,
+                    )
+                    continue
 
                 if tool.startswith("mcp."):
                     if not self.mcp_manager:

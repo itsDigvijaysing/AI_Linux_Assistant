@@ -34,3 +34,16 @@ Glados:
       transport: "stdio"
       command: "python"
       args: ["-m", "glados.mcp.memory_server"]
+    # --- Wayland desktop control (Phase 3) ---
+    # Tools are exposed as mcp.computer_use.* and are gated by the
+    # confirm-before-execute safety gate (see core/tool_safety.py): every call
+    # asks for y/N approval, and is auto-denied in autonomy mode.
+    # Enable AFTER installing the binary:
+    #   npm install -g @agent-sh/computer-use-linux         # prebuilt, OR
+    #   (cd refs/computer-use-linux && cargo build --release)  # binary at target/release/
+    # then set `command:` to the binary's absolute path and uncomment:
+    # - name: "computer_use"
+    #   transport: "stdio"
+    #   command: "/home/king/.local/bin/computer-use-linux"
+    #   args: []
+    #   allowed_tools: ["*"]        # tighten to e.g. ["click_*","type_*","window_*"] as desired
