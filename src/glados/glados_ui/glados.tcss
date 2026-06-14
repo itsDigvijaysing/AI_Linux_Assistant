@@ -1,0 +1,365 @@
+/* ##################################################################### */
+/* #############    Textual CSS - styling for GlaDOS UI    ############# */
+/* ##################################################################### */
+
+
+/* ====================================================== */
+/* =================== General colours ================== */
+/* ====================================================== */
+
+/*
+https://superuser.com/questions/361297/
+colors for log items are hardcoded in the app
+*/
+
+
+
+
+/* ====================================================== */
+/* ===================== Main Screen ==================== */
+/* ====================================================== */
+
+Screen {
+    align-horizontal: center;
+}
+
+Header {
+    color: $primary;
+    background: $surface;
+    border-bottom: solid $primary 40%;
+}
+
+HeaderClock {
+    color: $primary;
+    width: auto;
+}
+
+#body {
+    align-horizontal: center;
+    border: solid $primary;
+    layers: bottom top;
+    margin-top: 1;
+    background: $background;
+}
+
+#log_area {
+    text-align: left;
+    padding: 1 2;
+    scrollbar-color: $primary 40%;
+    scrollbar-color-hover: $primary 86%;
+    scrollbar-size: 1 1;
+    color: $foreground;
+    height: 1fr;
+    border: solid $primary 30%;
+    background: $background;
+}
+
+#command_bar {
+    margin: 0 0 1 0;
+    min-height: 3;
+    height: auto;
+    border: solid $primary;
+    background: $surface;
+}
+
+#dialog_log.hidden,
+#dialog_title.hidden,
+#log_area.hidden,
+#system_title.hidden,
+#status_panel.hidden,
+#status_title.hidden,
+#autonomy_panel.hidden,
+#autonomy_title.hidden,
+#mcp_panel.hidden,
+#mcp_title.hidden,
+#queue_panel.hidden,
+#queue_title.hidden {
+    display: none;
+}
+
+#command_input {
+    width: 100%;
+    color: $foreground;
+    background: $background;
+    border: none;
+    padding: 0;
+    background-tint: 0%;
+}
+
+#command_input:focus {
+    background: $background;
+    color: $foreground;
+    border: none;
+    background-tint: 0%;
+}
+
+#command_input:ansi {
+    background: $background;
+    color: $foreground;
+    border: none;
+    background-tint: 0%;
+}
+
+#command_input .input--cursor {
+    background: $primary;
+    color: $background;
+    text-style: none;
+}
+
+#command_input .input--selection {
+    background: $primary 30%;
+}
+
+#command_input .input--placeholder,
+#command_input .input--suggestion {
+    color: $foreground 60%;
+}
+
+#left_panel {
+    width: 70%;
+    padding: 1 1 1 2;
+}
+
+#right_panel {
+    width: 30%;
+    padding: 1 2 1 1;
+    border-left: solid $primary 40%;
+    background: $surface;
+}
+
+#dialog_title,
+#system_title,
+#status_title,
+#autonomy_title,
+#queue_title,
+#mcp_title {
+    color: $primary;
+    text-style: bold;
+    height: 1;
+}
+
+#dialog_log {
+    height: 2fr;
+    border: solid $primary 50%;
+    padding: 1 2;
+    scrollbar-color: $primary 40%;
+    scrollbar-color-hover: $primary 86%;
+    scrollbar-size: 1 1;
+    color: $foreground;
+    background: $background;
+}
+
+#status_panel,
+#autonomy_panel,
+#queue_panel,
+#mcp_panel {
+    border: solid $primary 40%;
+    padding: 1 2;
+    background: $surface;
+}
+
+#status_panel {
+    height: 10;
+}
+
+#autonomy_panel {
+    height: 7;
+}
+
+#queue_panel {
+    height: 4;
+}
+
+#mcp_panel {
+    height: 5;
+}
+
+
+/* ====================================================== */
+/* ===================== Help Screen ==================== */
+/* ====================================================== */
+#help_screen {
+    align: center middle;
+    background: $background;
+}
+
+#context_screen,
+#messages_screen {
+    align: center middle;
+    background: $background;
+}
+
+OnOffPickerScreen {
+    align: center middle;
+    background: $background;
+}
+
+#help_dialog {
+    border-title-align: center;
+    border-title-style: bold;
+    border: round $primary;
+    color: $primary;
+    background: $background;
+    text-align: left;
+    padding: 1 2;
+    height: 70%;
+    width: 80%;
+}
+
+#context_dialog,
+#messages_dialog,
+#info_dialog {
+    border-title-align: center;
+    border: round $primary;
+    color: $primary;
+    background: $background;
+    padding: 1 2;
+    height: 70%;
+    width: 80%;
+}
+
+#toggle_dialog {
+    border-title-align: center;
+    border: round $primary;
+    color: $primary;
+    background: $background;
+    padding: 1 2;
+    height: 14;
+    width: 48;
+}
+
+#toggle_title {
+    color: $primary;
+    text-style: bold;
+    height: 1;
+}
+
+#toggle_list {
+    height: 1fr;
+    border: solid $primary 40%;
+    padding: 0 1;
+}
+
+#toggle_hint {
+    color: $foreground 70%;
+    padding-top: 1;
+}
+
+#theme_dialog {
+    border-title-align: center;
+    border: $primary 70% panel;
+    color: $primary;
+    padding: 1 2;
+    height: 14;
+    width: 48;
+}
+
+#theme_title {
+    color: $primary;
+    text-style: bold;
+    height: 1;
+}
+
+#theme_list {
+    height: 1fr;
+    border: solid $primary 40%;
+    padding: 0 1;
+}
+
+#theme_hint {
+    color: $foreground 70%;
+    padding-top: 1;
+}
+
+
+/* ====================================================== */
+/* ==================== Splash screen =================== */
+/* ====================================================== */
+
+SplashScreen {
+    padding: 1 2;
+    scrollbar-size: 0 0;
+}
+
+#welcome_dialog {
+    border: solid $primary;
+    padding: 1 2;
+}
+
+#welcome_body {
+    height: auto;
+}
+
+#welcome_left {
+    width: 40%;
+    padding: 1 2;
+}
+
+#welcome_right {
+    width: 60%;
+    padding: 1 2;
+    border-left: solid $primary 40%;
+}
+
+#welcome_title,
+#welcome_tips_title,
+#welcome_recent_title {
+    color: $primary;
+    text-style: bold;
+    height: 1;
+}
+
+#welcome_logo {
+    padding: 1 0 1 2;
+}
+
+#welcome_meta {
+    color: $foreground 80%;
+    padding: 1 0 0 0;
+}
+
+#welcome_tips,
+#welcome_recent {
+    color: $foreground 70%;
+    padding: 0 0 1 0;
+}
+
+#welcome_prompt {
+    padding: 1 2 0 2;
+    color: $foreground;
+}
+
+#welcome_cta {
+    padding: 0 2 1 2;
+    color: $foreground 70%;
+}
+
+
+/* ====================================================== */
+/* ================= Observability screen =============== */
+/* ====================================================== */
+
+#observability_screen {
+    align: center middle;
+}
+
+#observability_dialog {
+    border-title-align: center;
+    border: $primary 70% panel;
+    color: $primary;
+    padding: 1 2;
+    height: 80%;
+    width: 90%;
+}
+
+#observability_log {
+    scrollbar-color: $primary 40%;
+    scrollbar-color-hover: $primary 86%;
+    scrollbar-size: 1 1;
+    height: 1fr;
+}
+
+#observability_status {
+    color: $primary 70%;
+    height: 1;
+}

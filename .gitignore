@@ -1,0 +1,11 @@
+# Reference clones — study/mine only, NEVER committed
+refs/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs / local artifacts
+*.log
+_legacy/

@@ -1,0 +1,3269 @@
+sample_rate: 16000
+compute_eval_loss: false
+log_prediction: true
+rnnt_reduction: mean_volume
+skip_nan_grad: true
+model_defaults:
+  enc_hidden: 512
+  pred_hidden: 640
+  joint_hidden: 640
+  tdt_durations:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  num_tdt_durations: 5
+train_ds:
+  manifest_filepath: null
+  sample_rate: 16000
+  batch_size: null
+  shuffle: true
+  num_workers: 8
+  pin_memory: true
+  max_duration: 40
+  min_duration: 0.1
+  is_tarred: true
+  tarred_audio_filepaths: null
+  shuffle_n: 2048
+  bucketing_strategy: fully_randomized
+  bucketing_batch_size: null
+  shard_manifests: true
+  use_lhotse: true
+  use_bucketing: true
+  num_buckets: 30
+  bucket_duration_bins: null
+  batch_duration: 600
+  defer_setup: true
+validation_ds:
+  manifest_filepath: null
+  sample_rate: 16000
+  batch_size: 32
+  shuffle: false
+  use_start_end_token: false
+  num_workers: 8
+  pin_memory: true
+test_ds: null
+tokenizer:
+  dir: /tokenizers/en_asrset_PnC_suno_PnC_tokenizer/tokenizer_spe_bpe_v1024/
+  type: bpe
+  model_path: nemo:a4c254472f6a4c388105ae0109636cdc_tokenizer.model
+  vocab_path: nemo:dad8b72697f34006bfd597c3a560ea75_vocab.txt
+  spe_tokenizer_vocab: nemo:0f176c5829c3472daa16f5065b15081d_tokenizer.vocab
+preprocessor:
+  _target_: nemo.collections.asr.modules.AudioToMelSpectrogramPreprocessor
+  sample_rate: 16000
+  normalize: per_feature
+  window_size: 0.025
+  window_stride: 0.01
+  window: hann
+  features: 80
+  n_fft: 512
+  frame_splicing: 1
+  dither: 1.0e-05
+  pad_to: 0
+  max_threads: 1
+spec_augment:
+  _target_: nemo.collections.asr.modules.SpectrogramAugmentation
+  freq_masks: 2
+  time_masks: 10
+  freq_width: 27
+  time_width: 0.05
+encoder:
+  _target_: nemo.collections.asr.modules.ConformerEncoder
+  feat_in: 80
+  feat_out: -1
+  n_layers: 17
+  d_model: 512
+  subsampling: dw_striding
+  subsampling_factor: 8
+  subsampling_conv_channels: 256
+  causal_downsampling: false
+  reduction: null
+  reduction_position: null
+  reduction_factor: 1
+  ff_expansion_factor: 4
+  self_attention_model: rel_pos
+  n_heads: 8
+  att_context_size:
+  - -1
+  - -1
+  att_context_style: regular
+  xscaling: false
+  untie_biases: true
+  pos_emb_max_len: 5000
+  conv_kernel_size: 9
+  conv_norm_type: batch_norm
+  conv_context_size: null
+  dropout: 0.1
+  dropout_pre_encoder: 0.1
+  dropout_emb: 0.0
+  dropout_att: 0.1
+  stochastic_depth_drop_prob: 0.0
+  stochastic_depth_mode: linear
+  stochastic_depth_start_layer: 1
+decoder:
+  _target_: nemo.collections.asr.modules.RNNTDecoder
+  normalization_mode: null
+  random_state_sampling: false
+  blank_as_pad: true
+  prednet:
+    pred_hidden: 640
+    pred_rnn_layers: 1
+    t_max: null
+    dropout: 0.2
+  vocab_size: 1024
+joint:
+  _target_: nemo.collections.asr.modules.RNNTJoint
+  log_softmax: null
+  preserve_memory: false
+  fuse_loss_wer: true
+  fused_batch_size: 4
+  jointnet:
+    joint_hidden: 640
+    activation: relu
+    dropout: 0.2
+    encoder_hidden: 512
+    pred_hidden: 640
+  num_extra_outputs: 5
+  num_classes: 1024
+  vocabulary:
+  - <unk>
+  - ▁t
+  - ▁th
+  - ▁a
+  - in
+  - re
+  - ▁the
+  - ▁w
+  - ▁s
+  - ▁o
+  - er
+  - ou
+  - at
+  - nd
+  - it
+  - ▁h
+  - ▁c
+  - ▁b
+  - is
+  - en
+  - 'on'
+  - ing
+  - ▁f
+  - ▁to
+  - ▁m
+  - es
+  - ▁p
+  - or
+  - an
+  - ▁d
+  - ll
+  - ▁I
+  - ed
+  - ▁and
+  - ▁l
+  - ▁of
+  - ▁in
+  - ▁y
+  - ar
+  - ▁g
+  - ▁you
+  - as
+  - om
+  - ▁n
+  - ve
+  - ▁that
+  - le
+  - ic
+  - us
+  - ow
+  - et
+  - al
+  - ▁e
+  - ut
+  - ▁it
+  - ot
+  - ▁be
+  - ▁T
+  - ion
+  - ▁is
+  - ▁wh
+  - ▁re
+  - ▁on
+  - ▁we
+  - ent
+  - ▁A
+  - ay
+  - ▁ha
+  - ▁Th
+  - id
+  - ▁S
+  - ac
+  - gh
+  - ver
+  - ke
+  - ▁for
+  - im
+  - ly
+  - ur
+  - ld
+  - ▁he
+  - ▁st
+  - all
+  - ro
+  - st
+  - se
+  - ct
+  - ith
+  - ir
+  - am
+  - ▁this
+  - if
+  - ▁W
+  - oo
+  - ri
+  - ▁was
+  - ght
+  - ▁u
+  - ▁with
+  - ad
+  - ch
+  - ▁se
+  - ▁k
+  - ▁an
+  - ▁The
+  - ▁li
+  - ▁do
+  - ▁B
+  - ▁have
+  - ▁as
+  - th
+  - ▁are
+  - ▁sh
+  - ust
+  - ce
+  - ally
+  - ill
+  - ▁H
+  - ▁j
+  - ter
+  - ▁go
+  - ▁And
+  - ation
+  - ▁C
+  - ▁so
+  - ome
+  - ▁not
+  - op
+  - il
+  - ore
+  - ▁ne
+  - ▁can
+  - ▁me
+  - ▁at
+  - ould
+  - ant
+  - ▁M
+  - ▁like
+  - ere
+  - ▁they
+  - ra
+  - ers
+  - ▁ab
+  - ▁de
+  - ▁kn
+  - ge
+  - ▁Y
+  - ▁ch
+  - ul
+  - pp
+  - ▁or
+  - ▁al
+  - ▁con
+  - ▁com
+  - ess
+  - ▁su
+  - out
+  - ▁your
+  - ▁So
+  - ate
+  - ▁one
+  - ▁all
+  - ▁ex
+  - est
+  - ▁fr
+  - ▁just
+  - ▁pro
+  - ▁know
+  - ▁O
+  - ain
+  - ▁but
+  - ol
+  - ive
+  - ▁v
+  - use
+  - very
+  - art
+  - qu
+  - ▁my
+  - el
+  - ▁N
+  - nt
+  - ▁It
+  - ▁what
+  - ab
+  - ▁P
+  - ▁wor
+  - ▁out
+  - ▁there
+  - ▁up
+  - um
+  - ▁from
+  - pe
+  - ▁tw
+  - ▁r
+  - and
+  - ight
+  - ort
+  - un
+  - ▁L
+  - ist
+  - ▁about
+  - ide
+  - ig
+  - ake
+  - ▁D
+  - em
+  - os
+  - king
+  - rou
+  - ind
+  - our
+  - res
+  - ▁We
+  - ▁get
+  - ▁E
+  - ▁G
+  - ack
+  - ▁le
+  - ity
+  - od
+  - ▁F
+  - ard
+  - ▁pl
+  - ▁our
+  - ▁int
+  - ment
+  - ▁will
+  - ies
+  - ▁by
+  - ink
+  - ca
+  - ▁if
+  - red
+  - her
+  - ie
+  - ▁us
+  - ▁some
+  - ▁don
+  - ven
+  - ood
+  - ast
+  - ▁R
+  - ▁his
+  - ▁tim
+  - ▁tr
+  - ▁more
+  - ich
+  - ous
+  - ame
+  - ▁going
+  - ▁had
+  - ▁them
+  - ook
+  - ▁pe
+  - ▁Wh
+  - ▁You
+  - ▁But
+  - ine
+  - ▁here
+  - ▁would
+  - cause
+  - right
+  - so
+  - ost
+  - ure
+  - ▁has
+  - ect
+  - ▁think
+  - ▁fe
+  - ong
+  - ▁see
+  - ▁when
+  - ▁who
+  - ▁were
+  - ▁really
+  - ▁their
+  - ▁want
+  - one
+  - ople
+  - ▁then
+  - ▁time
+  - ▁sa
+  - ap
+  - ▁te
+  - ▁He
+  - ▁ye
+  - ck
+  - ▁her
+  - ▁thing
+  - ▁right
+  - ▁which
+  - itt
+  - ice
+  - act
+  - ▁people
+  - ty
+  - ▁two
+  - ▁J
+  - ▁im
+  - ther
+  - ci
+  - ose
+  - ▁cl
+  - ▁qu
+  - ▁man
+  - ▁also
+  - ree
+  - ▁en
+  - ud
+  - ▁how
+  - reat
+  - ak
+  - hing
+  - ag
+  - ▁any
+  - ff
+  - ace
+  - per
+  - ▁because
+  - ▁very
+  - own
+  - ▁ad
+  - ▁act
+  - ▁been
+  - ▁now
+  - ▁ag
+  - ▁into
+  - ▁comp
+  - ars
+  - ions
+  - are
+  - ite
+  - iv
+  - ▁these
+  - ays
+  - ep
+  - ▁This
+  - ▁she
+  - ans
+  - ah
+  - een
+  - ▁over
+  - ry
+  - ▁lo
+  - age
+  - ▁pr
+  - ▁sp
+  - ue
+  - ▁co
+  - ick
+  - ber
+  - ▁did
+  - ip
+  - ach
+  - ▁back
+  - ▁no
+  - ▁cont
+  - ▁other
+  - ▁every
+  - pt
+  - ▁need
+  - ▁him
+  - ▁U
+  - ▁In
+  - ▁work
+  - irst
+  - ▁part
+  - ▁look
+  - ittle
+  - ble
+  - iz
+  - ▁un
+  - ▁make
+  - omet
+  - nder
+  - ish
+  - na
+  - ▁little
+  - ▁off
+  - ▁than
+  - ▁got
+  - ually
+  - ▁per
+  - ▁good
+  - ▁way
+  - ▁could
+  - ▁ac
+  - ▁imp
+  - able
+  - ▁where
+  - iff
+  - ▁That
+  - ▁res
+  - ount
+  - pl
+  - ance
+  - ▁first
+  - ▁ro
+  - ▁pre
+  - ass
+  - ▁say
+  - int
+  - ated
+  - ire
+  - uch
+  - ase
+  - ▁somet
+  - ound
+  - ▁down
+  - ▁diff
+  - sel
+  - ▁gu
+  - ▁am
+  - ress
+  - ▁lot
+  - ence
+  - ▁dis
+  - orm
+  - ix
+  - ▁po
+  - ving
+  - enty
+  - ▁K
+  - ▁spe
+  - und
+  - he
+  - ▁much
+  - ▁ar
+  - round
+  - ▁app
+  - co
+  - ark
+  - ▁new
+  - ater
+  - ult
+  - end
+  - ▁even
+  - ▁start
+  - ations
+  - rough
+  - ile
+  - fter
+  - ▁well
+  - be
+  - ▁They
+  - ▁three
+  - ign
+  - ild
+  - ▁said
+  - ough
+  - ang
+  - ▁too
+  - ade
+  - ▁bl
+  - ens
+  - ▁inc
+  - ia
+  - ▁those
+  - ▁mo
+  - ▁take
+  - ▁through
+  - ▁fl
+  - ▁kind
+  - ▁things
+  - ▁bet
+  - ▁only
+  - ▁St
+  - ▁let
+  - cess
+  - ▁Ch
+  - ary
+  - vel
+  - ▁If
+  - xt
+  - other
+  - av
+  - ical
+  - ord
+  - ▁again
+  - ▁something
+  - onna
+  - fore
+  - ▁may
+  - ting
+  - ▁bu
+  - ▁differe
+  - urn
+  - ▁gonna
+  - ▁does
+  - uct
+  - og
+  - ▁twenty
+  - ▁gr
+  - ▁Ye
+  - wn
+  - ▁should
+  - ▁comm
+  - ition
+  - ▁under
+  - ▁hel
+  - ory
+  - ▁fo
+  - ▁use
+  - igh
+  - ife
+  - ▁actually
+  - ▁tal
+  - ▁call
+  - ents
+  - ious
+  - ull
+  - ▁There
+  - ▁Yeah
+  - ▁most
+  - ▁ke
+  - ors
+  - ved
+  - ys
+  - ▁sc
+  - ▁happ
+  - ope
+  - ▁help
+  - atch
+  - ▁What
+  - ▁rem
+  - ple
+  - ▁Now
+  - ▁br
+  - ool
+  - oth
+  - ▁four
+  - self
+  - ▁str
+  - ne
+  - thing
+  - ▁put
+  - ial
+  - ▁great
+  - ail
+  - ub
+  - ning
+  - ▁sm
+  - ▁feel
+  - ▁five
+  - ody
+  - undred
+  - iss
+  - ank
+  - get
+  - aking
+  - ▁many
+  - ▁hundred
+  - ▁years
+  - ▁being
+  - ▁come
+  - ▁mean
+  - ily
+  - ▁different
+  - ▁after
+  - ▁ser
+  - ▁show
+  - form
+  - ful
+  - oy
+  - ▁six
+  - ▁vide
+  - ▁V
+  - ▁its
+  - ▁point
+  - ▁day
+  - ▁des
+  - ons
+  - ▁bit
+  - ▁bel
+  - ▁before
+  - ▁aw
+  - ▁end
+  - ▁Oh
+  - ▁still
+  - ath
+  - ▁long
+  - ▁'
+  - ise
+  - ob
+  - day
+  - ▁add
+  - ft
+  - ves
+  - ces
+  - ady
+  - ▁cr
+  - ▁around
+  - ▁try
+  - les
+  - vers
+  - kay
+  - ian
+  - ates
+  - ▁find
+  - ward
+  - ▁As
+  - ▁eight
+  - lic
+  - ▁same
+  - ▁pos
+  - ▁em
+  - ▁made
+  - ▁supp
+  - ▁life
+  - ▁Be
+  - pect
+  - ▁dec
+  - ▁play
+  - ange
+  - ▁att
+  - ▁pers
+  - ways
+  - ▁high
+  - ▁hand
+  - ▁next
+  - ▁cons
+  - ▁own
+  - ▁inv
+  - ower
+  - ▁ind
+  - ert
+  - ng
+  - ave
+  - ▁year
+  - ▁big
+  - ating
+  - ▁world
+  - ▁rel
+  - ▁sure
+  - ▁tra
+  - ew
+  - ered
+  - ▁fin
+  - ▁Well
+  - ▁sl
+  - ▁doing
+  - bs
+  - ▁set
+  - ▁rec
+  - ual
+  - cial
+  - ▁ph
+  - erm
+  - ▁love
+  - ph
+  - ▁real
+  - ▁last
+  - ict
+  - ▁bo
+  - ▁ra
+  - ible
+  - ▁wr
+  - mer
+  - ▁count
+  - ities
+  - ▁always
+  - inet
+  - ments
+  - uc
+  - ▁might
+  - ▁inter
+  - ▁video
+  - gin
+  - ▁tell
+  - ▁never
+  - vent
+  - ▁import
+  - ied
+  - ▁sy
+  - ▁How
+  - ically
+  - ought
+  - ▁thir
+  - ▁rep
+  - ks
+  - ib
+  - ▁fam
+  - ject
+  - ▁bas
+  - ▁She
+  - ▁give
+  - akes
+  - ▁ninet
+  - ▁reg
+  - ▁min
+  - ▁op
+  - ▁def
+  - ▁didn
+  - te
+  - ▁cour
+  - ▁why
+  - ▁ent
+  - ▁place
+  - ▁ins
+  - ▁car
+  - ather
+  - ▁person
+  - ular
+  - ▁inst
+  - ▁prod
+  - lect
+  - ▁Al
+  - ▁today
+  - ▁bec
+  - ▁sur
+  - ▁All
+  - ▁another
+  - ▁bus
+  - ▁keep
+  - ell
+  - ese
+  - riend
+  - ▁quest
+  - ▁talk
+  - als
+  - ings
+  - ▁mon
+  - cond
+  - old
+  - ▁acc
+  - ▁la
+  - ▁num
+  - ident
+  - ▁che
+  - iness
+  - ▁turn
+  - ▁ear
+  - ▁No
+  - ousand
+  - ▁better
+  - ific
+  - ▁loo
+  - ▁gl
+  - oc
+  - ▁important
+  - ited
+  - ▁An
+  - ▁thousand
+  - ility
+  - llow
+  - ▁used
+  - ▁gen
+  - ▁sim
+  - li
+  - ▁happen
+  - ▁Un
+  - ▁Let
+  - air
+  - ock
+  - ably
+  - gg
+  - ▁watch
+  - ▁For
+  - ▁sw
+  - ren
+  - ute
+  - ever
+  - ▁pol
+  - ▁sch
+  - ▁When
+  - ▁such
+  - ▁fif
+  - ▁home
+  - ▁cle
+  - ▁contin
+  - ouse
+  - ▁friend
+  - uring
+  - ▁Okay
+  - gr
+  - ▁able
+  - ▁stud
+  - ▁eff
+  - hip
+  - body
+  - ▁top
+  - ness
+  - ▁exper
+  - ▁pret
+  - ▁both
+  - ▁done
+  - cri
+  - ▁mark
+  - ▁while
+  - ▁old
+  - ros
+  - ont
+  - ▁second
+  - ative
+  - ▁thought
+  - ▁best
+  - ▁found
+  - iew
+  - ▁belie
+  - ▁each
+  - erest
+  - ▁tri
+  - ▁eas
+  - ▁ca
+  - ▁fact
+  - ▁care
+  - ▁fun
+  - atter
+  - ures
+  - ▁head
+  - ▁lear
+  - ▁water
+  - ▁hard
+  - ▁few
+  - ▁side
+  - ween
+  - ▁exp
+  - ▁away
+  - its
+  - ▁ext
+  - lud
+  - ▁run
+  - ▁trans
+  - ince
+  - ▁sk
+  - ▁open
+  - cus
+  - ▁between
+  - ▁called
+  - ▁wee
+  - ▁pretty
+  - ason
+  - ▁far
+  - ember
+  - omm
+  - ▁interest
+  - any
+  - ner
+  - uff
+  - ▁pres
+  - ▁cur
+  - ▁child
+  - ee
+  - ▁toget
+  - ▁together
+  - olog
+  - ▁God
+  - ond
+  - ▁char
+  - ▁looking
+  - stem
+  - az
+  - cent
+  - ▁ob
+  - ▁ass
+  - land
+  - ▁doesn
+  - ▁business
+  - ▁course
+  - ▁ten
+  - ps
+  - arch
+  - ced
+  - ms
+  - ize
+  - nce
+  - ▁ref
+  - ▁name
+  - ross
+  - ▁grow
+  - oney
+  - ▁went
+  - ics
+  - teen
+  - ▁cou
+  - ▁prob
+  - ▁ret
+  - ▁guys
+  - ▁came
+  - ash
+  - led
+  - ▁Eur
+  - ues
+  - ▁ide
+  - gan
+  - ▁everything
+  - ▁getting
+  - ▁ask
+  - ▁cor
+  - ▁build
+  - ▁sign
+  - ▁small
+  - uck
+  - ▁el
+  - ▁col
+  - ▁Is
+  - ational
+  - stand
+  - cy
+  - ▁conf
+  - der
+  - ▁bre
+  - ▁cap
+  - ▁mod
+  - ets
+  - ike
+  - ▁number
+  - ▁comple
+  - ertain
+  - ▁ever
+  - ▁coll
+  - ▁hum
+  - ▁Europe
+  - ▁cre
+  - ▁met
+  - ▁exam
+  - ▁move
+  - ▁pass
+  - ▁left
+  - ▁system
+  - ▁includ
+  - ▁Thank
+  - cept
+  - ▁wom
+  - ▁product
+  - ten
+  - ▁rest
+  - ▁probably
+  - ▁dri
+  - ▁Do
+  - ▁gener
+  - ▁anything
+  - ▁lar
+  - ▁My
+  - ▁school
+  - ▁lead
+  - ▁sub
+  - ▁ty
+  - ▁plan
+  - ▁seem
+  - ▁whole
+  - irect
+  - ▁light
+  - ▁must
+  - ▁mom
+  - ▁opp
+  - ▁support
+  - ▁family
+  - ices
+  - amp
+  - ▁proble
+  - ▁dr
+  - ready
+  - ▁using
+  - ense
+  - ▁prov
+  - ush
+  - ax
+  - ▁power
+  - ▁Re
+  - alth
+  - ▁ev
+  - ▁stand
+  - ▁war
+  - ts
+  - ▁
+  - e
+  - t
+  - o
+  - a
+  - 'n'
+  - i
+  - s
+  - r
+  - h
+  - l
+  - d
+  - u
+  - c
+  - m
+  - 'y'
+  - g
+  - w
+  - f
+  - p
+  - .
+  - b
+  - ','
+  - v
+  - k
+  - ''''
+  - I
+  - T
+  - A
+  - S
+  - x
+  - W
+  - j
+  - B
+  - C
+  - H
+  - '?'
+  - M
+  - O
+  - 'Y'
+  - 'N'
+  - P
+  - E
+  - q
+  - L
+  - D
+  - z
+  - G
+  - F
+  - R
+  - '!'
+  - J
+  - U
+  - K
+  - V
+  - Q
+  - Z
+  - X
+decoding:
+  strategy: greedy_batch
+  model_type: tdt
+  durations:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  greedy:
+    max_symbols: 10
+  beam:
+    beam_size: 2
+    return_best_hypothesis: false
+    score_norm: true
+    tsd_max_sym_exp: 50
+    alsd_max_target_len: 2.0
+aux_ctc:
+  ctc_loss_weight: 0.3
+  use_cer: false
+  ctc_reduction: mean_batch
+  decoder:
+    _target_: nemo.collections.asr.modules.ConvASRDecoder
+    feat_in: 512
+    num_classes: 1024
+    vocabulary:
+    - <unk>
+    - ▁t
+    - ▁th
+    - ▁a
+    - in
+    - re
+    - ▁the
+    - ▁w
+    - ▁s
+    - ▁o
+    - er
+    - ou
+    - at
+    - nd
+    - it
+    - ▁h
+    - ▁c
+    - ▁b
+    - is
+    - en
+    - 'on'
+    - ing
+    - ▁f
+    - ▁to
+    - ▁m
+    - es
+    - ▁p
+    - or
+    - an
+    - ▁d
+    - ll
+    - ▁I
+    - ed
+    - ▁and
+    - ▁l
+    - ▁of
+    - ▁in
+    - ▁y
+    - ar
+    - ▁g
+    - ▁you
+    - as
+    - om
+    - ▁n
+    - ve
+    - ▁that
+    - le
+    - ic
+    - us
+    - ow
+    - et
+    - al
+    - ▁e
+    - ut
+    - ▁it
+    - ot
+    - ▁be
+    - ▁T
+    - ion
+    - ▁is
+    - ▁wh
+    - ▁re
+    - ▁on
+    - ▁we
+    - ent
+    - ▁A
+    - ay
+    - ▁ha
+    - ▁Th
+    - id
+    - ▁S
+    - ac
+    - gh
+    - ver
+    - ke
+    - ▁for
+    - im
+    - ly
+    - ur
+    - ld
+    - ▁he
+    - ▁st
+    - all
+    - ro
+    - st
+    - se
+    - ct
+    - ith
+    - ir
+    - am
+    - ▁this
+    - if
+    - ▁W
+    - oo
+    - ri
+    - ▁was
+    - ght
+    - ▁u
+    - ▁with
+    - ad
+    - ch
+    - ▁se
+    - ▁k
+    - ▁an
+    - ▁The
+    - ▁li
+    - ▁do
+    - ▁B
+    - ▁have
+    - ▁as
+    - th
+    - ▁are
+    - ▁sh
+    - ust
+    - ce
+    - ally
+    - ill
+    - ▁H
+    - ▁j
+    - ter
+    - ▁go
+    - ▁And
+    - ation
+    - ▁C
+    - ▁so
+    - ome
+    - ▁not
+    - op
+    - il
+    - ore
+    - ▁ne
+    - ▁can
+    - ▁me
+    - ▁at
+    - ould
+    - ant
+    - ▁M
+    - ▁like
+    - ere
+    - ▁they
+    - ra
+    - ers
+    - ▁ab
+    - ▁de
+    - ▁kn
+    - ge
+    - ▁Y
+    - ▁ch
+    - ul
+    - pp
+    - ▁or
+    - ▁al
+    - ▁con
+    - ▁com
+    - ess
+    - ▁su
+    - out
+    - ▁your
+    - ▁So
+    - ate
+    - ▁one
+    - ▁all
+    - ▁ex
+    - est
+    - ▁fr
+    - ▁just
+    - ▁pro
+    - ▁know
+    - ▁O
+    - ain
+    - ▁but
+    - ol
+    - ive
+    - ▁v
+    - use
+    - very
+    - art
+    - qu
+    - ▁my
+    - el
+    - ▁N
+    - nt
+    - ▁It
+    - ▁what
+    - ab
+    - ▁P
+    - ▁wor
+    - ▁out
+    - ▁there
+    - ▁up
+    - um
+    - ▁from
+    - pe
+    - ▁tw
+    - ▁r
+    - and
+    - ight
+    - ort
+    - un
+    - ▁L
+    - ist
+    - ▁about
+    - ide
+    - ig
+    - ake
+    - ▁D
+    - em
+    - os
+    - king
+    - rou
+    - ind
+    - our
+    - res
+    - ▁We
+    - ▁get
+    - ▁E
+    - ▁G
+    - ack
+    - ▁le
+    - ity
+    - od
+    - ▁F
+    - ard
+    - ▁pl
+    - ▁our
+    - ▁int
+    - ment
+    - ▁will
+    - ies
+    - ▁by
+    - ink
+    - ca
+    - ▁if
+    - red
+    - her
+    - ie
+    - ▁us
+    - ▁some
+    - ▁don
+    - ven
+    - ood
+    - ast
+    - ▁R
+    - ▁his
+    - ▁tim
+    - ▁tr
+    - ▁more
+    - ich
+    - ous
+    - ame
+    - ▁going
+    - ▁had
+    - ▁them
+    - ook
+    - ▁pe
+    - ▁Wh
+    - ▁You
+    - ▁But
+    - ine
+    - ▁here
+    - ▁would
+    - cause
+    - right
+    - so
+    - ost
+    - ure
+    - ▁has
+    - ect
+    - ▁think
+    - ▁fe
+    - ong
+    - ▁see
+    - ▁when
+    - ▁who
+    - ▁were
+    - ▁really
+    - ▁their
+    - ▁want
+    - one
+    - ople
+    - ▁then
+    - ▁time
+    - ▁sa
+    - ap
+    - ▁te
+    - ▁He
+    - ▁ye
+    - ck
+    - ▁her
+    - ▁thing
+    - ▁right
+    - ▁which
+    - itt
+    - ice
+    - act
+    - ▁people
+    - ty
+    - ▁two
+    - ▁J
+    - ▁im
+    - ther
+    - ci
+    - ose
+    - ▁cl
+    - ▁qu
+    - ▁man
+    - ▁also
+    - ree
+    - ▁en
+    - ud
+    - ▁how
+    - reat
+    - ak
+    - hing
+    - ag
+    - ▁any
+    - ff
+    - ace
+    - per
+    - ▁because
+    - ▁very
+    - own
+    - ▁ad
+    - ▁act
+    - ▁been
+    - ▁now
+    - ▁ag
+    - ▁into
+    - ▁comp
+    - ars
+    - ions
+    - are
+    - ite
+    - iv
+    - ▁these
+    - ays
+    - ep
+    - ▁This
+    - ▁she
+    - ans
+    - ah
+    - een
+    - ▁over
+    - ry
+    - ▁lo
+    - age
+    - ▁pr
+    - ▁sp
+    - ue
+    - ▁co
+    - ick
+    - ber
+    - ▁did
+    - ip
+    - ach
+    - ▁back
+    - ▁no
+    - ▁cont
+    - ▁other
+    - ▁every
+    - pt
+    - ▁need
+    - ▁him
+    - ▁U
+    - ▁In
+    - ▁work
+    - irst
+    - ▁part
+    - ▁look
+    - ittle
+    - ble
+    - iz
+    - ▁un
+    - ▁make
+    - omet
+    - nder
+    - ish
+    - na
+    - ▁little
+    - ▁off
+    - ▁than
+    - ▁got
+    - ually
+    - ▁per
+    - ▁good
+    - ▁way
+    - ▁could
+    - ▁ac
+    - ▁imp
+    - able
+    - ▁where
+    - iff
+    - ▁That
+    - ▁res
+    - ount
+    - pl
+    - ance
+    - ▁first
+    - ▁ro
+    - ▁pre
+    - ass
+    - ▁say
+    - int
+    - ated
+    - ire
+    - uch
+    - ase
+    - ▁somet
+    - ound
+    - ▁down
+    - ▁diff
+    - sel
+    - ▁gu
+    - ▁am
+    - ress
+    - ▁lot
+    - ence
+    - ▁dis
+    - orm
+    - ix
+    - ▁po
+    - ving
+    - enty
+    - ▁K
+    - ▁spe
+    - und
+    - he
+    - ▁much
+    - ▁ar
+    - round
+    - ▁app
+    - co
+    - ark
+    - ▁new
+    - ater
+    - ult
+    - end
+    - ▁even
+    - ▁start
+    - ations
+    - rough
+    - ile
+    - fter
+    - ▁well
+    - be
+    - ▁They
+    - ▁three
+    - ign
+    - ild
+    - ▁said
+    - ough
+    - ang
+    - ▁too
+    - ade
+    - ▁bl
+    - ens
+    - ▁inc
+    - ia
+    - ▁those
+    - ▁mo
+    - ▁take
+    - ▁through
+    - ▁fl
+    - ▁kind
+    - ▁things
+    - ▁bet
+    - ▁only
+    - ▁St
+    - ▁let
+    - cess
+    - ▁Ch
+    - ary
+    - vel
+    - ▁If
+    - xt
+    - other
+    - av
+    - ical
+    - ord
+    - ▁again
+    - ▁something
+    - onna
+    - fore
+    - ▁may
+    - ting
+    - ▁bu
+    - ▁differe
+    - urn
+    - ▁gonna
+    - ▁does
+    - uct
+    - og
+    - ▁twenty
+    - ▁gr
+    - ▁Ye
+    - wn
+    - ▁should
+    - ▁comm
+    - ition
+    - ▁under
+    - ▁hel
+    - ory
+    - ▁fo
+    - ▁use
+    - igh
+    - ife
+    - ▁actually
+    - ▁tal
+    - ▁call
+    - ents
+    - ious
+    - ull
+    - ▁There
+    - ▁Yeah
+    - ▁most
+    - ▁ke
+    - ors
+    - ved
+    - ys
+    - ▁sc
+    - ▁happ
+    - ope
+    - ▁help
+    - atch
+    - ▁What
+    - ▁rem
+    - ple
+    - ▁Now
+    - ▁br
+    - ool
+    - oth
+    - ▁four
+    - self
+    - ▁str
+    - ne
+    - thing
+    - ▁put
+    - ial
+    - ▁great
+    - ail
+    - ub
+    - ning
+    - ▁sm
+    - ▁feel
+    - ▁five
+    - ody
+    - undred
+    - iss
+    - ank
+    - get
+    - aking
+    - ▁many
+    - ▁hundred
+    - ▁years
+    - ▁being
+    - ▁come
+    - ▁mean
+    - ily
+    - ▁different
+    - ▁after
+    - ▁ser
+    - ▁show
+    - form
+    - ful
+    - oy
+    - ▁six
+    - ▁vide
+    - ▁V
+    - ▁its
+    - ▁point
+    - ▁day
+    - ▁des
+    - ons
+    - ▁bit
+    - ▁bel
+    - ▁before
+    - ▁aw
+    - ▁end
+    - ▁Oh
+    - ▁still
+    - ath
+    - ▁long
+    - ▁'
+    - ise
+    - ob
+    - day
+    - ▁add
+    - ft
+    - ves
+    - ces
+    - ady
+    - ▁cr
+    - ▁around
+    - ▁try
+    - les
+    - vers
+    - kay
+    - ian
+    - ates
+    - ▁find
+    - ward
+    - ▁As
+    - ▁eight
+    - lic
+    - ▁same
+    - ▁pos
+    - ▁em
+    - ▁made
+    - ▁supp
+    - ▁life
+    - ▁Be
+    - pect
+    - ▁dec
+    - ▁play
+    - ange
+    - ▁att
+    - ▁pers
+    - ways
+    - ▁high
+    - ▁hand
+    - ▁next
+    - ▁cons
+    - ▁own
+    - ▁inv
+    - ower
+    - ▁ind
+    - ert
+    - ng
+    - ave
+    - ▁year
+    - ▁big
+    - ating
+    - ▁world
+    - ▁rel
+    - ▁sure
+    - ▁tra
+    - ew
+    - ered
+    - ▁fin
+    - ▁Well
+    - ▁sl
+    - ▁doing
+    - bs
+    - ▁set
+    - ▁rec
+    - ual
+    - cial
+    - ▁ph
+    - erm
+    - ▁love
+    - ph
+    - ▁real
+    - ▁last
+    - ict
+    - ▁bo
+    - ▁ra
+    - ible
+    - ▁wr
+    - mer
+    - ▁count
+    - ities
+    - ▁always
+    - inet
+    - ments
+    - uc
+    - ▁might
+    - ▁inter
+    - ▁video
+    - gin
+    - ▁tell
+    - ▁never
+    - vent
+    - ▁import
+    - ied
+    - ▁sy
+    - ▁How
+    - ically
+    - ought
+    - ▁thir
+    - ▁rep
+    - ks
+    - ib
+    - ▁fam
+    - ject
+    - ▁bas
+    - ▁She
+    - ▁give
+    - akes
+    - ▁ninet
+    - ▁reg
+    - ▁min
+    - ▁op
+    - ▁def
+    - ▁didn
+    - te
+    - ▁cour
+    - ▁why
+    - ▁ent
+    - ▁place
+    - ▁ins
+    - ▁car
+    - ather
+    - ▁person
+    - ular
+    - ▁inst
+    - ▁prod
+    - lect
+    - ▁Al
+    - ▁today
+    - ▁bec
+    - ▁sur
+    - ▁All
+    - ▁another
+    - ▁bus
+    - ▁keep
+    - ell
+    - ese
+    - riend
+    - ▁quest
+    - ▁talk
+    - als
+    - ings
+    - ▁mon
+    - cond
+    - old
+    - ▁acc
+    - ▁la
+    - ▁num
+    - ident
+    - ▁che
+    - iness
+    - ▁turn
+    - ▁ear
+    - ▁No
+    - ousand
+    - ▁better
+    - ific
+    - ▁loo
+    - ▁gl
+    - oc
+    - ▁important
+    - ited
+    - ▁An
+    - ▁thousand
+    - ility
+    - llow
+    - ▁used
+    - ▁gen
+    - ▁sim
+    - li
+    - ▁happen
+    - ▁Un
+    - ▁Let
+    - air
+    - ock
+    - ably
+    - gg
+    - ▁watch
+    - ▁For
+    - ▁sw
+    - ren
+    - ute
+    - ever
+    - ▁pol
+    - ▁sch
+    - ▁When
+    - ▁such
+    - ▁fif
+    - ▁home
+    - ▁cle
+    - ▁contin
+    - ouse
+    - ▁friend
+    - uring
+    - ▁Okay
+    - gr
+    - ▁able
+    - ▁stud
+    - ▁eff
+    - hip
+    - body
+    - ▁top
+    - ness
+    - ▁exper
+    - ▁pret
+    - ▁both
+    - ▁done
+    - cri
+    - ▁mark
+    - ▁while
+    - ▁old
+    - ros
+    - ont
+    - ▁second
+    - ative
+    - ▁thought
+    - ▁best
+    - ▁found
+    - iew
+    - ▁belie
+    - ▁each
+    - erest
+    - ▁tri
+    - ▁eas
+    - ▁ca
+    - ▁fact
+    - ▁care
+    - ▁fun
+    - atter
+    - ures
+    - ▁head
+    - ▁lear
+    - ▁water
+    - ▁hard
+    - ▁few
+    - ▁side
+    - ween
+    - ▁exp
+    - ▁away
+    - its
+    - ▁ext
+    - lud
+    - ▁run
+    - ▁trans
+    - ince
+    - ▁sk
+    - ▁open
+    - cus
+    - ▁between
+    - ▁called
+    - ▁wee
+    - ▁pretty
+    - ason
+    - ▁far
+    - ember
+    - omm
+    - ▁interest
+    - any
+    - ner
+    - uff
+    - ▁pres
+    - ▁cur
+    - ▁child
+    - ee
+    - ▁toget
+    - ▁together
+    - olog
+    - ▁God
+    - ond
+    - ▁char
+    - ▁looking
+    - stem
+    - az
+    - cent
+    - ▁ob
+    - ▁ass
+    - land
+    - ▁doesn
+    - ▁business
+    - ▁course
+    - ▁ten
+    - ps
+    - arch
+    - ced
+    - ms
+    - ize
+    - nce
+    - ▁ref
+    - ▁name
+    - ross
+    - ▁grow
+    - oney
+    - ▁went
+    - ics
+    - teen
+    - ▁cou
+    - ▁prob
+    - ▁ret
+    - ▁guys
+    - ▁came
+    - ash
+    - led
+    - ▁Eur
+    - ues
+    - ▁ide
+    - gan
+    - ▁everything
+    - ▁getting
+    - ▁ask
+    - ▁cor
+    - ▁build
+    - ▁sign
+    - ▁small
+    - uck
+    - ▁el
+    - ▁col
+    - ▁Is
+    - ational
+    - stand
+    - cy
+    - ▁conf
+    - der
+    - ▁bre
+    - ▁cap
+    - ▁mod
+    - ets
+    - ike
+    - ▁number
+    - ▁comple
+    - ertain
+    - ▁ever
+    - ▁coll
+    - ▁hum
+    - ▁Europe
+    - ▁cre
+    - ▁met
+    - ▁exam
+    - ▁move
+    - ▁pass
+    - ▁left
+    - ▁system
+    - ▁includ
+    - ▁Thank
+    - cept
+    - ▁wom
+    - ▁product
+    - ten
+    - ▁rest
+    - ▁probably
+    - ▁dri
+    - ▁Do
+    - ▁gener
+    - ▁anything
+    - ▁lar
+    - ▁My
+    - ▁school
+    - ▁lead
+    - ▁sub
+    - ▁ty
+    - ▁plan
+    - ▁seem
+    - ▁whole
+    - irect
+    - ▁light
+    - ▁must
+    - ▁mom
+    - ▁opp
+    - ▁support
+    - ▁family
+    - ices
+    - amp
+    - ▁proble
+    - ▁dr
+    - ready
+    - ▁using
+    - ense
+    - ▁prov
+    - ush
+    - ax
+    - ▁power
+    - ▁Re
+    - alth
+    - ▁ev
+    - ▁stand
+    - ▁war
+    - ts
+    - ▁
+    - e
+    - t
+    - o
+    - a
+    - 'n'
+    - i
+    - s
+    - r
+    - h
+    - l
+    - d
+    - u
+    - c
+    - m
+    - 'y'
+    - g
+    - w
+    - f
+    - p
+    - .
+    - b
+    - ','
+    - v
+    - k
+    - ''''
+    - I
+    - T
+    - A
+    - S
+    - x
+    - W
+    - j
+    - B
+    - C
+    - H
+    - '?'
+    - M
+    - O
+    - 'Y'
+    - 'N'
+    - P
+    - E
+    - q
+    - L
+    - D
+    - z
+    - G
+    - F
+    - R
+    - '!'
+    - J
+    - U
+    - K
+    - V
+    - Q
+    - Z
+    - X
+  decoding:
+    strategy: greedy
+    greedy: {}
+interctc:
+  loss_weights: []
+  apply_at_layers: []
+loss:
+  loss_name: tdt
+  tdt_kwargs:
+    fastemit_lambda: 0.0
+    clamp: -1.0
+    durations:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    sigma: 0.02
+    omega: 0.1
+optim:
+  name: adamw
+  lr: 2.0
+  betas:
+  - 0.9
+  - 0.98
+  weight_decay: 0.001
+  sched:
+    name: NoamAnnealing
+    d_model: 512
+    warmup_steps: 5000
+    warmup_ratio: null
+    min_lr: 1.0e-06
+data:
+  train_ds:
+    shuffle_buffer_size: 20000
+    buffer_size: 20000
+  validation_ds:
+    num_workers: 4
+labels:
+- <unk>
+- ▁t
+- ▁th
+- ▁a
+- in
+- re
+- ▁the
+- ▁w
+- ▁s
+- ▁o
+- er
+- ou
+- at
+- nd
+- it
+- ▁h
+- ▁c
+- ▁b
+- is
+- en
+- 'on'
+- ing
+- ▁f
+- ▁to
+- ▁m
+- es
+- ▁p
+- or
+- an
+- ▁d
+- ll
+- ▁I
+- ed
+- ▁and
+- ▁l
+- ▁of
+- ▁in
+- ▁y
+- ar
+- ▁g
+- ▁you
+- as
+- om
+- ▁n
+- ve
+- ▁that
+- le
+- ic
+- us
+- ow
+- et
+- al
+- ▁e
+- ut
+- ▁it
+- ot
+- ▁be
+- ▁T
+- ion
+- ▁is
+- ▁wh
+- ▁re
+- ▁on
+- ▁we
+- ent
+- ▁A
+- ay
+- ▁ha
+- ▁Th
+- id
+- ▁S
+- ac
+- gh
+- ver
+- ke
+- ▁for
+- im
+- ly
+- ur
+- ld
+- ▁he
+- ▁st
+- all
+- ro
+- st
+- se
+- ct
+- ith
+- ir
+- am
+- ▁this
+- if
+- ▁W
+- oo
+- ri
+- ▁was
+- ght
+- ▁u
+- ▁with
+- ad
+- ch
+- ▁se
+- ▁k
+- ▁an
+- ▁The
+- ▁li
+- ▁do
+- ▁B
+- ▁have
+- ▁as
+- th
+- ▁are
+- ▁sh
+- ust
+- ce
+- ally
+- ill
+- ▁H
+- ▁j
+- ter
+- ▁go
+- ▁And
+- ation
+- ▁C
+- ▁so
+- ome
+- ▁not
+- op
+- il
+- ore
+- ▁ne
+- ▁can
+- ▁me
+- ▁at
+- ould
+- ant
+- ▁M
+- ▁like
+- ere
+- ▁they
+- ra
+- ers
+- ▁ab
+- ▁de
+- ▁kn
+- ge
+- ▁Y
+- ▁ch
+- ul
+- pp
+- ▁or
+- ▁al
+- ▁con
+- ▁com
+- ess
+- ▁su
+- out
+- ▁your
+- ▁So
+- ate
+- ▁one
+- ▁all
+- ▁ex
+- est
+- ▁fr
+- ▁just
+- ▁pro
+- ▁know
+- ▁O
+- ain
+- ▁but
+- ol
+- ive
+- ▁v
+- use
+- very
+- art
+- qu
+- ▁my
+- el
+- ▁N
+- nt
+- ▁It
+- ▁what
+- ab
+- ▁P
+- ▁wor
+- ▁out
+- ▁there
+- ▁up
+- um
+- ▁from
+- pe
+- ▁tw
+- ▁r
+- and
+- ight
+- ort
+- un
+- ▁L
+- ist
+- ▁about
+- ide
+- ig
+- ake
+- ▁D
+- em
+- os
+- king
+- rou
+- ind
+- our
+- res
+- ▁We
+- ▁get
+- ▁E
+- ▁G
+- ack
+- ▁le
+- ity
+- od
+- ▁F
+- ard
+- ▁pl
+- ▁our
+- ▁int
+- ment
+- ▁will
+- ies
+- ▁by
+- ink
+- ca
+- ▁if
+- red
+- her
+- ie
+- ▁us
+- ▁some
+- ▁don
+- ven
+- ood
+- ast
+- ▁R
+- ▁his
+- ▁tim
+- ▁tr
+- ▁more
+- ich
+- ous
+- ame
+- ▁going
+- ▁had
+- ▁them
+- ook
+- ▁pe
+- ▁Wh
+- ▁You
+- ▁But
+- ine
+- ▁here
+- ▁would
+- cause
+- right
+- so
+- ost
+- ure
+- ▁has
+- ect
+- ▁think
+- ▁fe
+- ong
+- ▁see
+- ▁when
+- ▁who
+- ▁were
+- ▁really
+- ▁their
+- ▁want
+- one
+- ople
+- ▁then
+- ▁time
+- ▁sa
+- ap
+- ▁te
+- ▁He
+- ▁ye
+- ck
+- ▁her
+- ▁thing
+- ▁right
+- ▁which
+- itt
+- ice
+- act
+- ▁people
+- ty
+- ▁two
+- ▁J
+- ▁im
+- ther
+- ci
+- ose
+- ▁cl
+- ▁qu
+- ▁man
+- ▁also
+- ree
+- ▁en
+- ud
+- ▁how
+- reat
+- ak
+- hing
+- ag
+- ▁any
+- ff
+- ace
+- per
+- ▁because
+- ▁very
+- own
+- ▁ad
+- ▁act
+- ▁been
+- ▁now
+- ▁ag
+- ▁into
+- ▁comp
+- ars
+- ions
+- are
+- ite
+- iv
+- ▁these
+- ays
+- ep
+- ▁This
+- ▁she
+- ans
+- ah
+- een
+- ▁over
+- ry
+- ▁lo
+- age
+- ▁pr
+- ▁sp
+- ue
+- ▁co
+- ick
+- ber
+- ▁did
+- ip
+- ach
+- ▁back
+- ▁no
+- ▁cont
+- ▁other
+- ▁every
+- pt
+- ▁need
+- ▁him
+- ▁U
+- ▁In
+- ▁work
+- irst
+- ▁part
+- ▁look
+- ittle
+- ble
+- iz
+- ▁un
+- ▁make
+- omet
+- nder
+- ish
+- na
+- ▁little
+- ▁off
+- ▁than
+- ▁got
+- ually
+- ▁per
+- ▁good
+- ▁way
+- ▁could
+- ▁ac
+- ▁imp
+- able
+- ▁where
+- iff
+- ▁That
+- ▁res
+- ount
+- pl
+- ance
+- ▁first
+- ▁ro
+- ▁pre
+- ass
+- ▁say
+- int
+- ated
+- ire
+- uch
+- ase
+- ▁somet
+- ound
+- ▁down
+- ▁diff
+- sel
+- ▁gu
+- ▁am
+- ress
+- ▁lot
+- ence
+- ▁dis
+- orm
+- ix
+- ▁po
+- ving
+- enty
+- ▁K
+- ▁spe
+- und
+- he
+- ▁much
+- ▁ar
+- round
+- ▁app
+- co
+- ark
+- ▁new
+- ater
+- ult
+- end
+- ▁even
+- ▁start
+- ations
+- rough
+- ile
+- fter
+- ▁well
+- be
+- ▁They
+- ▁three
+- ign
+- ild
+- ▁said
+- ough
+- ang
+- ▁too
+- ade
+- ▁bl
+- ens
+- ▁inc
+- ia
+- ▁those
+- ▁mo
+- ▁take
+- ▁through
+- ▁fl
+- ▁kind
+- ▁things
+- ▁bet
+- ▁only
+- ▁St
+- ▁let
+- cess
+- ▁Ch
+- ary
+- vel
+- ▁If
+- xt
+- other
+- av
+- ical
+- ord
+- ▁again
+- ▁something
+- onna
+- fore
+- ▁may
+- ting
+- ▁bu
+- ▁differe
+- urn
+- ▁gonna
+- ▁does
+- uct
+- og
+- ▁twenty
+- ▁gr
+- ▁Ye
+- wn
+- ▁should
+- ▁comm
+- ition
+- ▁under
+- ▁hel
+- ory
+- ▁fo
+- ▁use
+- igh
+- ife
+- ▁actually
+- ▁tal
+- ▁call
+- ents
+- ious
+- ull
+- ▁There
+- ▁Yeah
+- ▁most
+- ▁ke
+- ors
+- ved
+- ys
+- ▁sc
+- ▁happ
+- ope
+- ▁help
+- atch
+- ▁What
+- ▁rem
+- ple
+- ▁Now
+- ▁br
+- ool
+- oth
+- ▁four
+- self
+- ▁str
+- ne
+- thing
+- ▁put
+- ial
+- ▁great
+- ail
+- ub
+- ning
+- ▁sm
+- ▁feel
+- ▁five
+- ody
+- undred
+- iss
+- ank
+- get
+- aking
+- ▁many
+- ▁hundred
+- ▁years
+- ▁being
+- ▁come
+- ▁mean
+- ily
+- ▁different
+- ▁after
+- ▁ser
+- ▁show
+- form
+- ful
+- oy
+- ▁six
+- ▁vide
+- ▁V
+- ▁its
+- ▁point
+- ▁day
+- ▁des
+- ons
+- ▁bit
+- ▁bel
+- ▁before
+- ▁aw
+- ▁end
+- ▁Oh
+- ▁still
+- ath
+- ▁long
+- ▁'
+- ise
+- ob
+- day
+- ▁add
+- ft
+- ves
+- ces
+- ady
+- ▁cr
+- ▁around
+- ▁try
+- les
+- vers
+- kay
+- ian
+- ates
+- ▁find
+- ward
+- ▁As
+- ▁eight
+- lic
+- ▁same
+- ▁pos
+- ▁em
+- ▁made
+- ▁supp
+- ▁life
+- ▁Be
+- pect
+- ▁dec
+- ▁play
+- ange
+- ▁att
+- ▁pers
+- ways
+- ▁high
+- ▁hand
+- ▁next
+- ▁cons
+- ▁own
+- ▁inv
+- ower
+- ▁ind
+- ert
+- ng
+- ave
+- ▁year
+- ▁big
+- ating
+- ▁world
+- ▁rel
+- ▁sure
+- ▁tra
+- ew
+- ered
+- ▁fin
+- ▁Well
+- ▁sl
+- ▁doing
+- bs
+- ▁set
+- ▁rec
+- ual
+- cial
+- ▁ph
+- erm
+- ▁love
+- ph
+- ▁real
+- ▁last
+- ict
+- ▁bo
+- ▁ra
+- ible
+- ▁wr
+- mer
+- ▁count
+- ities
+- ▁always
+- inet
+- ments
+- uc
+- ▁might
+- ▁inter
+- ▁video
+- gin
+- ▁tell
+- ▁never
+- vent
+- ▁import
+- ied
+- ▁sy
+- ▁How
+- ically
+- ought
+- ▁thir
+- ▁rep
+- ks
+- ib
+- ▁fam
+- ject
+- ▁bas
+- ▁She
+- ▁give
+- akes
+- ▁ninet
+- ▁reg
+- ▁min
+- ▁op
+- ▁def
+- ▁didn
+- te
+- ▁cour
+- ▁why
+- ▁ent
+- ▁place
+- ▁ins
+- ▁car
+- ather
+- ▁person
+- ular
+- ▁inst
+- ▁prod
+- lect
+- ▁Al
+- ▁today
+- ▁bec
+- ▁sur
+- ▁All
+- ▁another
+- ▁bus
+- ▁keep
+- ell
+- ese
+- riend
+- ▁quest
+- ▁talk
+- als
+- ings
+- ▁mon
+- cond
+- old
+- ▁acc
+- ▁la
+- ▁num
+- ident
+- ▁che
+- iness
+- ▁turn
+- ▁ear
+- ▁No
+- ousand
+- ▁better
+- ific
+- ▁loo
+- ▁gl
+- oc
+- ▁important
+- ited
+- ▁An
+- ▁thousand
+- ility
+- llow
+- ▁used
+- ▁gen
+- ▁sim
+- li
+- ▁happen
+- ▁Un
+- ▁Let
+- air
+- ock
+- ably
+- gg
+- ▁watch
+- ▁For
+- ▁sw
+- ren
+- ute
+- ever
+- ▁pol
+- ▁sch
+- ▁When
+- ▁such
+- ▁fif
+- ▁home
+- ▁cle
+- ▁contin
+- ouse
+- ▁friend
+- uring
+- ▁Okay
+- gr
+- ▁able
+- ▁stud
+- ▁eff
+- hip
+- body
+- ▁top
+- ness
+- ▁exper
+- ▁pret
+- ▁both
+- ▁done
+- cri
+- ▁mark
+- ▁while
+- ▁old
+- ros
+- ont
+- ▁second
+- ative
+- ▁thought
+- ▁best
+- ▁found
+- iew
+- ▁belie
+- ▁each
+- erest
+- ▁tri
+- ▁eas
+- ▁ca
+- ▁fact
+- ▁care
+- ▁fun
+- atter
+- ures
+- ▁head
+- ▁lear
+- ▁water
+- ▁hard
+- ▁few
+- ▁side
+- ween
+- ▁exp
+- ▁away
+- its
+- ▁ext
+- lud
+- ▁run
+- ▁trans
+- ince
+- ▁sk
+- ▁open
+- cus
+- ▁between
+- ▁called
+- ▁wee
+- ▁pretty
+- ason
+- ▁far
+- ember
+- omm
+- ▁interest
+- any
+- ner
+- uff
+- ▁pres
+- ▁cur
+- ▁child
+- ee
+- ▁toget
+- ▁together
+- olog
+- ▁God
+- ond
+- ▁char
+- ▁looking
+- stem
+- az
+- cent
+- ▁ob
+- ▁ass
+- land
+- ▁doesn
+- ▁business
+- ▁course
+- ▁ten
+- ps
+- arch
+- ced
+- ms
+- ize
+- nce
+- ▁ref
+- ▁name
+- ross
+- ▁grow
+- oney
+- ▁went
+- ics
+- teen
+- ▁cou
+- ▁prob
+- ▁ret
+- ▁guys
+- ▁came
+- ash
+- led
+- ▁Eur
+- ues
+- ▁ide
+- gan
+- ▁everything
+- ▁getting
+- ▁ask
+- ▁cor
+- ▁build
+- ▁sign
+- ▁small
+- uck
+- ▁el
+- ▁col
+- ▁Is
+- ational
+- stand
+- cy
+- ▁conf
+- der
+- ▁bre
+- ▁cap
+- ▁mod
+- ets
+- ike
+- ▁number
+- ▁comple
+- ertain
+- ▁ever
+- ▁coll
+- ▁hum
+- ▁Europe
+- ▁cre
+- ▁met
+- ▁exam
+- ▁move
+- ▁pass
+- ▁left
+- ▁system
+- ▁includ
+- ▁Thank
+- cept
+- ▁wom
+- ▁product
+- ten
+- ▁rest
+- ▁probably
+- ▁dri
+- ▁Do
+- ▁gener
+- ▁anything
+- ▁lar
+- ▁My
+- ▁school
+- ▁lead
+- ▁sub
+- ▁ty
+- ▁plan
+- ▁seem
+- ▁whole
+- irect
+- ▁light
+- ▁must
+- ▁mom
+- ▁opp
+- ▁support
+- ▁family
+- ices
+- amp
+- ▁proble
+- ▁dr
+- ready
+- ▁using
+- ense
+- ▁prov
+- ush
+- ax
+- ▁power
+- ▁Re
+- alth
+- ▁ev
+- ▁stand
+- ▁war
+- ts
+- ▁
+- e
+- t
+- o
+- a
+- 'n'
+- i
+- s
+- r
+- h
+- l
+- d
+- u
+- c
+- m
+- 'y'
+- g
+- w
+- f
+- p
+- .
+- b
+- ','
+- v
+- k
+- ''''
+- I
+- T
+- A
+- S
+- x
+- W
+- j
+- B
+- C
+- H
+- '?'
+- M
+- O
+- 'Y'
+- 'N'
+- P
+- E
+- q
+- L
+- D
+- z
+- G
+- F
+- R
+- '!'
+- J
+- U
+- K
+- V
+- Q
+- Z
+- X
+target: nemo.collections.asr.models.hybrid_rnnt_ctc_bpe_models.EncDecHybridRNNTCTCBPEModel
+nemo_version: 1.23.0
