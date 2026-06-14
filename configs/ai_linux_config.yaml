@@ -34,6 +34,11 @@ Glados:
       transport: "stdio"
       command: "python"
       args: ["-m", "glados.mcp.memory_server"]
+    # --- Local shell/command executor (Phase 5) — every call is confirm-gated ---
+    - name: "shell"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.shell_server"]
     # --- Wayland desktop control (Phase 3) ---
     # Tools exposed as mcp.computer_use.* — gated by the confirm-before-execute
     # safety gate (core/tool_safety.py): every call asks y/N, auto-denied in autonomy.

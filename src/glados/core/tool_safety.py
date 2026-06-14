@@ -19,7 +19,7 @@ from typing import Any
 
 from loguru import logger
 
-_DEFAULT_CONFIRM_PATTERNS: tuple[str, ...] = ("mcp.computer_use.*",)
+_DEFAULT_CONFIRM_PATTERNS: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*")
 
 
 def _confirm_patterns() -> list[str]:
