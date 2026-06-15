@@ -9,3 +9,11 @@ __pycache__/
 # Logs / local artifacts
 *.log
 _legacy/
+
+# Large model weights (downloaded at runtime via `glados download`)
+*.onnx
+*.bin
+*.nemo
+*.gguf
+*.pt
+*.safetensors

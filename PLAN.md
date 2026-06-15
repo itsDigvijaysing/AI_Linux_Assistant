@@ -140,6 +140,18 @@ Decision driver: efficiency + the stated goal (simple/regular tasks, **not** hea
 
 **Active MCP servers:** system_info, time_info, memory, **shell**, **skills**, computer_use. Confirm-gated: `mcp.shell.*` + `mcp.computer_use.*`.
 
+## 2g. Review hardening (2026-06-15)
+
+Adversarial multi-agent judge pass (16 confirmed / 7 rejected; ~10 confirmed were one root cause). Fixes:
+- **Safety gate redesigned** (`core/tool_safety.py`): the old blocking `input()` hung under the Textual `tui` (Textual owns the terminal) and contended with the text listener on stdin in `input_mode: both`. Now **non-blocking & fail-safe**: gated tools (`mcp.shell.*`, `mcp.computer_use.*`) are **denied unless the session is armed** (`GLADOS_ALLOW_ACTIONS=1`); **autonomy is hard-floor denied** independent of `GLADOS_CONFIRM_TOOLS` (closes the footgun where `""` silently disarmed autonomy). A `prompt_fn` hook remains for a future per-action TUI/voice confirmation.
+- **Launcher `run.sh`** + `cli.py` `DEFAULT_CONFIG` now resolve to `configs/ai_linux_config.yaml` — previously a bare `glados start` loaded stock GLaDOS *without* our shell/skills/computer_use servers.
+- **`.gitignore`** ignores downloaded weights (`*.onnx`/`*.bin`/`*.nemo`/`*.gguf`/…) so first run won't stage them.
+- Polish: `vision/__init__` `__all__` no longer triggers cv2 on star-import; `shell_server` timeout collapsed to one 20s value under the 30s MCP cap; skills README corrected (skills ARE wired).
+
+Rejected (correctly, no change): `shell=True` is the tool's intended purpose (gated); output/timeout caps adequate; keeping the vendored GLaDOS superset is fine; vision/api trim is correctly-sequenced future work; `disk_info` omission is intentional curation.
+
+**Run:** `./run.sh` (voice+text) · `./run.sh tui` · `./run.sh download` · add `--allow-actions` to arm shell/desktop actions.
+
 ## 3. Architecture
 
 ```

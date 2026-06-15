@@ -8,7 +8,9 @@ from .vision_config import VisionConfig
 from .vision_request import VisionRequest
 from .vision_state import VisionState
 
-__all__ = ["FastVLM", "VisionConfig", "VisionProcessor", "VisionRequest", "VisionState"]
+# FastVLM and VisionProcessor are intentionally omitted from __all__ so a star-import
+# does not eagerly pull in cv2; they remain reachable via attribute/explicit import.
+__all__ = ["VisionConfig", "VisionRequest", "VisionState"]
 
 
 def __getattr__(name: str):  # type: ignore[misc]

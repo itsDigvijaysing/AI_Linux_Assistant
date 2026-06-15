@@ -19,7 +19,7 @@ type FileHash = str
 type FileURL = str
 type FileName = str
 
-DEFAULT_CONFIG = resource_path("configs/glados_config.yaml")
+DEFAULT_CONFIG = resource_path("configs/ai_linux_config.yaml")
 
 # Details of all the models.  Each key is the file path where the model should be saved
 MODEL_DETAILS: dict[FileName, dict[FileURL, FileHash]] = {
