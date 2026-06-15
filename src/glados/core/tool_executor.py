@@ -10,7 +10,7 @@ from loguru import logger
 from ..mcp import MCPManager
 from ..observability import ObservabilityBus, trim_message
 from ..tools import all_tools, tool_classes
-from .tool_safety import confirm_tool_call, requires_confirmation
+from .tool_safety import confirm_tool_call
 
 # Callback signature: (event_type: str, tool_name: str) -> None
 ToolEventCallback = Callable[[str, str], None]
@@ -103,9 +103,12 @@ class ToolExecutor:
                     args = {}
 
                 # --- AI_Linux: confirm-before-execute safety gate ---
-                if requires_confirmation(tool) and not confirm_tool_call(
-                    tool, args, autonomy_mode=autonomy_mode
-                ):
+                # Always consult confirm_tool_call: it self-checks requires_confirmation and
+                # returns True for non-gated tools, so a non-gated tool is unaffected — but the
+                # autonomy hard-floor and deny-by-default MUST NOT be short-circuited behind
+                # requires_confirmation (which GLADOS_CONFIRM_TOOLS can empty/narrow). See
+                # tool_safety.confirm_tool_call: the autonomy hard-floor is checked first.
+                if not confirm_tool_call(tool, args, autonomy_mode=autonomy_mode):
                     rejection = (
                         f"error: tool '{tool}' is blocked by the safety gate "
                         "(set GLADOS_ALLOW_ACTIONS=1 to enable gated actions; autonomy is always blocked)"

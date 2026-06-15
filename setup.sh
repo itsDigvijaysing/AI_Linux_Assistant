@@ -29,7 +29,11 @@ fi
 
 # 2. python deps -----------------------------------------------------------
 say "Python dependencies"
-( cd "$HERE" && "$CONDA" run -n "$ENV_NAME" pip install -q -e ".[cpu]" ) && ok "glados engine + deps"
+if ( cd "$HERE" && "$CONDA" run -n "$ENV_NAME" pip install -q -e ".[cpu]" ); then
+  ok "glados engine + deps"
+else
+  echo "ERROR: pip install of the engine failed — aborting setup."; exit 1
+fi
 
 # 3. ollama (rootless if absent) ------------------------------------------
 say "Ollama"
@@ -56,7 +60,7 @@ fi
 # 5. speech weights --------------------------------------------------------
 say "Speech model weights (Parakeet / Kokoro / Silero)"
 if ls "$HERE"/models/TTS/*.onnx >/dev/null 2>&1; then ok "present"; else
-  "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download && ok "downloaded"
+  ( cd "$HERE" && "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download ) && ok "downloaded"
 fi
 
 # 6. desktop control (optional) -------------------------------------------
@@ -80,6 +84,7 @@ Type=Application
 Name=AI Linux Assistant
 Comment=Local voice assistant (qwen3:4b)
 Exec=$HERE/run.sh
+Path=$HERE
 Icon=audio-input-microphone
 Terminal=true
 Categories=Utility;

@@ -35,7 +35,7 @@ A fully local, Wayland-native voice assistant you can **talk to naturally** and 
 | Build method | **Clone references first → study/verify → port patterns in**; never blind copy-paste |
 | Commits | **Never commit** (this doc + cloned repos stay untracked / uncommitted) |
 | Voice loop | Always-on (VAD), streaming STT/TTS on **CPU**, LLM on **GPU** |
-| Brain | Local LLM via **Ollama** with tool-calling. Start `llama3.2`; consider a Qwen-class 4B if verified |
+| Brain | Local LLM via **Ollama** with tool-calling. Default **`qwen3:4b`** (verified tool-calling, fits 6 GB @ Q4); `llama3.2` 3B = lighter fallback |
 | Hands (Wayland) | **computer-use-linux** run as an **MCP server** + a few safe shell/file tools |
 | Safety | **Confirm-before-execute** gate on every action (Newelle's click-to-approve pattern) |
 | UX reference | **Newelle** (wake-word handler, approval UX, GTK4 polish) |
@@ -109,7 +109,7 @@ GLaDOS is the engine. We copy its MIT source in and own it here (manual upstream
 - **Not run yet** (per instruction — run later).
 
 ### To run later (when ready)
-1. Ollama up + model:  `ollama serve` &  `ollama pull llama3.2`
+1. Ollama up + model:  `ollama serve` &  `ollama pull qwen3:4b`  (or `llama3.2` fallback)
 2. `conda activate AI_Linux`
 3. First run downloads ONNX weights (Parakeet ASR + Kokoro TTS + Silero VAD):
    - `glados tui`                      # text UI — lightest first smoke test
@@ -128,7 +128,7 @@ GLaDOS is the engine. We copy its MIT source in and own it here (manual upstream
 - **Phase 2 (voice loop):** `configs/ai_linux_config.yaml` — neutral persona, llama3.2 via Ollama, Kokoro `af_bella`, CPU `ctc` ASR, `input_mode: both`, barge-in on, built-in info MCP tools. Validated by GladosConfig. Commit `e17ab56`.
 - **Phase 3 (hands + safety):** `core/tool_safety.py` confirm-before-execute gate, hooked into `tool_executor.run()` (auto-deny in autonomy, y/N otherwise, fail-safe deny, graceful LLM rejection). computer-use-linux MCP entry added (commented — enable after installing the binary). Gate unit-tested. Commit `02a4f24`.
 - **Phase 4 (polish + skills):** barge-in already implemented (`interruptible`), wake-word supported (`wake_word`, currently always-listening); `skills/` procedure seed added (retrieval wiring is Phase 6).
-- **Still requires your live run** (deferred per instruction): first `glados` run downloads ONNX weights; needs Ollama + `llama3.2`; install the computer-use-linux binary to enable desktop control.
+- **Still requires your live run** (deferred per instruction): first `glados` run downloads ONNX weights; needs Ollama + `qwen3:4b`; install the computer-use-linux binary to enable desktop control.
 
 ## 2f. Phases 5–7 status — DONE, lean/efficient build (2026-06-15)
 
@@ -136,7 +136,7 @@ Decision driver: efficiency + the stated goal (simple/regular tasks, **not** hea
 
 - **Phase 5 — executor:** a lean **gated shell executor** `mcp/shell_server.py` (`mcp.shell.run_command`), confirm-gated exactly like computer_use. Chosen **over installing gptme/OpenCode/Goose** — those are heavyweight agent frameworks for complex work the goal excludes (Node runtime / strong-model assumptions / large dep surface). They remain documented drop-ins behind the same MCP/Executor interface for later. Commit `55abaf1`.
 - **Phase 6 — memory & skills:** a tiny keyword **skills retriever** `mcp/skills_server.py` (`list_skills`, `find_skill`) over `skills/`, alongside GLaDOS's existing `memory` server. **No AIChat/Fabric install** (over-engineering); can grow into hybrid RAG behind the same interface. Commit `c2578a0`.
-- **Phase 7 — stronger brain:** **no new code/deps** — it's a config swap (`completion_url`/`api_key`/`llm_headers`). Local llama3.2 stays default; cloud/OpenAI-compatible example documented in `configs/ai_linux_config.yaml`.
+- **Phase 7 — stronger brain:** **no new code/deps** — it's a config swap (`completion_url`/`api_key`/`llm_headers`). Local `qwen3:4b` stays default; cloud/OpenAI-compatible example documented in `configs/ai_linux_config.yaml`.
 
 **Active MCP servers:** system_info, time_info, memory, **shell**, **skills**, computer_use. Confirm-gated: `mcp.shell.*` + `mcp.computer_use.*`.
 
@@ -151,6 +151,16 @@ Adversarial multi-agent judge pass (16 confirmed / 7 rejected; ~10 confirmed wer
 Rejected (correctly, no change): `shell=True` is the tool's intended purpose (gated); output/timeout caps adequate; keeping the vendored GLaDOS superset is fine; vision/api trim is correctly-sequenced future work; `disk_info` omission is intentional curation.
 
 **Run:** `./run.sh` (voice+text) · `./run.sh tui` · `./run.sh download` · add `--allow-actions` to arm shell/desktop actions.
+
+## 2h. Dual brain — local + Groq (2026-06-15)
+
+The brain is swappable with **no code rewrite** — the engine auto-detects Ollama vs OpenAI-compatible endpoints:
+- **Local (default):** `configs/ai_linux_config.yaml` — `qwen3:4b` via Ollama (GPU).
+- **Groq (opt-in):** `configs/ai_linux_groq.yaml` — `llama-3.3-70b-versatile` via Groq's OpenAI-compatible API; run `./run.sh --groq`.
+
+Speech (Parakeet/Kokoro on CPU), MCP tools, and the safety gate are identical across both — only the LLM is
+remote. The Groq key comes from `GROQ_API_KEY` (engine env fallback generalized to
+`GLADOS_API_KEY`/`GROQ_API_KEY`/`MINIMAX_API_KEY`) and is **never stored in a config**. Local stays the focus.
 
 ## 3. Architecture
 

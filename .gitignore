@@ -17,3 +17,5 @@ _legacy/
 *.gguf
 *.pt
 *.safetensors
+*CLAUDE.md
+*PLAN.md

@@ -11,6 +11,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Anchor CWD to the repo: the engine resolves models/ (weights) relative to CWD, so a
+# GNOME-launcher click or a run from another directory would otherwise miss the weights.
+cd "$HERE" || { echo "ERROR: cannot cd to $HERE"; exit 1; }
 CONFIG="$HERE/configs/ai_linux_config.yaml"
 ENV_NAME="AI_Linux"
 

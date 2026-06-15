@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Linux Assistant — rdev liquid-glass technique (vanilla port)</title>
+<!--
+  Real refraction port of rdev/liquid-glass-react (MIT) into plain HTML/CSS/SVG — no React.
+  Technique: an empty .glass__warp span gets `backdrop-filter: blur()+saturate()` AND
+  `filter: url(#glass-filter)`. The SVG filter loads a precomputed lens displacement map
+  (feImage) and runs 3 feDisplacementMap passes (R/G/B at slightly different scales) to bend
+  + chromatically split the backdrop at the edges, then masks it so the centre stays clean.
+  Refraction is Chromium-only (Brave = fine). Finalized defaults: overLight tint on, blur 8,
+  refraction scale 70 — readable on both dark and bright backgrounds.
+  Displacement map asset: from rdev/liquid-glass-react src/utils.ts (MIT).
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: #fff;
+    font-family: system-ui, -apple-system, sans-serif; }
+
+  /* ===== fake DESKTOP behind the glass (just a backdrop so the glass is visible) ===== */
+  .desktop { position: fixed; inset: 0; padding: 34px 44px; box-sizing: border-box;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 30px; z-index: 0;
+    background:
+      radial-gradient(40% 50% at 14% 18%, rgba(91,140,255,.6), transparent 70%),
+      radial-gradient(46% 56% at 86% 24%, rgba(176,107,255,.55), transparent 70%),
+      radial-gradient(54% 62% at 64% 92%, rgba(34,211,238,.45), transparent 70%),
+      linear-gradient(135deg, #0e1530, #241456 55%, #07111f); }
+  .desktop h1 { font-size: 34px; margin: 0 0 4px; }
+  .desktop .sub { opacity: .8; margin: 0 0 16px; }
+  .desktop p { font-size: 14px; line-height: 1.55; opacity: .92; margin: 0 0 12px; max-width: 52ch; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 16px; }
+  .pills span { font-size: 12px; padding: 4px 11px; border-radius: 999px; background: rgba(255,255,255,.16); }
+  .code { font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.6;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px; padding: 12px 14px; white-space: pre; overflow: hidden; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .card { flex: 1; min-width: 150px; border-radius: 16px; padding: 16px; font-weight: 600; }
+  .c1 { background: linear-gradient(135deg,#ff6b6b,#ffa36b); }
+  .c2 { background: linear-gradient(135deg,#34d399,#22d3ee); color:#04211c; }
+  .c3 { background: linear-gradient(135deg,#a78bfa,#6366f1); }
+
+  /* ===== assistant OVERLAY (orb is NOT glass; only the panel is) ===== */
+  .overlay { position: fixed; top: 26px; right: 40px; width: 320px; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    transform-origin: top right;
+    transition: transform .45s cubic-bezier(.22,1,.36,1), opacity .4s ease; }
+  .overlay[data-state="asleep"] { transform: scale(.55); opacity: 0; pointer-events: none; }
+  .orb { width: 100px; height: 100px; }
+  #persona { width: 100px; height: 100px; transition: filter .4s ease; }
+  .overlay[data-state="idle"] #persona { filter: brightness(0) invert(1) drop-shadow(0 0 11px rgba(255,255,255,.65)); }
+
+  /* ===== rdev liquid glass — overLight + blur 8 baked in as the default ===== */
+  .glass { position: relative; width: 100%; box-sizing: border-box;
+    border-radius: 28px; overflow: hidden; isolation: isolate;
+    padding: 16px 17px 17px;
+    box-shadow: 0px 16px 70px rgba(0,0,0,.55); }
+  /* the empty layer that actually refracts the backdrop (refraction via #glass-filter) */
+  .glass__warp { position: absolute; inset: 0; z-index: 0;
+    filter: url(#glass-filter);
+    backdrop-filter: blur(8px) saturate(170%);
+    -webkit-backdrop-filter: blur(8px) saturate(170%); }
+  /* overLight tint + specular highlight — keeps the panel readable on bright backgrounds too */
+  .glass__tint { position: absolute; inset: 0; z-index: 1; border-radius: inherit;
+    background: rgba(20,22,30,.22);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 1px rgba(0,0,0,.18),
+                inset 0 0 0 .5px rgba(255,255,255,.10);
+    border: .5px solid rgba(255,255,255,.22); pointer-events: none; }
+  .glass__content { position: relative; z-index: 2;
+    display: flex; flex-direction: column; gap: 10px;
+    text-shadow: 0 1px 8px rgba(0,0,0,.65); }
+
+  .row { font-size: 14px; line-height: 1.4; }
+  .row .who { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; opacity: .65; display: block; margin-bottom: 1px; }
+  .you .who { color: #cfe0ff; } .ai .who { color: #e6d9ff; }
+  .statusline { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin-top: 2px; }
+
+  /* ===== state switcher (stand-in for the engine's listening/thinking/speaking feed) ===== */
+  .controls { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 4;
+    display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; align-items: center;
+    background: rgba(0,0,0,.45); padding: 9px 14px; border-radius: 14px;
+    backdrop-filter: blur(8px); border: .5px solid rgba(255,255,255,.18); }
+  button { background: rgba(255,255,255,.08); color: #fff; border: .5px solid rgba(255,255,255,.3);
+    border-radius: 9px; padding: 6px 11px; font-size: 12px; cursor: pointer; transition: .15s; }
+  button:hover { border-color: rgba(255,255,255,.6); }
+  button.active { background: #2563eb; border-color: #2563eb; }
+</style>
+</head>
+<body>
+  <!-- busy content behind the glass -->
+  <div class="desktop">
+    <div class="col">
+      <h1>Good evening, King</h1>
+      <p class="sub">Here is what's happening on your machine right now.</p>
+      <p>The assistant runs fully local: speech in on the CPU, the language model on the GPU, and your desktop stays private. This text exists so the glass actually has edges and colour to refract — the more detail behind it, the more obvious the lens bending becomes.</p>
+      <div class="pills"><span>Wayland</span><span>GNOME&nbsp;50</span><span>Ollama</span><span>qwen3:4b</span><span>Kokoro&nbsp;TTS</span><span>Parakeet&nbsp;ASR</span></div>
+      <div class="code">$ ./run.sh --groq
+Starting Ollama...
+Engine running
+Listening...
+[tool] mcp.system_info.cpu_load -> {"load_1m": 0.42}
+[tool] finished in 6 ms</div>
+    </div>
+    <div class="col">
+      <div class="cards">
+        <div class="card c1">RTX 3060<br>5.5 GiB free</div>
+        <div class="card c2">Battery 80%</div>
+        <div class="card c3">Disk 604 GB</div>
+      </div>
+      <p>Unlike a plain <code>backdrop-filter: blur()</code>, this layer runs an SVG displacement map so the edges <em>bend and split</em> the colours behind them — real refraction, like Apple's glass. Toggle the background to white to see how it survives the wash-out scenario.</p>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+    </div>
+  </div>
+
+  <!-- assistant overlay -->
+  <div class="overlay" id="overlay" data-state="idle">
+    <div class="orb"><canvas id="persona" width="200" height="200"></canvas></div>
+    <div class="glass">
+      <span class="glass__warp"></span>
+      <span class="glass__tint"></span>
+      <div class="glass__content">
+        <div class="row you"><span class="who">You</span>What's the weather today?</div>
+        <div class="row ai"><span class="who">Assistant</span>It's sunny, around 24 degrees.</div>
+        <div class="statusline" id="statusline">idle</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SVG glass filter (ported 1:1 from rdev/liquid-glass-react, MIT). standard mode. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="glass-edge-mask" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="black" stop-opacity="0" />
+        <stop offset="76%"  stop-color="black" stop-opacity="0" />
+        <stop offset="100%" stop-color="white" stop-opacity="1" />
+      </radialGradient>
+      <filter id="glass-filter" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+        <feImage id="feimage" x="0" y="0" width="100%" height="100%" result="DISPLACEMENT_MAP"
+                 href="data:image/jpeg;base64,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cUAUAkEkziomgGgkoxZGgxZFQFQlYnQHRdPfj/10KCSCKESCNiVkViPSLpD0h6I0Q0I0A2IoBWBIJIBKBIJoJIJ2R2J0JWBUJ0JUB0XTv479dFZDYiglYigkhEgjZFQjRFQjRFQjQigFYigHYigmgEgmglYlYnQlQlYlQHQlQnQ9P/kf1yVkNiNCNkNiVENiNiViNEViNkVCVgKCViViViSCViSCVgdCViVCViVCdgVCVCdD1D+U/XBWQ2I0I2Q2JUQ2I0JWQ0I2JUQ2JUI2JUI2J0JWJWJWA2R0BWJ0I2JUJ2BUJUJ0P//EABkQAQEBAQEBAAAAAAAAAAAAAAECABEDEP/aAAgBAQABAgB1atWrVq1atWrVq1atWrVq1atWrVq1atWrVq+OrVq1atWrVq1atWrVq1atWrVq1atWrVq1atXxVppppppdWrVq1atWrVq1NNNNNNNNNNNPVWmmmmms6tWrVq1atWpppppppppppppp6q0000uc51atWrVq1ammmmmmmmmmmmmt1Vpppc5znVq1atWrVqaaaaaaaaaaaaaeqtNLnOc51atWrVq1ammmmmmmmmmmmmnqrS5znOc6tWrVq16222mmmmmmlVppp6tKuc5znOrVq1a9TbbbbTTTTTSq000qtLnOc5zq1atWrW0222200000qqqtKqrnOc5zq1atTbbbbbbbbTTTSqqqqqq5znOc6tTTTbbbbbbbbTTTSqqqqrlVznOctNNNtttttttttNNNNKqqqrqznKqrTTTTbbbbbbbbbTTTSqqqqrqznOc5aaaabbbbbbbbbaaaaVVVVVdWc5znVq1NNttttttttttNNKqqqqudWc5znVq16tbbbbbbbbbbTTSqqqq5XVnOc6tWrVrb1tttttttttNNKqqqqrWrK5VWmmm2230bbbbbbaaaXOc5zlVa1KuVVppptttt9G22222mmlzlVznK6tWVVWmmmm2222222222mlznOc5znLWppVVWmmm22222229bTWrOc5znOcq1qaaVpWmm222222229erVqznOc5znKtatStK0rTbTTbbbberXr1as5znOc5aVpppppWlabaabbbb1ta9WrVnOc5znU0rTTTTTTTTTbTTbbbTWvVq1as5znOdTTStNNNNNNNNNtNNtttN6tWvVq1ZznOrU00rTTTTTTTTTTTTTbTWvVq1atWrOc6tTTTStNNNNNNNNNNtNNtNa9WrVq1Z1Z1NNNNNK1q1NNNNNNNNNNNtNatWrVq1atWrU00000rWrVq1atWrVq1alaaa1atWrVq1NNNammmmla1atWrVq1aterVq16tWrVnVqa1NK1qaaaVX/xAAWEAADAAAAAAAAAAAAAAAAAAAhgJD/2gAIAQEAAz8AaExf/8QAGhEBAQEBAQEBAAAAAAAAAAAAAQISEQADEP/aAAgBAgEBAgDx48ePHjx48ePHjx48ePHjx48ePHjx48ePHj86IiIiIiInjx48ePHjx48IiIiIj0oooooooooRERER73ve60UUUUUUVrWiiiiiihERERER73ve97ooooorRWiiiiihKERERER73ve973RRRRWtFFFFFFCIiIiIiPe973ve60UUVrRRRRRRQiIlCIiI973ve973pRRWiiiiiiiiiiiiiiihEe973ve973RRWtFFFFFFFFFFFFFFFFFFa13ve973WitaKKKKKKKKKKKKKKKKKK1rWtd1rutFa1oooooooooooosssooorWta1rWta1rRRRRRRRRRRZZZZZZZZZWta1rWta1rRRRRRRRRZZZZZZZZZZZZe9a1rWta1rWitaKLLLLLLLLLLLLLLLLL3rWta1rWtFbLLLLLLLLLLLLLLLLLLLL3vWta1rWita1ssssssss+hZZZZZZZZe961rWta0Vre97LLLLLLLLLLLPoWWWWWXrWta1oorWta3ssss+hZZZZ9Cyyyyyyyyiita1orWta1ve9llllllllllllllllFFa0VorWta1ve9llllllllllllllllllFFFaK1rWta1rWiyyyyyyyyyyyyiiiiiiitFFa1rWta1oosoosssssoooosoooorRRRWta1rWta0UUUUUWUUUUUUUUUUUVoooorWta1rWtaKKKKKKmiiiiiiiiiiiiiiitd73ve61oSiiipoqaKKKKKKKKKK0UUUVrve973vREREZoSihEooooorRRRRWtd73ve9EREREREoSiiiiitFllllla73ve9ERERERESiiiiiitH0PoWWWWVrXe96IiIiMoiJRRRRRRWjwlFFllllFFd6IiIiIlCUUUUUUUUUePHjx48ePCIiIiIiIiUUUUUUUUUUUePHjx48ePHjx48ePHjx48IiUUUUUUJRRRX//xAAWEQADAAAAAAAAAAAAAAAAAAABYJD/2gAIAQIBAz8AtEV7/8QAFxEBAQEBAAAAAAAAAAAAAAAAAAECEP/aAAgBAwEBAgCtNNNNNNNNNNNNNNNNNNNNNNNNNNNNNcrTTTTTTTTTTTTTTTTTTTTTTTTTTTTTXKrTTTTTTTU000000000000000000001FVpppppqampqaaaaaaaaaaaaaaaaaaaa5Vaaaaampqampqammmmmmmmmmmlaaaaaaiq0001NTU1NTU1NTTTTTTTTTTSqqtNNNcqtNNSyzU1LNTU1NTTTTTTTTTSqqq001ytNLLLLNTU1NTU1NTbbbTTTTTSqqq001ytNLLLLLNTU1NTU3NttttNNNNNKqq001KrSyyyyyzU1NTU3Nzc02220000qqqqrSqqyyyyyzU1NTU3Nzc3NttttNNNKqqqqqqssssss1NTU3Nzc3NzbbbbTTTSqqqqqqrLLLLLNTU1Nzc3Nzc22220000qqqqqqqqssss1NTU3Nzc3NzbbbbbTTSqqqqqqqqqqzU1NTc3Nzc3Nzbc22000qqqqqqqqqqqtTU3Nzc3Nzc3NtzbTTSqqqqrKqqqqqtNNzc23Nzc3Nzc3NTU1KqqqrKqqqqqtNNNNttzc3Nzc3NzU1NLLLLLKqqqqqqqq0022223Nzc3NzU1NSyyyyyyqqqqqqqrTTbbbbc3Nzc3NTU1LLLLLLKsqqqqqqrTTTTbbbc3Nzc1NTUsssssssqqqqqqrTTTTTbbbTc3NTU1NTUsssssqqqqqqqq0000222023NTU1NTUsssssqqqqqqqq000000003NTU1NTU1LLLLLNKrTSqqqqtNNNNNNtNNTU1NSzUssss00qq0qqqqrTTTTTTTTTU1NTUs1LLLNNNKrTTTSqqq00000000001NTU1LNTU0000qtNNNKqqqtNNNNNNNNTU1NTUs1NNNNNKss1NNNK00qtK0000001NNTU0s000000qq000001NKrStNNNNK1NNNNStNNNNNKqtNNNNNNNK0000000rU0000rTTTTTSq00000rTTTTTTTTTTTTTTTTStNNNNKr/xAAUEQEAAAAAAAAAAAAAAAAAAACg/9oACAEDAQM/AAAf/9k=" preserveAspectRatio="xMidYMid slice" />
+        <feColorMatrix in="DISPLACEMENT_MAP" type="matrix"
+          values="0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0 0 0 1 0" result="EDGE_INTENSITY" />
+        <feComponentTransfer in="EDGE_INTENSITY" result="EDGE_MASK">
+          <feFuncA type="discrete" tableValues="0 0.1 1" />
+        </feComponentTransfer>
+        <feOffset in="SourceGraphic" dx="0" dy="0" result="CENTER_ORIGINAL" />
+        <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-70" xChannelSelector="R" yChannelSelector="B" result="RED_DISPLACED" />
+        <feColorMatrix in="RED_DISPLACED" type="matrix"
+          values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="RED_CHANNEL" />
+        <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-77" xChannelSelector="R" yChannelSelector="B" result="GREEN_DISPLACED" />
+        <feColorMatrix in="GREEN_DISPLACED" type="matrix"
+          values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="GREEN_CHANNEL" />
+        <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale="-84" xChannelSelector="R" yChannelSelector="B" result="BLUE_DISPLACED" />
+        <feColorMatrix in="BLUE_DISPLACED" type="matrix"
+          values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="BLUE_CHANNEL" />
+        <feBlend in="GREEN_CHANNEL" in2="BLUE_CHANNEL" mode="screen" result="GB_COMBINED" />
+        <feBlend in="RED_CHANNEL" in2="GB_COMBINED" mode="screen" result="RGB_COMBINED" />
+        <feGaussianBlur in="RGB_COMBINED" stdDeviation="0.3" result="ABERRATED_BLURRED" />
+        <feComposite in="ABERRATED_BLURRED" in2="EDGE_MASK" operator="in" result="EDGE_ABERRATION" />
+        <feComponentTransfer in="EDGE_MASK" result="INVERTED_MASK">
+          <feFuncA type="table" tableValues="1 0" />
+        </feComponentTransfer>
+        <feComposite in="CENTER_ORIGINAL" in2="INVERTED_MASK" operator="in" result="CENTER_CLEAN" />
+        <feComposite in="EDGE_ABERRATION" in2="CENTER_CLEAN" operator="over" />
+      </filter>
+    </defs>
+  </svg>
+
+  <div class="controls" id="states"></div>
+
+  <script src="https://unpkg.com/@rive-app/webgl2@2"></script>
+  <script>
+    const VARIANTS = { glint: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/glint-2.0.riv" };
+    const STATE_MACHINE = "default";
+    const STATES = ["idle", "listening", "thinking", "speaking", "asleep"];
+    const BOOL_INPUTS = ["listening", "thinking", "speaking", "asleep"];
+    const LABEL = { idle:"idle", listening:"listening…", thinking:"thinking…", speaking:"speaking…", asleep:"asleep" };
+
+    const canvas = document.getElementById("persona");
+    const overlay = document.getElementById("overlay");
+    let inputs = [];
+
+    const r = new rive.Rive({
+      src: VARIANTS.glint, canvas, stateMachines: STATE_MACHINE, autoplay: true,
+      onLoad: () => { r.resizeDrawingSurfaceToCanvas(); inputs = r.stateMachineInputs(STATE_MACHINE) || []; setState("idle"); },
+    });
+    window.addEventListener("resize", () => r.resizeDrawingSurfaceToCanvas());
+
+    function setState(state) {
+      for (const inp of inputs) if (BOOL_INPUTS.includes(inp.name)) inp.value = (inp.name === state);
+      overlay.dataset.state = state;
+      document.getElementById("statusline").textContent = LABEL[state] || state;
+      for (const b of document.querySelectorAll("#states button")) b.classList.toggle("active", b.dataset.state === state);
+    }
+
+    const states = document.getElementById("states");
+    for (const s of STATES) {
+      const b = document.createElement("button");
+      b.textContent = s; b.dataset.state = s; b.onclick = () => setState(s);
+      states.appendChild(b);
+    }
+  </script>
+</body>
+</html>
