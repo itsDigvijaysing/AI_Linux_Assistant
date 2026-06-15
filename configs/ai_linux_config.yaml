@@ -1,7 +1,10 @@
 # AI Linux Assistant — primary config (vendored GLaDOS engine)
 # Run:  conda activate AI_Linux  &&  glados start --config configs/ai_linux_config.yaml
 Glados:
-  llm_model: "llama3.2"                                  # local Ollama model (brain, on GPU)
+  llm_model: "qwen3:4b"                                  # local Ollama brain (GPU) — strong tool-calling, fits 6 GB @ Q4
+  #   fallback: "llama3.2" (3B, snappier/lighter); check ollama.com for a "qwen3.5" 4B (tools) too.
+  #   Qwen3 has a thinking mode (GLaDOS strips <think>); append "/no_think" in the prompt to cut latency.
+  #   Pull it first:  ollama pull qwen3:4b
   completion_url: "http://localhost:11434/api/chat"      # Ollama endpoint
   api_key: null
   # Stronger brain (Phase 7, optional) — local by default. For harder tasks, point
