@@ -106,7 +106,10 @@ class ToolExecutor:
                 if requires_confirmation(tool) and not confirm_tool_call(
                     tool, args, autonomy_mode=autonomy_mode
                 ):
-                    rejection = f"error: tool '{tool}' was not approved by the user"
+                    rejection = (
+                        f"error: tool '{tool}' is blocked by the safety gate "
+                        "(set GLADOS_ALLOW_ACTIONS=1 to enable gated actions; autonomy is always blocked)"
+                    )
                     logger.warning("ToolExecutor: {}", rejection)
                     if self._observability_bus:
                         self._observability_bus.emit(

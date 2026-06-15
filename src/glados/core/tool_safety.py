@@ -1,29 +1,49 @@
-"""Confirm-before-execute safety gate for tool calls.
+"""Action safety gate for tool calls.
 
-AI_Linux addition. Some tools — notably desktop-control tools exposed by
-computer-use-linux (``mcp.computer_use.*``) — can take irreversible real-world
-actions (clicks, keystrokes, window changes). This module decides whether a tool
-call must be confirmed by the user before it runs, and obtains that confirmation.
+AI_Linux addition. Some tools — desktop control (``mcp.computer_use.*``) and the
+local shell executor (``mcp.shell.*``) — take irreversible real-world actions
+(clicks, keystrokes, running commands). This gate decides whether such a call is
+allowed to run.
+
+Design — why this is NOT an interactive y/N prompt: the assistant runs as a voice
+loop and as a Textual TUI, where a background thread cannot safely read stdin (it
+hangs under the TUI, which owns the terminal, and contends with the text listener
+in input_mode "both"). So the gate is NON-BLOCKING and fail-safe instead of
+prompting:
+
+  * Gated tools are DENIED by default.
+  * They run only when the session is explicitly armed: env GLADOS_ALLOW_ACTIONS
+    in {1, true, yes, on}. A deliberate session-level "let the assistant act"
+    consent that behaves identically in voice / TUI / headless.
+  * In autonomy mode the gated families are ALWAYS denied (hard floor), regardless
+    of any env override — an autonomous loop must never act unsupervised.
+  * A ``prompt_fn`` hook is kept for a future per-action confirmation UI (a Textual
+    modal or a spoken yes/no); when supplied it is used instead of the env policy.
 
 Configuration:
-    GLADOS_CONFIRM_TOOLS  Comma-separated fnmatch globs of tool names that require
-                          confirmation. Defaults to ``mcp.computer_use.*``.
-                          Set to an empty string to disable all confirmation.
+    GLADOS_ALLOW_ACTIONS  Arm gated actions for the session ("1"/"true"/"yes"/"on").
+                          Default off -> gated tools are denied.
+    GLADOS_CONFIRM_TOOLS  Comma-separated fnmatch globs of gated tool names.
+                          Defaults to the desktop + shell families. Empty string
+                          ungates everything for interactive use, but NEVER weakens
+                          the autonomy hard floor below.
 """
 
 import fnmatch
 import os
-import sys
 from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
 
 _DEFAULT_CONFIRM_PATTERNS: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*")
+# Families an autonomous loop may NEVER run, independent of GLADOS_CONFIRM_TOOLS.
+_AUTONOMY_HARD_DENY: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*")
+_TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _confirm_patterns() -> list[str]:
-    """Tool-name globs that require confirmation (env-overridable)."""
+    """Tool-name globs that are gated (env-overridable)."""
     raw = os.environ.get("GLADOS_CONFIRM_TOOLS")
     if raw is None:
         return list(_DEFAULT_CONFIRM_PATTERNS)
@@ -31,8 +51,12 @@ def _confirm_patterns() -> list[str]:
 
 
 def requires_confirmation(tool_name: str) -> bool:
-    """True if this tool must be confirmed before execution."""
+    """True if this tool is gated (needs authorization before execution)."""
     return any(fnmatch.fnmatch(tool_name, pat) for pat in _confirm_patterns())
+
+
+def _actions_armed() -> bool:
+    return os.environ.get("GLADOS_ALLOW_ACTIONS", "").strip().lower() in _TRUTHY
 
 
 def confirm_tool_call(
@@ -42,29 +66,30 @@ def confirm_tool_call(
     autonomy_mode: bool,
     prompt_fn: Callable[[str], str] | None = None,
 ) -> bool:
-    """Return True if the tool call is approved to run.
-
-    - In autonomy mode, gated tools are auto-DENIED: an autonomous loop must never
-      fire irreversible desktop actions without a human in the loop.
-    - Otherwise ask on the terminal (y/N). With no interactive TTY and no
-      ``prompt_fn``, DENY (fail safe).
-    """
+    """Return True if the tool call is authorized to run (non-blocking, fail-safe)."""
+    # Autonomy hard floor: never run desktop/shell actions unsupervised — independent
+    # of GLADOS_CONFIRM_TOOLS and of arming.
+    if autonomy_mode and any(fnmatch.fnmatch(tool_name, p) for p in _AUTONOMY_HARD_DENY):
+        logger.warning("tool_safety: auto-denied '{}' (autonomy hard floor)", tool_name)
+        return False
     if not requires_confirmation(tool_name):
         return True
-    if autonomy_mode:
-        logger.warning("tool_safety: auto-denied '{}' (autonomy mode)", tool_name)
-        return False
-    question = f"[confirm] Allow {tool_name} with args {args}? [y/N] "
-    try:
-        if prompt_fn is not None:
-            answer = prompt_fn(question)
-        elif sys.stdin is not None and sys.stdin.isatty():
-            answer = input(question)
-        else:
-            logger.warning("tool_safety: no interactive terminal; denying '{}'", tool_name)
+    # Optional explicit confirmation hook (future TUI modal / spoken yes-no, or tests).
+    if prompt_fn is not None:
+        try:
+            answer = prompt_fn(f"Allow {tool_name} with args {args}? [y/N] ")
+        except Exception as exc:  # noqa: BLE001 - any prompt failure must fail safe
+            logger.warning("tool_safety: prompt_fn failed for '{}' ({}); denying", tool_name, exc)
             return False
-    except (EOFError, KeyboardInterrupt):
-        return False
-    approved = answer.strip().lower() in ("y", "yes")
-    logger.info("tool_safety: '{}' {}", tool_name, "approved" if approved else "denied")
-    return approved
+        approved = str(answer).strip().lower() in ("y", "yes")
+        logger.info("tool_safety: '{}' {} via prompt", tool_name, "approved" if approved else "denied")
+        return approved
+    # No safe interactive channel from a background thread in this voice/TUI app:
+    # require explicit session arming instead of reading stdin (which hangs/contends).
+    if _actions_armed():
+        logger.warning("tool_safety: allowing gated '{}' (GLADOS_ALLOW_ACTIONS set)", tool_name)
+        return True
+    logger.warning(
+        "tool_safety: denied gated '{}' — set GLADOS_ALLOW_ACTIONS=1 to enable actions", tool_name
+    )
+    return False
