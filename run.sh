@@ -7,6 +7,7 @@
 #   ./run.sh tui              # Textual text UI
 #   ./run.sh download         # pre-fetch the ONNX model weights
 #   ./run.sh --allow-actions  # arm gated shell/desktop actions for this run
+#   ./run.sh --groq           # use the Groq API brain (needs GROQ_API_KEY); default is local Ollama
 #   ./run.sh tui --allow-actions
 #
 # Gated actions (mcp.shell.*, mcp.computer_use.*) are denied unless --allow-actions
@@ -22,6 +23,8 @@ ARGS=()
 for a in "$@"; do
   case "$a" in
     --allow-actions) export GLADOS_ALLOW_ACTIONS=1 ;;
+    --groq) CONFIG="$HERE/configs/ai_linux_groq.yaml" ;;
+    --local) CONFIG="$HERE/configs/ai_linux_config.yaml" ;;
     start|tui|download|say) SUB="$a" ;;
     *) ARGS+=("$a") ;;
   esac

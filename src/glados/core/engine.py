@@ -126,11 +126,17 @@ class GladosConfig(BaseModel):
 
     @model_validator(mode="after")
     def _resolve_api_key_from_env(self) -> "GladosConfig":
-        """Fall back to MINIMAX_API_KEY environment variable when api_key is not set."""
+        """Fall back to an API key from the environment when api_key is not set.
+
+        Checks GLADOS_API_KEY, then GROQ_API_KEY, then MINIMAX_API_KEY — so a cloud
+        brain's key is supplied via env and never committed in a config file.
+        """
         if self.api_key is None:
-            env_key = os.environ.get("MINIMAX_API_KEY")
-            if env_key:
-                self.api_key = env_key
+            for var in ("GLADOS_API_KEY", "GROQ_API_KEY", "MINIMAX_API_KEY"):
+                env_key = os.environ.get(var)
+                if env_key:
+                    self.api_key = env_key
+                    break
         return self
 
     @classmethod

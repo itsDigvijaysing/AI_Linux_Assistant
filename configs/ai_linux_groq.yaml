@@ -1,0 +1,57 @@
+# AI Linux Assistant — Groq API brain (optional "stronger/faster" cloud brain).
+#
+# The local config (configs/ai_linux_config.yaml, qwen3:4b) stays the DEFAULT. This config runs
+# the SAME assistant (same Kokoro voice, CPU ASR, MCP tools, and safety gate) but
+# points the brain at a Groq-hosted model. Only the LLM is remote; speech stays local.
+#
+# Setup:
+#   export GROQ_API_KEY=gsk_...     # the key is read from the env, never stored here
+#   ./run.sh --groq                 # or: glados start --config configs/ai_linux_groq.yaml
+#
+# The model MUST support tool calling. Verify current model names at
+# https://console.groq.com/docs/models  (e.g. llama-3.1-8b-instant for lower latency).
+Glados:
+  llm_model: "llama-3.3-70b-versatile"                   # Groq-hosted brain (tool-calling capable)
+  completion_url: "https://api.groq.com/openai/v1/chat/completions"   # OpenAI-compatible
+  api_key: null                                          # resolved from GROQ_API_KEY (engine env fallback)
+  interruptible: true
+  audio_io: "sounddevice"
+  input_mode: "both"
+  tts_enabled: true
+  asr_muted: false
+  asr_engine: "ctc"                                      # ASR still local on CPU
+  wake_word: null
+  voice: "af_bella"                                      # TTS still local on CPU (Kokoro)
+  announcement: "AI Linux Assistant is online, running on Groq."
+  tui_theme: "mono"
+  personality_preprompt:
+    - system: "You are a helpful local AI assistant running on the user's Linux laptop (Ubuntu, GNOME, Wayland). You are concise, friendly, and practical. You can answer questions and, when asked, perform simple desktop and system tasks by calling your available tools. Keep replies short, one or two sentences. Never speak in ALL CAPS, the speech engine mishandles it. If a request needs a capability or tool you do not have, say so plainly instead of pretending."
+    - user: "What can you do?"
+    - assistant: "I can chat, answer questions, and run simple tasks on your computer when you ask. What would you like to do?"
+  # Same tool servers + safety gate as the local config.
+  mcp_servers:
+    - name: "system_info"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.system_info_server"]
+    - name: "time_info"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.time_info_server"]
+    - name: "memory"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.memory_server"]
+    - name: "shell"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.shell_server"]
+    - name: "skills"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.skills_server"]
+    - name: "computer_use"
+      transport: "stdio"
+      command: "/home/king/.local/bin/computer-use-linux"
+      args: ["mcp"]
+      allowed_tools: ["*"]
