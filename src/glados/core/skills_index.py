@@ -17,7 +17,7 @@ from pathlib import Path
 from loguru import logger
 
 _CMD_RE = re.compile(r"`([^`\n]+)`")  # back-ticked inline commands in a SKILL body
-_SKIP_PREFIX = ("command -v", "ls ", "cat ", "echo ", "which ", "sudo apt")  # checks/installs, not the action
+_SKIP_PREFIX = ("command -v", "ls ", "cat ", "echo ", "which ", "sudo apt", "./ai-linux")  # checks/meta, not the action
 # Query fillers dropped before matching, so "what is your name" doesn't match on stray tokens.
 _STOP = {
     "the", "a", "an", "is", "am", "are", "was", "be", "to", "of", "it", "its", "in", "on", "at", "for",
