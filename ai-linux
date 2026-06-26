@@ -3,8 +3,8 @@
 #
 #   ./ai-linux                 voice + text, local qwen3:4b brain     [default]
 #   ./ai-linux tui             text-only Textual UI
-#   ./ai-linux setup           (re)run full setup — idempotent, safe to repeat (sudo-free)
-#   ./ai-linux setup --extras  also install optional desktop tools (brightness/screenshot/media/clipboard; one-time sudo)
+#   ./ai-linux setup           (re)run full setup — idempotent; installs desktop tools too (one-time sudo for apt,
+#                              skipped if already present). The running assistant itself never uses sudo.
 #   ./ai-linux doctor          check that everything is ready
 #   ./ai-linux download        pre-fetch the ONNX speech weights
 #   ./ai-linux say "hello"     speak a phrase and exit
@@ -41,7 +41,6 @@ OMODE_FROM_CLI=0   # set when --overlay-mode is passed; then settings.json must 
 ACTIONS="auto"     # auto = arm shell/desktop actions for interactive start|tui; on|off force it
                    #        (autonomy is ALWAYS blocked regardless — see core/tool_safety.py)
 BARGE=1            # default ON: route audio through PipeWire WebRTC echo-cancel for talk-over barge-in (--half-duplex to disable)
-EXTRAS=0           # set by 'setup --extras': one-time apt install of optional desktop tools (brightness/screenshot/media/clipboard)
 
 c_say(){  printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 c_ok(){   printf '   \033[0;32m✓ %s\033[0m\n' "$*"; }
@@ -162,9 +161,11 @@ ensure_binary(){  # optional desktop-control server
     "$HOME/.local/bin/computer-use-linux" setup-window-targeting >/dev/null 2>&1 || true
   fi
 }
-ensure_desktop_tools(){  # opt-in (./ai-linux setup --extras): one-time apt for brightness/screenshot/media/clipboard
+ensure_desktop_tools(){  # one-time apt for brightness/screenshot/media/clipboard; skipped (no sudo) if already present
+  local miss=0; for t in brightnessctl playerctl gnome-screenshot wl-copy; do command -v "$t" >/dev/null 2>&1 || miss=1; done
+  if [ "$miss" = 0 ]; then c_ok "desktop tools present (brightness, screenshots, media, clipboard)"; return 0; fi
   command -v apt-get >/dev/null 2>&1 || { c_warn "apt not found — install brightnessctl playerctl gnome-screenshot wl-clipboard yourself"; return 0; }
-  c_warn "installing optional desktop tools (one-time sudo; the running assistant never uses sudo) ..."
+  c_warn "installing desktop tools (one-time sudo; the running assistant itself never uses sudo) ..."
   if sudo apt-get install -y brightnessctl playerctl gnome-screenshot wl-clipboard ydotool >/dev/null 2>&1; then
     c_ok "desktop tools installed (brightnessctl, playerctl, gnome-screenshot, wl-clipboard, ydotool)"
   else c_warn "some desktop tools failed to install (skills will say so when used)"; fi
@@ -244,9 +245,8 @@ cmd_setup(){
   c_say "Desktop control (optional)";     ensure_binary
   c_say "GNOME launcher + icon";          ensure_desktop
   c_say "On-screen overlay (extension)";  ensure_overlay
-  [ "$EXTRAS" = "1" ] && { c_say "Optional desktop tools (--extras)"; ensure_desktop_tools; }
+  c_say "Desktop tools (brightness/screenshots/media/clipboard)"; ensure_desktop_tools
   c_say "Setup complete"
-  [ "$EXTRAS" = "1" ] || echo "   Extras:  ./ai-linux setup --extras   (one-time: brightness, screenshots, media, clipboard)"
   echo "   Launch:  ./ai-linux        (or click 'AI Linux Assistant' in the app grid)"
   echo "   Groq:    export GROQ_API_KEY=… ; ./ai-linux --groq"
   echo "   Actions: ./ai-linux --allow-actions"
@@ -262,8 +262,8 @@ cmd_doctor(){
   [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^nomic-embed-text" && c_ok "embeddings model (hybrid skills RAG)" || c_warn "embeddings model not pulled — skills retrieval uses keyword only"; }
   local n; n=$(find "$HERE"/models -name '*.onnx' 2>/dev/null | wc -l); [ "$n" -gt 0 ] && c_ok "speech weights ($n .onnx files)" || c_warn "speech weights missing — ./ai-linux download"
   [ -x "$HOME/.local/bin/computer-use-linux" ] && c_ok "desktop control binary" || c_warn "desktop control not installed (optional)"
-  local et=""; for t in brightnessctl playerctl gnome-screenshot wl-copy; do command -v "$t" >/dev/null 2>&1 && et="$et $t"; done
-  [ -n "$et" ] && c_ok "desktop extras:$et" || c_warn "desktop extras absent — './ai-linux setup --extras' for brightness/screenshot/media/clipboard"
+  local miss=""; for t in brightnessctl playerctl gnome-screenshot wl-copy; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
+  [ -z "$miss" ] && c_ok "desktop tools (brightness/screenshots/media/clipboard)" || c_warn "desktop tools missing:$miss — run './ai-linux setup'"
   if [ -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ]; then
     if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$EXT_UUID"; then
       if command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions list --enabled 2>/dev/null | grep -q "$EXT_UUID"; then
@@ -294,7 +294,7 @@ for a in "$@"; do
     --local)         CONFIG="$HERE/configs/ai_linux_config.yaml" ;;
     --allow-actions) ACTIONS=on ;;
     --no-actions)    ACTIONS=off ;;
-    --extras)        EXTRAS=1 ;;
+    --extras)        ;;  # deprecated no-op: desktop tools are installed by default in setup now
     --barge-in)      BARGE=1 ;;
     --half-duplex|--no-barge-in) BARGE=0 ;;
     --no-overlay)    OVERLAY=0 ;;

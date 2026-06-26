@@ -158,11 +158,11 @@ The autonomous loop can **never** run gated actions, regardless of settings (har
 ### No superuser
 
 The **running assistant never uses `sudo`/root** — every command runs as your user (verified: there is no
-`sudo` call anywhere in the runtime). The only privileged step is **optional, one-time, opt-in**:
-`./ai-linux setup --extras` installs a few user-level desktop tools (`brightnessctl`, `playerctl`,
-`gnome-screenshot`, `wl-clipboard`) so brightness / screenshots / media / clipboard skills work. Plain
-`./ai-linux setup` stays sudo-free; skills whose tool isn't installed simply tell you to run `--extras`
-rather than failing silently.
+`sudo` call anywhere in the runtime). The **only** place sudo is used is `./ai-linux setup`, which does a
+one-time `apt` install of a few user-level desktop tools (`brightnessctl`, `playerctl`, `gnome-screenshot`,
+`wl-clipboard`) so brightness / screenshots / media / clipboard work — skipped automatically if they're
+already present. If a tool somehow isn't installed, that skill tells you to run `./ai-linux setup` instead
+of failing silently.
 
 ---
 
