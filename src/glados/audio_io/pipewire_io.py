@@ -21,6 +21,7 @@ from __future__ import annotations
 import atexit
 import os
 import queue
+import secrets
 import subprocess
 import threading
 import time
@@ -200,7 +201,7 @@ class PipeWireAudioIO:
         # pw-play needs a recognized container (raw PCM via stdin is rejected by libsndfile), so write a
         # temp WAV on tmpfs and play the file. pw-play blocks for the clip's duration (verified), which is
         # exactly the playback monitoring the engine needs; terminating it gives prompt barge-in.
-        path = os.path.join(self._tmpdir, f"ai_tts_{os.getpid()}_{id(audio) & 0xffffff}.wav")
+        path = os.path.join(self._tmpdir, f"ai_tts_{secrets.token_hex(8)}.wav")  # unpredictable temp name
         try:
             sf.write(path, np.clip(audio, -1.0, 1.0).astype(np.float32), sr)
         except Exception as exc:  # noqa: BLE001

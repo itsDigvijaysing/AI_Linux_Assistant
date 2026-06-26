@@ -169,8 +169,15 @@ ensure_desktop_tools(){  # one-time apt for brightness/screenshot/media/clipboar
   if sudo apt-get install -y brightnessctl playerctl gnome-screenshot wl-clipboard ydotool >/dev/null 2>&1; then
     c_ok "desktop tools installed (brightnessctl, playerctl, gnome-screenshot, wl-clipboard, ydotool)"
   else c_warn "some desktop tools failed to install (skills will say so when used)"; fi
-  sudo usermod -aG video,input "$USER" >/dev/null 2>&1 && c_warn "added $USER to video,input groups — log out/in for brightness + input to work"
+  sudo usermod -aG video "$USER" >/dev/null 2>&1 && c_warn "added $USER to the video group (brightnessctl) — log out/in to apply"
+  # Scoped uinput access for ydotool via a session ACL (NO `input` group, so no system-wide keylog surface).
+  if [ -f "$HERE/configs/udev/99-ai-linux-uinput.rules" ]; then
+    sudo cp "$HERE/configs/udev/99-ai-linux-uinput.rules" /etc/udev/rules.d/ 2>/dev/null \
+      && sudo udevadm control --reload 2>/dev/null && sudo udevadm trigger /dev/uinput 2>/dev/null \
+      && c_ok "uinput access scoped via udev (session ACL; no input-group keylog surface)"
+  fi
   systemctl --user enable --now ydotoold >/dev/null 2>&1 || true
+  id -nG 2>/dev/null | grep -qw input && c_warn "you're already in the 'input' group (keylog surface) — remove with: sudo gpasswd -d $USER input"
 }
 ensure_desktop(){
   chmod +x "$HERE/ai-linux"

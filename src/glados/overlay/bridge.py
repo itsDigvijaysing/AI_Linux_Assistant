@@ -37,7 +37,7 @@ def runtime_dir() -> Path:
     """Per-user directory for the state/control files (tmpfs when possible)."""
     base = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(os.path.expanduser("~"), ".cache")
     directory = Path(base) / "ai-linux"
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only (control/state/voice channel)
     return directory
 
 

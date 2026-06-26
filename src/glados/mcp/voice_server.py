@@ -42,7 +42,7 @@ def _runtime_dir() -> Path:
     """Same per-user tmpfs dir the overlay bridge polls (kept in sync with overlay/bridge.py)."""
     base = os.environ.get("XDG_RUNTIME_DIR") or os.path.join(os.path.expanduser("~"), ".cache")
     directory = Path(base) / "ai-linux"
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only control channel
     return directory
 
 

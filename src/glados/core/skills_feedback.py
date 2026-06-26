@@ -17,7 +17,7 @@ _LOCK = threading.Lock()
 
 def _log_path() -> Path:
     data = Path(__file__).resolve().parents[2].parent / "data"  # <repo>/data
-    data.mkdir(parents=True, exist_ok=True)
+    data.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only (outcome log may reflect activity)
     return data / "skills_feedback.jsonl"
 
 

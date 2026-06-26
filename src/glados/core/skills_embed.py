@@ -22,7 +22,7 @@ _mem: dict = {"sig": None, "vecs": {}}
 
 def _cache_path() -> Path:
     data = Path(__file__).resolve().parents[2].parent / "data"  # <repo>/data
-    data.mkdir(parents=True, exist_ok=True)
+    data.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only vector cache
     return data / "skills_vectors.json"
 
 

@@ -162,7 +162,13 @@ The **running assistant never uses `sudo`/root** — every command runs as your 
 one-time `apt` install of a few user-level desktop tools (`brightnessctl`, `playerctl`, `gnome-screenshot`,
 `wl-clipboard`) so brightness / screenshots / media / clipboard work — skipped automatically if they're
 already present. If a tool somehow isn't installed, that skill tells you to run `./ai-linux setup` instead
-of failing silently.
+of failing silently. Setup also scopes `ydotool`'s input access via a **udev rule** (per-session ACL on
+`/dev/uinput`), not the broad `input` group, so nothing gains system-wide keystroke read.
+
+A destructive-command **denylist** (`mcp/shell_server.py`) refuses clearly catastrophic commands
+(`rm -rf ~`, `dd of=/dev/…`, `mkfs`, fork bomb, `curl … | sh`, …) regardless of how they were produced.
+See **[SECURITY.md](SECURITY.md)** for the full threat model, guarantees, and how to run disarmed
+(`./ai-linux --no-actions`).
 
 ---
 
