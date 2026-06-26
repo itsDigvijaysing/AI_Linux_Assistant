@@ -65,6 +65,9 @@ class LanguageModelProcessor:
         mcp_manager: MCPManager | None = None,
         observability_bus: ObservabilityBus | None = None,
         extra_headers: dict[str, str] | None = None,
+        think: bool | None = None,
+        skills_hint_enabled: bool = True,
+        skills_hint_k: int = 2,
         lane: str = "priority",
         inflight_counter: InFlightCounter | None = None,
     ) -> None:
@@ -88,6 +91,9 @@ class LanguageModelProcessor:
         self._observability_bus = observability_bus
         self._lane = lane
         self._inflight_counter = inflight_counter
+        self._think = think  # None=leave model default; False=no_think (low latency); True=force reasoning
+        self._skills_hint_enabled = skills_hint_enabled  # inject the matching skill's exact command per turn
+        self._skills_hint_k = skills_hint_k
         self._ollama_mode = self._is_ollama_endpoint()
 
         self.prompt_headers = {"Content-Type": "application/json"}
@@ -337,12 +343,20 @@ class LanguageModelProcessor:
             )
         )
         wants_clap = "clap" in text
+        # AI_Linux: the action + skill + voice tools are the whole point of this assistant
+        # ("open firefox", "run ls", "find a skill", "use a female voice"), and such requests
+        # contain none of the system-status keywords above — so never hide them behind the
+        # heuristic (mcp.voice.* in particular must stay offered or voice-switch requests can
+        # never reach the model). Execution is still governed by the action safety gate
+        # (tool_safety.py), so merely offering them to the model is safe; only the read-only
+        # info servers stay keyword-gated to keep the small local model focused.
+        always_offer = ("mcp.shell.", "mcp.computer_use.", "mcp.skills.", "mcp.skills_writer.", "mcp.voice.")
         filtered: list[dict[str, Any]] = []
         for tool in tools:
             name = tool.get("function", {}).get("name", "")
             if name == "slow clap" and not wants_clap:
                 continue
-            if name.startswith("mcp.") and not wants_system:
+            if name.startswith("mcp.") and not wants_system and not name.startswith(always_offer):
                 continue
             filtered.append(tool)
         return filtered
@@ -384,6 +398,53 @@ class LanguageModelProcessor:
                 message=",".join(tool_names),
                 meta={"count": len(tool_names), "autonomy": autonomy_mode},
             )
+
+    def _flush_streamed_sentences(self, sentence_buffer: list[str]) -> list[str]:
+        """Send every COMPLETE sentence in the buffer to TTS; return the unfinished tail.
+
+        The LLM stream is chunked unpredictably — a word, a clause, a whole sentence, or a lone
+        punctuation mark can each arrive as one chunk. The old check only flushed when an entire
+        chunk *was* punctuation, so for token-by-token backends the whole reply buffered until the
+        stream ended (no streaming TTS). Instead, scan the accumulated text and emit each finished
+        sentence as soon as its terminator is confirmed, so the first audio plays almost immediately.
+
+        A terminator (``. ! ? : ;``) ends a sentence when it is followed by whitespace (the next
+        word has begun), except a ``.`` between digits (a decimal like ``3.14``). At the very end of
+        the buffer-so-far only the unambiguous ``! ?`` and newlines flush, so a trailing ``.`` waits
+        one more chunk rather than mis-splitting a decimal/time/abbreviation in progress.
+        """
+        text = "".join(sentence_buffer)
+        flushed_to = 0
+        n = len(text)
+        for i, ch in enumerate(text):
+            boundary = False
+            if ch == "\n":
+                boundary = True
+            elif ch in ".!?:;":
+                nxt = text[i + 1] if i + 1 < n else ""
+                prev = text[i - 1] if i > 0 else ""
+                if nxt.isspace():
+                    boundary = not (ch == "." and prev.isdigit())
+                elif nxt == "":
+                    boundary = ch in "!?"
+            if boundary:
+                segment = text[flushed_to : i + 1]
+                if segment.strip():
+                    self._process_sentence_for_tts([segment])
+                flushed_to = i + 1
+        remainder = text[flushed_to:]
+        # Safety valve: a long run with no sentence terminator at all (e.g. a comma-free list)
+        # would otherwise buffer until end-of-stream. Once it grows past a sane bound, flush up to
+        # the last space so TTS can start, keeping only the trailing partial word. Normal text hits
+        # a terminator long before this, so it never triggers.
+        if len(remainder) > 1000:
+            cut = remainder.rstrip().rfind(" ")
+            if cut <= 0:
+                cut = len(remainder)
+            head, remainder = remainder[:cut], remainder[cut:]
+            if head.strip():
+                self._process_sentence_for_tts([head])
+        return [remainder] if remainder.strip() else []
 
     def _process_sentence_for_tts(self, current_sentence_parts: list[str]) -> None:
         """
@@ -633,11 +694,9 @@ class LanguageModelProcessor:
         while not self.shutdown_event.is_set():
             try:
                 llm_input = self.llm_input_queue.get(timeout=self.pause_time)
-                if not self.processing_active_event.is_set():  # Check if we were interrupted before starting
-                    logger.info("LLM Processor: Interruption signal active, discarding LLM request.")
-                    # Ensure EOS is sent if a previous stream was cut short by this interruption
-                    # This logic might need refinement based on state. For now, assume no prior stream.
-                    continue
+                # always process a dequeued request (the old discard-on-clear-flag dropped replies);
+                # mark the turn active — listener clears it only on a real barge-in.
+                self.processing_active_event.set()
 
                 inflight_guard = False
                 enqueued_at = llm_input.get("_enqueued_at")
@@ -684,15 +743,47 @@ class LanguageModelProcessor:
 
                 allow_tools = bool(llm_input.get("_allow_tools", True))
                 tools = self._build_tools(autonomy_mode) if allow_tools else []
+                cmd_suffix: str | None = None
                 if tools and not autonomy_mode and llm_message.get("role") == "user":
                     content = str(llm_message.get("content", ""))
                     tools = self._filter_tools_for_message(tools, content)
+                    if self._skills_hint_enabled:
+                        # When a shell-skill clearly matches, focus a small model: narrow the tool list to
+                        # shell/skills/voice (drop computer_use's 16 tools that lure it into a useless
+                        # keypress) and append the exact command to the USER turn. System-message hints
+                        # were verified to SUPPRESS tool-calling, so the command rides the user message.
+                        try:
+                            from . import skills_index
+
+                            matched = skills_index.top_skills(content, self._skills_hint_k)
+                            if skills_index.has_shell_commands(matched):
+                                focused = [
+                                    t for t in tools
+                                    if t.get("function", {}).get("name", "").startswith(
+                                        ("mcp.shell.", "mcp.skills.", "mcp.voice.")
+                                    )
+                                ]
+                                if focused:
+                                    tools = focused
+                                # Only the single best skill's commands — backfilling from the 2nd match
+                                # mixes unrelated commands (e.g. terminal + file-manager) and misleads the model.
+                                cmd_suffix = skills_index.render_command_suffix(matched[:1])
+                        except Exception as exc:  # noqa: BLE001 - retrieval must never break a turn
+                            logger.warning(f"LLM Processor: skills hint failed: {exc}")
                 tool_names = {
                     tool.get("function", {}).get("name", "")
                     for tool in tools
                     if tool.get("function", {}).get("name")
                 }
                 base_messages = self._build_messages(autonomy_mode)
+                if cmd_suffix:  # append to the last user message (a NEW dict; the conversation store is untouched)
+                    for i in range(len(base_messages) - 1, -1, -1):
+                        if base_messages[i].get("role") == "user":
+                            base_messages[i] = {
+                                **base_messages[i],
+                                "content": f"{base_messages[i].get('content', '')}{cmd_suffix}",
+                            }
+                            break
                 data = {
                     "model": self.model_name,
                     "stream": True,
@@ -715,6 +806,22 @@ class LanguageModelProcessor:
                             request_urls.append(fallback_url)
 
                     for attempt, request_url in enumerate(request_urls):
+                        # Each retry endpoint is a fresh stream: reset accumulators so a partial
+                        # first attempt can't bleed buffered text / thinking-state into the fallback.
+                        tool_calls_buffer = []
+                        sentence_buffer = []
+                        thinking_buffer = []
+                        in_thinking = False
+                        harmony_mode = False
+                        native_ollama = self._ollama_mode and not request_url.endswith("/v1/chat/completions")
+                        # Reasoning toggle: only the native Ollama /api/chat accepts a top-level
+                        # `think` boolean (qwen3 etc.). Sending `think: false` skips the <think>
+                        # trace entirely → first speakable token arrives immediately (low latency).
+                        # The OpenAI-compatible fallback has no such field, so strip it there.
+                        if native_ollama and self._think is not None:
+                            data["think"] = self._think
+                        else:
+                            data.pop("think", None)
                         if request_url.endswith("/v1/chat/completions"):
                             data["messages"] = self._sanitize_messages_for_openai(base_messages)
                         elif self._ollama_mode:
@@ -756,18 +863,21 @@ class LanguageModelProcessor:
                                                 if isinstance(chunk, list):
                                                     self._process_tool_chunks(tool_calls_buffer, chunk)
                                                 elif not autonomy_mode:
+                                                    # Interactive lane only: stream spoken text. In autonomy
+                                                    # mode, agents communicate via tool calls (e.g. speak());
+                                                    # raw streamed text is intentionally not sent to TTS.
                                                     # Extract thinking tags before TTS (auto-detects format)
                                                     speakable, in_thinking, harmony_mode = self._extract_thinking(
                                                         chunk, in_thinking, thinking_buffer, harmony_mode
                                                     )
                                                     if speakable:
                                                         sentence_buffer.append(speakable)
-                                                        if speakable.strip() in self.PUNCTUATION_SET and (
-                                                            len(sentence_buffer) < 2
-                                                            or not sentence_buffer[-2].strip().isdigit()
-                                                        ):
-                                                            self._process_sentence_for_tts(sentence_buffer)
-                                                            sentence_buffer = []
+                                                        # Emit every COMPLETE sentence as it forms so
+                                                        # TTS starts within a sentence of the model
+                                                        # beginning — not after the whole reply.
+                                                        sentence_buffer = self._flush_streamed_sentences(
+                                                            sentence_buffer
+                                                        )
                                             elif cleaned_line_data.get("done_marker"):
                                                 break
                                             elif cleaned_line_data.get("done") and cleaned_line_data.get("response") == "":

@@ -10,6 +10,12 @@ __pycache__/
 *.log
 _legacy/
 
+# Self-improving skills: learned drafts + runtime state (kept out of VCS until reviewed)
+skills/learned/
+data/skills_feedback.jsonl
+data/skills_tidy_report.md
+data/skills_vectors.json
+
 # Large model weights (downloaded at runtime via `glados download`)
 *.onnx
 *.bin

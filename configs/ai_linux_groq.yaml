@@ -6,7 +6,7 @@
 #
 # Setup:
 #   export GROQ_API_KEY=gsk_...     # the key is read from the env, never stored here
-#   ./run.sh --groq                 # or: glados start --config configs/ai_linux_groq.yaml
+#   ./ai-linux --groq               # or: glados start --config configs/ai_linux_groq.yaml
 #
 # The model MUST support tool calling. Verify current model names at
 # https://console.groq.com/docs/models  (e.g. llama-3.1-8b-instant for lower latency).
@@ -14,20 +14,26 @@ Glados:
   llm_model: "llama-3.3-70b-versatile"                   # Groq-hosted brain (tool-calling capable)
   completion_url: "https://api.groq.com/openai/v1/chat/completions"   # OpenAI-compatible
   api_key: null                                          # resolved from GROQ_API_KEY (engine env fallback)
-  interruptible: true
+  interruptible: false                                   # half-duplex echo guard (same local audio path as the local
+                                                         #   config) — mic ignored while speaking + hangover so the
+                                                         #   assistant never hears its own TTS. true only with
+                                                         #   headphones / hardware echo cancellation.
   audio_io: "sounddevice"
   input_mode: "both"
   tts_enabled: true
   asr_muted: false
   asr_engine: "ctc"                                      # ASR still local on CPU
   wake_word: null
-  voice: "af_bella"                                      # TTS still local on CPU (Kokoro)
-  announcement: "AI Linux Assistant is online, running on Groq."
+  voice: "supertonic:M1"                                 # SuperTonic-3 male voice (local CPU/ONNX); Kokoro male e.g. "am_michael" is the fallback
+  announcement: "Linux is online, running on Groq."
   tui_theme: "mono"
+  skills_retrieval: "hybrid"                              # keyword first, local-embedding fallback (nomic-embed-text)
   personality_preprompt:
-    - system: "You are a helpful local AI assistant running on the user's Linux laptop (Ubuntu, GNOME, Wayland). You are concise, friendly, and practical. You can answer questions and, when asked, perform simple desktop and system tasks by calling your available tools. Keep replies short, one or two sentences. Never speak in ALL CAPS, the speech engine mishandles it. If a request needs a capability or tool you do not have, say so plainly instead of pretending."
+    - system: "You are Linux, the user's voice assistant on their Ubuntu/GNOME/Wayland laptop; if asked, say you are Linux. This is spoken, so keep replies short — usually one sentence; no markdown, lists, or ALL CAPS. When the user asks you to DO something on the computer (brightness, volume, open an app or link, run a command), immediately call mcp.shell.run_command with the right command — do NOT describe it or ask how. If a command is suggested in the message, use it as-is, adjusting values. Only call mcp.skills.find_skill if you don't know the command. Use mcp.computer_use for clicking inside on-screen apps, mcp.voice.set_voice to change your voice. After the tool runs, confirm in one short sentence; if you truly can't, say so plainly."
+    - user: "Turn the volume down a bit."
+    - assistant: "(calls mcp.shell.run_command with command 'wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-') Done, I lowered the volume."
     - user: "What can you do?"
-    - assistant: "I can chat, answer questions, and run simple tasks on your computer when you ask. What would you like to do?"
+    - assistant: "I can chat, answer questions, and actually run things on your computer like changing the volume or brightness, opening apps and links, or running commands."
   # Same tool servers + safety gate as the local config.
   mcp_servers:
     - name: "system_info"
@@ -50,6 +56,14 @@ Glados:
       transport: "stdio"
       command: "python"
       args: ["-m", "glados.mcp.skills_server"]
+    - name: "skills_writer"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.skills_writer_server"]
+    - name: "voice"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.voice_server"]
     - name: "computer_use"
       transport: "stdio"
       command: "/home/king/.local/bin/computer-use-linux"

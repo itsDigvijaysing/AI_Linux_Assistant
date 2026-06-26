@@ -1,0 +1,44 @@
+/* AI Linux Assistant overlay — St (GNOME Shell) stylesheet.
+   Orb colour reflects state (JS adds the pulse). Controls are icon-only (symbolic icons,
+   recoloured via CSS `color`). The transcript is a frosted, scrolling panel. */
+
+.ai-overlay { spacing: 10px; }
+
+/* ---- orb (Cairo glass sphere) + mute toggle on its own row, right side below the orb ---- */
+.ai-mute-mini { background-color: rgba(18, 20, 28, 0.55); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 16px; padding: 5px; }
+.ai-mute-mini:hover, .ai-mute-mini:focus { background-color: rgba(40, 44, 58, 0.9); border-color: rgba(255, 255, 255, 0.3); box-shadow: none; }
+.ai-mute-mini-icon { icon-size: 18px; color: rgba(255, 255, 255, 0.82); }
+.ai-mute-mini:hover .ai-mute-mini-icon { color: rgba(255, 255, 255, 1); }
+.ai-mute-mini.active .ai-mute-mini-icon { color: #ef4444; }
+
+/* ---- scrolling transcript (translucent; rounded; no Shell blur so corners stay curved) ---- */
+.ai-panel {
+  width: 320px;
+  background-color: rgba(18, 20, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  padding: 10px 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.ai-scroll { max-height: 240px; }
+.ai-log    { spacing: 8px; }
+.ai-you { color: #bcd2ff; font-size: 12px; }
+.ai-ai  { color: #ffffff; font-size: 13px; font-weight: 600; }
+
+/* ---- top-bar indicator (dot inside the PanelMenu.Button; the button itself handles hover) ---- */
+.ai-indicator-box { padding: 0 4px; }
+.ai-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background-color: rgba(255, 255, 255, 0.85);
+}
+/* dot colours track the orb palette per state (loading=amber, idle=indigo, listening=green, thinking=violet, speaking=pink) */
+.ai-indicator.state-loading   { background-color: #ffb63a; box-shadow: 0 0 8px 2px rgba(255, 178, 58, 0.8); }
+.ai-indicator.state-idle      { background-color: #6678f0; box-shadow: 0 0 6px 1px rgba(102, 120, 240, 0.6); }
+.ai-indicator.state-listening { background-color: #22d98c; box-shadow: 0 0 8px 2px rgba(34, 217, 140, 0.85); }
+.ai-indicator.state-thinking  { background-color: #9f56fc; box-shadow: 0 0 8px 2px rgba(159, 86, 252, 0.85); }
+.ai-indicator.state-speaking  { background-color: #ff2e8c; box-shadow: 0 0 8px 2px rgba(255, 46, 140, 0.85); }
+.ai-indicator.state-muted     { background-color: rgba(140, 140, 150, 0.6); border-color: rgba(255, 120, 120, 0.6); }
+.ai-indicator.state-off       { background-color: rgba(120, 120, 130, 0.45); border-color: rgba(255, 255, 255, 0.2); }

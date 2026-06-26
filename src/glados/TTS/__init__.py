@@ -31,6 +31,7 @@ def get_speech_synthesizer(
     Parameters:
         voice (str): The type of TTS engine to use:
             - "glados": GLaDOS voice synthesizer
+            - "supertonic" / "supertonic:<ID>": SuperTonic-3 (CPU/ONNX); default male M1
             - <str>: Kokoro voice synthesizer using the specified voice <str> is available
     Returns:
         SpeechSynthesizerProtocol: An instance of the requested speech synthesizer
@@ -41,6 +42,13 @@ def get_speech_synthesizer(
         from ..TTS import tts_glados
 
         return tts_glados.SpeechSynthesizer()
+
+    if voice.lower().startswith("supertonic"):
+        from ..TTS import tts_supertonic
+
+        # "supertonic" -> default male M1; "supertonic:M3" -> speaker M3
+        speaker = voice.split(":", 1)[1].strip() if ":" in voice else tts_supertonic.DEFAULT_VOICE
+        return tts_supertonic.SpeechSynthesizer(voice=speaker or tts_supertonic.DEFAULT_VOICE)
 
     from ..TTS import tts_kokoro
 

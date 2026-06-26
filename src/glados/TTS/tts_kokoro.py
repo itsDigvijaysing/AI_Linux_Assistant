@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +55,10 @@ class SpeechSynthesizer:
         self.sample_rate = self.SAMPLE_RATE
         self.voices: dict[str, NDArray[np.float32]] = np.load(VOICES_PATH)
         self.vocab = self._get_vocab()
+        # Guards the live voice swap: set_voice() (overlay-bridge thread) vs the voice read in
+        # _synthesize_ids_to_audio() (TTS thread). Held only for the ref read/swap, so a runtime
+        # voice change applies cleanly at the next utterance. Mirrors tts_supertonic.py.
+        self._lock = threading.Lock()
 
         self.set_voice(voice)
 
@@ -79,7 +84,8 @@ class SpeechSynthesizer:
         """
         if voice not in self.voices:
             raise ValueError(f"Voice '{voice}' not found. Available voices: {list(self.voices.keys())}")
-        self.voice = voice
+        with self._lock:
+            self.voice = voice
 
     def generate_speech_audio(self, text: str) -> NDArray[np.float32]:
         """
@@ -137,7 +143,9 @@ class SpeechSynthesizer:
         Returns:
             NDArray[np.float32]: An array of audio samples representing the synthesized speech
         """
-        voice_vector = self.voices[self.voice]
+        with self._lock:  # snapshot the voice for this whole utterance
+            voice = self.voice
+        voice_vector = self.voices[voice]
         voice_array = voice_vector[len(ids)]
 
         tokens = [[0, *ids, 0]]

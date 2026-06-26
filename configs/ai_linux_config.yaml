@@ -1,32 +1,38 @@
 # AI Linux Assistant — primary config (vendored GLaDOS engine)
 # Run:  conda activate AI_Linux  &&  glados start --config configs/ai_linux_config.yaml
 Glados:
-  llm_model: "qwen3:4b"                                  # local Ollama brain (GPU) — strong tool-calling, fits 6 GB @ Q4
-  #   fallback: "llama3.2" (3B, snappier/lighter); check ollama.com for a "qwen3.5" 4B (tools) too.
-  #   Qwen3 has a thinking mode (GLaDOS strips <think>); append "/no_think" in the prompt to cut latency.
-  #   Pull it first:  ollama pull qwen3:4b
+  llm_model: "qwen3:4b"                                  # default brain (Settings can switch to qwen3:1.7b)
   completion_url: "http://localhost:11434/api/chat"      # Ollama endpoint
   api_key: null
+  llm_think: false                                       # false=fast, reasoning OFF (best voice latency); true=deep/slow; null=model default (qwen3=reasoning ON, slower)
   # Stronger brain (Phase 7, optional) — local by default. For harder tasks, point
   # these at a cloud / OpenAI-compatible endpoint; no code or dependency change:
   #   llm_model: "gpt-4o-mini"
   #   completion_url: "https://api.openai.com/v1/chat/completions"
   #   api_key: "sk-..."        # llm_headers: {...} for OpenRouter etc.
-  interruptible: true                                    # barge-in: user can interrupt TTS
+  interruptible: false                                   # half-duplex echo guard: the mic is ignored while the assistant
+                                                         #   speaks (+ a short hangover) so it never transcribes its own
+                                                         #   TTS coming back through the speakers (no AEC on the raw-ALSA
+                                                         #   capture path). Set true ONLY with headphones or hardware/
+                                                         #   PipeWire echo cancellation — that restores voice barge-in.
   audio_io: "sounddevice"
   input_mode: "both"                                     # voice + text
   tts_enabled: true
   asr_muted: false
   asr_engine: "ctc"                                      # CPU ASR (faster); "tdt" = more accurate
-  wake_word: null                                        # always-listening for now (set a phrase later)
-  voice: "af_bella"                                      # Kokoro voice (CPU TTS)
-  announcement: "AI Linux Assistant is online and listening."
+  wake_word: "computer"                                  # most STT-robust wake word ("Computer, ..."); say it before a command
+  voice: "supertonic:M1"                                 # SuperTonic-3 male voice (CPU/ONNX, 44.1kHz). Other male IDs: M3/M4/M5.
+                                                         #   Fallback engine: a Kokoro male voice like "am_michael" / "bm_george".
+  announcement: "Linux is online and listening."
   tui_theme: "mono"
+  skills_retrieval: "hybrid"                              # keyword first, local-embedding fallback (nomic-embed-text); "keyword" = no embeddings
   # Brain on GPU (Ollama); ASR + TTS run on CPU (ONNX) to fit the 6 GB VRAM budget.
   personality_preprompt:
-    - system: "You are a helpful local AI assistant running on the user's Linux laptop (Ubuntu, GNOME, Wayland). You are concise, friendly, and practical. You can answer questions and, when asked, perform simple desktop and system tasks by calling your available tools. Keep replies short, one or two sentences. Never speak in ALL CAPS, the speech engine mishandles it. If a request needs a capability or tool you do not have, say so plainly instead of pretending."
+    - system: "You are Linux, the user's friendly voice assistant on their Ubuntu/GNOME/Wayland laptop; if asked, say you are Linux. This is a spoken conversation, so keep replies brief — usually one short sentence; never use markdown, lists, or ALL CAPS (everything is read aloud). When the user asks you to DO something on the computer (brightness, volume, open an app or link, run a command), immediately call mcp.shell.run_command with the right command — do NOT describe what you'd do and do NOT ask how. A 'Relevant capabilities' note often gives you the exact command; use it as-is, filling in any value. Only call mcp.skills.find_skill if there is no such note and you don't know the command. Use mcp.computer_use for clicking inside on-screen apps, mcp.voice.set_voice to change your voice. After the tool runs, confirm in one short sentence; if you truly can't, say so plainly."
+    - user: "Turn the volume down a bit."
+    - assistant: "(calls mcp.shell.run_command with command 'wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-') Done, I lowered the volume."
     - user: "What can you do?"
-    - assistant: "I can chat, answer questions, and run simple tasks on your computer when you ask. What would you like to do?"
+    - assistant: "I can chat, answer questions, and actually run things on your computer like changing the volume or brightness, opening apps and links, or running commands."
   # Safe, built-in info tools (no external binary). Desktop control (computer_use) is
   # added in Phase 3 behind a confirm-before-execute gate.
   mcp_servers:
@@ -52,6 +58,18 @@ Glados:
       transport: "stdio"
       command: "python"
       args: ["-m", "glados.mcp.skills_server"]
+    # --- Skill writer (ours) — ungated; save_skill writes a SKILL draft only (never executes;
+    #     stored commands stay gated when later run). Lets the assistant LEARN new skills. ---
+    - name: "skills_writer"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.skills_writer_server"]
+    # --- Live TTS voice switcher (ours) — ungated; lets the assistant change its own voice
+    #     on request ("use a female voice"). Applied live via the overlay bridge (no restart). ---
+    - name: "voice"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "glados.mcp.voice_server"]
     # --- Wayland desktop control (Phase 3) ---
     # Tools exposed as mcp.computer_use.* — gated by the confirm-before-execute
     # safety gate (core/tool_safety.py): every call asks y/N, auto-denied in autonomy.

@@ -10,7 +10,10 @@ from loguru import logger
 from ..mcp import MCPManager
 from ..observability import ObservabilityBus, trim_message
 from ..tools import all_tools, tool_classes
+from . import skills_feedback
 from .tool_safety import confirm_tool_call
+
+_ACTION_PREFIXES = ("mcp.shell.", "mcp.computer_use.")  # outcomes worth logging for self-improvement
 
 # Callback signature: (event_type: str, tool_name: str) -> None
 ToolEventCallback = Callable[[str, str], None]
@@ -123,6 +126,8 @@ class ToolExecutor:
                             meta={"tool": tool, "tool_call_id": tool_call_id, "rejected": True},
                         )
                     self._emit_tool_event("tool_rejected", tool)
+                    if tool.startswith(_ACTION_PREFIXES):
+                        skills_feedback.record(tool, args, ok=False, detail="gate-denied")
                     self._enqueue(
                         llm_queue,
                         {
@@ -172,6 +177,9 @@ class ToolExecutor:
                             )
                         logger.success("ToolExecutor: finished {}", tool)
                         self._emit_tool_event("tool_success", tool)
+                        if tool.startswith(_ACTION_PREFIXES):  # MCP "success" can still be a failed shell command
+                            ok, rc = skills_feedback.shell_outcome(str(result)) if tool.startswith("mcp.shell.") else (True, None)
+                            skills_feedback.record(tool, args, ok=ok, returncode=rc)
                         self._enqueue(
                             llm_queue,
                             {
@@ -186,6 +194,8 @@ class ToolExecutor:
                     except Exception as e:
                         tool_error = f"error: MCP tool '{tool}' failed - {e}"
                         self._emit_tool_event("tool_failure", tool)
+                        if tool.startswith(_ACTION_PREFIXES):
+                            skills_feedback.record(tool, args, ok=False, detail=str(e))
                         logger.error(f"ToolExecutor: {tool_error}")
                         if self._observability_bus:
                             self._observability_bus.emit(

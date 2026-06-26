@@ -95,7 +95,7 @@
       <p class="sub">Here is what's happening on your machine right now.</p>
       <p>The assistant runs fully local: speech in on the CPU, the language model on the GPU, and your desktop stays private. This text exists so the glass actually has edges and colour to refract — the more detail behind it, the more obvious the lens bending becomes.</p>
       <div class="pills"><span>Wayland</span><span>GNOME&nbsp;50</span><span>Ollama</span><span>qwen3:4b</span><span>Kokoro&nbsp;TTS</span><span>Parakeet&nbsp;ASR</span></div>
-      <div class="code">$ ./run.sh --groq
+      <div class="code">$ ./ai-linux --groq
 Starting Ollama...
 Engine running
 Listening...
@@ -120,8 +120,8 @@ Listening...
       <span class="glass__warp"></span>
       <span class="glass__tint"></span>
       <div class="glass__content">
-        <div class="row you"><span class="who">You</span>What's the weather today?</div>
-        <div class="row ai"><span class="who">Assistant</span>It's sunny, around 24 degrees.</div>
+        <div class="row you"><span class="who">You</span><span id="you-text">What's the weather today?</span></div>
+        <div class="row ai"><span class="who">Assistant</span><span id="ai-text">It's sunny, around 24 degrees.</span></div>
         <div class="statusline" id="statusline">idle</div>
       </div>
     </div>

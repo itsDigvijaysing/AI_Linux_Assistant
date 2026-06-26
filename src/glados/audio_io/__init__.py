@@ -57,6 +57,19 @@ def get_audio_system(backend_type: str = "sounddevice", vad_threshold: float | N
         return SoundDeviceAudioIO(
             vad_threshold=vad_threshold,
         )
+    elif backend_type == "pipewire":
+        import shutil  # PipeWire + WebRTC echo cancellation (full-duplex barge-in)
+
+        if shutil.which("pw-record") and shutil.which("pw-play"):
+            from .pipewire_io import PipeWireAudioIO
+
+            return PipeWireAudioIO(vad_threshold=vad_threshold)
+        from loguru import logger
+
+        logger.warning("pipewire backend requested but pw-record/pw-play missing; using sounddevice (half-duplex)")
+        from .sounddevice_io import SoundDeviceAudioIO
+
+        return SoundDeviceAudioIO(vad_threshold=vad_threshold)
     elif backend_type == "websocket":
         raise ValueError("WebSocket audio backend is not yet implemented.")
     else:

@@ -6,6 +6,7 @@ voice activity detection, speech recognition, and wake word detection.
 """
 
 from collections import deque
+import os
 import queue
 import threading
 import time
@@ -40,7 +41,7 @@ class SpeechListener:
     VAD_SIZE: int = 32  # Milliseconds of sample for Voice Activity Detection (VAD)
     BUFFER_SIZE: int = 800  # Milliseconds of buffer BEFORE VAD detection
     PAUSE_LIMIT: int = 640  # Milliseconds of pause allowed before processing
-    SIMILARITY_THRESHOLD: int = 2  # Threshold for wake word similarity
+    SIMILARITY_THRESHOLD: int = 3  # wake-word match tolerance: allow up to 2 edits (ASR slips on "computer")
 
     def __init__(
         self,
@@ -53,6 +54,7 @@ class SpeechListener:
         wake_word: str | None,
         pause_time: float,
         interruptible: bool = True,
+        echo_hangover_s: float = 0.3,
         interaction_state: "InteractionState | None" = None,
         observability_bus: ObservabilityBus | None = None,
         asr_muted_event: threading.Event | None = None,
@@ -78,6 +80,11 @@ class SpeechListener:
         self.wake_word = wake_word.lower() if wake_word else None
         self.pause_time = pause_time
         self.interruptible = interruptible
+        # Half-duplex echo suppression (used only when not interruptible): keep ignoring
+        # the mic for this long after the assistant stops speaking, to cover the speaker/
+        # room acoustic tail and any frames already buffered during playback.
+        self._echo_hangover_s = echo_hangover_s
+        self._last_spoke_at: float | None = None
 
         # Circular buffer to hold pre-activation samples
         self._buffer: deque[NDArray[np.float32]] = deque(maxlen=self.BUFFER_SIZE // self.VAD_SIZE)
@@ -96,6 +103,16 @@ class SpeechListener:
         self._asr_muted_event = asr_muted_event
         self._audio_state = audio_state
         self._on_interrupt = on_interrupt
+
+        # Wake-word conversation window: once the wake word is heard, the assistant stays active for
+        # this many seconds WITHOUT needing the wake word again, refreshed on every utterance — so a
+        # back-and-forth flows naturally and it only re-arms after a silence. GLADOS_WAKE_SESSION_S
+        # overrides; <=0 disables (then every command needs the wake word).
+        try:
+            self._wake_session_s = float(os.environ.get("GLADOS_WAKE_SESSION_S", "30") or "30")
+        except ValueError:
+            self._wake_session_s = 30.0
+        self._wake_session_until = 0.0
 
     def run(self) -> None:
         """
@@ -152,6 +169,9 @@ class SpeechListener:
             sample: The audio sample (numpy array) to process.
             vad_confidence: True if voice activity is detected in the sample, False otherwise.
         """
+        # Track when the assistant last produced audio, for the half-duplex echo window.
+        if self.currently_speaking_event.is_set():
+            self._last_spoke_at = time.monotonic()
         if self._audio_state is not None:
             if sample.size:
                 rms = float(np.sqrt(np.mean(sample * sample)))
@@ -165,36 +185,58 @@ class SpeechListener:
 
     def _manage_pre_activation_buffer(self, sample: NDArray[np.float32], vad_confidence: bool) -> None:
         """
-        Manages the pre-activation circular buffer and handles voice activity detection.
+        Manages the pre-activation circular buffer and starts recording on voice activity.
 
-        Samples are continuously added to a circular buffer until voice activity is detected.
-        Upon VAD detection:
-        - It checks for interruptibility if the assistant is currently speaking.
-        - The assistant's speaking is stopped (`audio_io.stop_speaking()`).
-        - The `processing_active_event` is cleared, pausing LLM/TTS activity.
-        - The buffered samples are moved to `_samples`, and `_recording_started` is set to True.
+        Samples accumulate in a circular buffer until VAD fires. When not interruptible, the mic is
+        dropped entirely during the assistant's own speech plus a short hangover (half-duplex echo
+        suppression). On VAD, an in-flight turn is aborted only on a real barge-in (see the abort
+        condition below), the buffered samples become `_samples`, and `_recording_started` is set.
 
         Args:
             sample: The current audio sample (numpy array) to be added to the buffer.
             vad_confidence: True if voice activity is detected in the sample, False otherwise.
         """
+        # AI_Linux half-duplex echo suppression: with no acoustic echo cancellation on the
+        # raw-ALSA capture path, the assistant's own TTS played over the speakers is picked
+        # up by the open mic and would be transcribed as if the user said it. When not
+        # interruptible, drop the mic entirely while the assistant is speaking AND for a
+        # short hangover afterwards (clearing the pre-activation buffer so no self-audio is
+        # retained). With interruptible=True (headphones / AEC) this is skipped and real
+        # voice barge-in is preserved below.
+        if not self.interruptible and self._in_echo_window():
+            self._buffer.clear()
+            return
+
         self._buffer.append(sample)  # Automatically handles overflow
 
         if vad_confidence:
-            if not self.interruptible and self.currently_speaking_event.is_set():
-                logger.debug(f"Detected voice activity but interruptibility is disabled: {self.interruptible=}, {self.currently_speaking_event.is_set()=}")
-                return
-
-            # Check if this is an interrupt (user speaking while GLaDOS was speaking)
+            # Check if this is an interrupt (user speaking while the assistant is busy)
             was_speaking = self.currently_speaking_event.is_set()
 
-            self.audio_io.stop_speaking()
-            self.processing_active_event.clear()
+            # Abort the in-flight turn on a real barge-in: while speaking (any mode), OR while merely
+            # thinking/synthesizing only when interruptible (headphones/AEC, no self-echo risk). In the
+            # non-interruptible case the abort stays gated on was_speaking so the assistant's own TTS
+            # can't false-abort its reply (clearing on every utterance was killing replies).
+            if was_speaking or (self.interruptible and self.processing_active_event.is_set()):
+                self.audio_io.stop_speaking()
+                self.processing_active_event.clear()
             self._samples = list(self._buffer)  # Clean conversion
             self._recording_started = True
 
             if was_speaking and self._on_interrupt:
                 self._on_interrupt("user_interrupt")
+
+    def _in_echo_window(self) -> bool:
+        """True while the assistant is speaking, or within the post-speech hangover.
+
+        Drives half-duplex echo suppression in `_manage_pre_activation_buffer` so the
+        mic never captures the assistant's own TTS (see that method).
+        """
+        if self.currently_speaking_event.is_set():
+            return True
+        if self._echo_hangover_s <= 0 or self._last_spoke_at is None:
+            return False
+        return (time.monotonic() - self._last_spoke_at) < self._echo_hangover_s
 
     def _process_activated_audio(self, sample: NDArray[np.float32], vad_confidence: bool) -> None:
         """
@@ -243,6 +285,10 @@ class SpeechListener:
         closest_distance = min(distance(word.lower(), self.wake_word) for word in words)
         return closest_distance < self.SIMILARITY_THRESHOLD
 
+    def in_wake_session(self) -> bool:
+        """True while a wake-word conversation window is open (follow-ups need no wake word)."""
+        return self._wake_session_s > 0 and time.monotonic() < self._wake_session_until
+
     def reset(self) -> None:
         """
         Resets the internal state of the speech listener, clearing all audio buffers and counters.
@@ -280,9 +326,15 @@ class SpeechListener:
         if detected_text:
             logger.success(f"ASR text: '{detected_text}'")
 
-            if self.wake_word and not self._wakeword_detected(detected_text):
-                logger.info(f"Required wake word {self.wake_word=} not detected.")
+            if sum(ch.isalnum() for ch in detected_text) < 2:
+                # drop content-free noise ("." / emoji); keeps real short words
+                logger.info(f"Ignoring junk transcript: '{detected_text}'")
+            elif self.wake_word and not self.in_wake_session() and not self._wakeword_detected(detected_text):
+                logger.info(f"Required wake word {self.wake_word=} not detected (no active session).")
             else:
+                # (re)arm the conversation window so follow-ups don't need the wake word again
+                if self.wake_word:
+                    self._wake_session_until = time.monotonic() + self._wake_session_s
                 if self._observability_bus:
                     self._observability_bus.emit(
                         source="asr",

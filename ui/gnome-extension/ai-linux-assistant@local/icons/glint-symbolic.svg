@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- AI "glint" sparkle, symbolic: St recolors this to the CSS `color` per state.
+       fill="#ffffff" is the fallback if symbolic recolouring is unavailable. -->
+  <path fill="#ffffff" d="M8 0.6 Q8 8 15.4 8 Q8 8 8 15.4 Q8 8 0.6 8 Q8 8 8 0.6 Z"/>
+  <path fill="#ffffff" d="M12.6 2.4 Q12.6 4 14.2 4 Q12.6 4 12.6 5.6 Q12.6 4 11 4 Q12.6 4 12.6 2.4 Z"/>
+</svg>

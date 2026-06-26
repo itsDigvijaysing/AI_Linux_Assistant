@@ -1,11 +1,20 @@
+import os
 import queue
 import threading
+import time
 from typing import Any
 
 from loguru import logger
 import numpy as np
 from numpy.typing import NDArray
 import sounddevice as sd  # type: ignore
+
+try:  # high-quality sample-rate conversion (AI_Linux: for hardware that won't open 16k/24k)
+    import soxr  # type: ignore
+
+    _HAVE_SOXR = True
+except Exception:  # pragma: no cover
+    _HAVE_SOXR = False
 
 from . import VAD
 
@@ -20,7 +29,7 @@ class SoundDeviceAudioIO:
 
     SAMPLE_RATE: int = 16000  # Sample rate for input stream
     VAD_SIZE: int = 32  # Milliseconds of sample for Voice Activity Detection (VAD)
-    VAD_THRESHOLD: float = 0.8  # Threshold for VAD detection
+    VAD_THRESHOLD: float = 0.85  # raised from 0.8 to reject ambient/TV speech; tune if it misses you
 
     def __init__(self, vad_threshold: float | None = None) -> None:
         """Initialize the sounddevice audio I/O.
@@ -50,12 +59,172 @@ class SoundDeviceAudioIO:
         self._pending_audio: NDArray[np.float32] | None = None
         self._pending_sample_rate: int = self.SAMPLE_RATE
 
+        # AI_Linux: some Linux audio backends (notably a conda PortAudio that only sees raw
+        # ALSA hw: devices while PipeWire owns the card) cannot open the pipeline's 16 kHz
+        # capture / 24 kHz TTS rates, and the default *output* device may be HDMI rather than
+        # the speaker. Resolve a usable device + hardware-supported native rate once; when the
+        # native rate differs from the pipeline rate we resample with soxr.
+        self._in_device, self._out_device, self._capture_rate, self._playback_rate = self._resolve_audio_device()
+        # Output rates already known-good (probed lazily in measure_percentage_spoken); seed the resolved one.
+        self._out_rate_ok: dict[int, bool] = {self._playback_rate: True}
+        self._in_resampler: Any = None
+        self._resample_in: Any = None
+        self._in_buf: NDArray[np.float32] = np.zeros(0, dtype=np.float32)
+
+    @staticmethod
+    def _default_input_index() -> int | None:
+        """Resolve a concrete default input device index.
+
+        PortAudio's *global* default (``sd.default.device[0]``) can be -1 even when a
+        host API has a valid default input, so fall back to the host-API default and
+        finally to the first device exposing input channels.
+        """
+        try:
+            din = sd.default.device[0]
+            if isinstance(din, int) and din >= 0:
+                return din
+        except Exception:
+            pass
+        try:
+            for h in sd.query_hostapis():
+                di = h.get("default_input_device", -1)
+                if isinstance(di, int) and di >= 0:
+                    return di
+        except Exception:
+            pass
+        try:
+            for i, dv in enumerate(sd.query_devices()):
+                if dv["max_input_channels"] > 0:
+                    return i
+        except Exception:
+            pass
+        return None
+
+    def _resolve_audio_device(self) -> tuple[int | str | None, int | str | None, int, int]:
+        """Pick the audio device(s) + a hardware-supported native rate.
+
+        Fast path: if the default devices already open the pipeline rates (16 kHz capture /
+        24 kHz playback — the normal case on PulseAudio/PipeWire-visible setups), use them
+        unchanged (device=None, no resampling).
+
+        Fallback: honor ``GLADOS_AUDIO_DEVICE`` (index or name substring), else use the
+        default *input* device (which tracks the system default source) for both directions
+        when it has output. Capture/playback rates fall back to 48 kHz and we resample.
+
+        Returns ``(in_device, out_device, capture_rate, playback_rate)``.
+        """
+
+        try:  # force PortAudio init / stable device enumeration before probing
+            sd.query_devices()
+        except Exception:
+            pass
+
+        def _ok(check: Any, device: int | str | None, rate: int, ch: int) -> bool:
+            try:
+                check(device=device, samplerate=rate, channels=ch)
+                return True
+            except Exception:
+                return False
+
+        tts_rate = 24000  # a low common TTS rate just to probe/seed the device; NOT the active TTS rate
+        if _ok(sd.check_input_settings, None, self.SAMPLE_RATE, 1) and _ok(
+            sd.check_output_settings, None, tts_rate, 1
+        ):
+            # Default device works. Whether playback resamples is decided per-utterance against the
+            # real TTS rate (measure_percentage_spoken -> _output_supports), so 44.1k plays natively.
+            return None, None, self.SAMPLE_RATE, tts_rate
+
+        device: int | str | None = None
+        env = os.environ.get("GLADOS_AUDIO_DEVICE", "").strip()
+        if env:
+            device = int(env) if env.lstrip("-").isdigit() else env
+        else:
+            device = self._default_input_index()
+
+        # capture rate: prefer 16 kHz (no resample), else a rate the input actually supports
+        capture_rate = self.SAMPLE_RATE
+        if not _ok(sd.check_input_settings, device, self.SAMPLE_RATE, 1):
+            capture_rate = next((r for r in (48000, 44100) if _ok(sd.check_input_settings, device, r, 1)), 48000)
+
+        # output: pick a CONCRETE audible device. Never leave it on the system default, which on this
+        # hardware is HDMI (no sound) — the real "no voice" cause. Prefer the same card (the USB headset
+        # does both in+out), then any non-HDMI output, probing rates it actually supports (e.g. 44.1 kHz).
+        out_device, playback_rate = self._pick_output(device, tts_rate)
+
+        needs_resample = capture_rate != self.SAMPLE_RATE or playback_rate not in (tts_rate,)
+        if needs_resample and not _HAVE_SOXR:
+            logger.warning("Audio device needs resampling but 'soxr' is not installed (pip install soxr).")
+        logger.info(
+            "Audio: in_device={} out_device={} capture={}Hz playback_native={}Hz resample={}",
+            device, out_device, capture_rate, playback_rate, _HAVE_SOXR and needs_resample,
+        )
+        return device, out_device, capture_rate, playback_rate
+
+    @staticmethod
+    def _pick_output(in_device: int | str | None, tts_rate: int) -> tuple[int | str | None, int]:
+        """Pick a concrete, audible output device + a native rate it supports.
+
+        Order: the input device itself if it has output (a USB headset does both), then other
+        output-capable devices with non-HDMI first, and only as a last resort the system default
+        (which is often HDMI here -> silent). This is the fix for TTS playing to a dead default.
+        """
+        def ok(dev: int | str | None, rate: int) -> bool:
+            try:
+                sd.check_output_settings(device=dev, samplerate=rate, channels=1)
+                return True
+            except Exception:
+                return False
+
+        try:
+            devs = sd.query_devices()
+        except Exception:
+            devs = []
+
+        def first_rate(idx: int) -> int | None:  # native rate first (most reliable), then common rates
+            nat = int(devs[idx]["default_samplerate"])
+            for rate in (nat, 48000, 44100, tts_rate):
+                if ok(idx, rate):
+                    return rate
+            return None
+
+        # 1) same card if it has output (a USB headset does both). Trust max_output_channels even if the
+        #    probe momentarily races PipeWire — the playback stream open already retries with backoff.
+        if isinstance(in_device, int) and 0 <= in_device < len(devs) and devs[in_device]["max_output_channels"] > 0:
+            return in_device, (first_rate(in_device) or int(devs[in_device]["default_samplerate"]))
+        # 2) any other output-capable device, non-HDMI first (HDMI default is the usual silent trap)
+        others = sorted(
+            (i for i, d in enumerate(devs) if d["max_output_channels"] > 0),
+            key=lambda i: ("hdmi" in devs[i]["name"].lower(), i),
+        )
+        for idx in others:
+            rate = first_rate(idx)
+            if rate:
+                return idx, rate
+        # 3) last resort: system default
+        for rate in (tts_rate, 48000, 44100):
+            if ok(None, rate):
+                return None, rate
+        return None, 48000
+
+    def _output_supports(self, rate: int) -> bool:
+        """True if the resolved output device can open this rate (probed once, then cached)."""
+        ok = self._out_rate_ok.get(rate)
+        if ok is None:
+            try:
+                sd.check_output_settings(device=self._out_device, samplerate=rate, channels=1)
+                ok = True
+            except Exception:  # noqa: BLE001
+                ok = False
+            self._out_rate_ok[rate] = ok
+        return ok
+
     def start_listening(self) -> None:
         """Start capturing audio from the system microphone.
 
         Creates and starts a sounddevice InputStream that continuously captures
-        audio from the default input device. Each audio chunk is processed with
-        the VAD model and placed in the sample queue.
+        audio from the resolved input device. Audio is resampled to SAMPLE_RATE
+        (16 kHz) when the device's native rate differs, then chunked into fixed
+        VAD frames, processed with the VAD model, and placed in the sample queue.
 
         Raises:
             RuntimeError: If the audio input stream cannot be started
@@ -64,40 +233,51 @@ class SoundDeviceAudioIO:
         if self.input_stream is not None:
             self.stop_listening()
 
+        resample_in = self._capture_rate != self.SAMPLE_RATE and _HAVE_SOXR
+        self._in_buf = np.zeros(0, dtype=np.float32)
+        self._in_resampler = None
+        if resample_in:
+            try:  # streaming resampler keeps filter state across blocks (no boundary clicks)
+                self._in_resampler = soxr.ResampleStream(self._capture_rate, self.SAMPLE_RATE, 1, dtype="float32")
+                self._resample_in = lambda x: self._in_resampler.resample_chunk(x)
+            except Exception:  # fall back to stateless per-block resampling
+                self._resample_in = lambda x: soxr.resample(x, self._capture_rate, self.SAMPLE_RATE)
+
+        frame = int(self.SAMPLE_RATE * self.VAD_SIZE / 1000)  # 512 samples @16k handed to the VAD
+
+        def _emit(chunk: NDArray[np.float32]) -> None:
+            vad_value = self._vad_model(np.expand_dims(chunk, 0))
+            self._sample_queue.put((chunk, bool(vad_value > self.vad_threshold)))
+
         def audio_callback(
             indata: NDArray[np.float32],
             frames: int,
             time: sd.CallbackStop,
             status: sd.CallbackFlags,
         ) -> None:
-            """Process incoming audio data and put it in the queue with VAD confidence.
-
-            Parameters:
-                indata: Input audio data from the sounddevice stream
-                frames: Number of audio frames in the current chunk
-                time: Timing information for the audio callback
-                status: Status flags for the audio callback
-
-            Notes:
-                - Copies and squeezes the input data to ensure single-channel processing
-                - Applies voice activity detection to determine speech presence
-                - Puts processed audio samples and VAD confidence into a thread-safe queue
-            """
+            """Resample (if needed), chunk into fixed VAD frames, and queue with VAD confidence."""
             if status:
-                # Log any errors for debugging
                 logger.debug(f"Audio callback status: {status}")
 
-            data = np.array(indata).copy().squeeze()  # Reduce to single channel if necessary
-            vad_value = self._vad_model(np.expand_dims(data, 0))
-            vad_confidence = vad_value > self.vad_threshold
-            self._sample_queue.put((data, bool(vad_confidence)))
+            data = np.array(indata, dtype=np.float32).copy().squeeze()  # single channel
+            if resample_in:
+                data = np.asarray(self._resample_in(data), dtype=np.float32).reshape(-1)
+                if data.size == 0:
+                    return
+                self._in_buf = np.concatenate((self._in_buf, data))
+                while self._in_buf.size >= frame:
+                    _emit(self._in_buf[:frame].copy())
+                    self._in_buf = self._in_buf[frame:]
+            else:
+                _emit(data)
 
         try:
             self.input_stream = sd.InputStream(
-                samplerate=self.SAMPLE_RATE,
+                samplerate=self._capture_rate,
+                device=self._in_device,
                 channels=1,
                 callback=audio_callback,
-                blocksize=int(self.SAMPLE_RATE * self.VAD_SIZE / 1000),
+                blocksize=int(self._capture_rate * self.VAD_SIZE / 1000),
             )
             self.input_stream.start()
         except sd.PortAudioError as e:
@@ -180,9 +360,20 @@ class SoundDeviceAudioIO:
                 self._is_playing = False
             return False, 100
 
+        # AI_Linux: play at the TTS rate directly (SuperTonic 44.1 kHz, Kokoro 24 kHz) whenever the
+        # output device supports it — the common case. Only resample when the device genuinely can't
+        # open that rate (e.g. a raw-ALSA hw device capped at 48 kHz). Keep the original `audio_data`
+        # reference for the identity-checked teardown below.
+        play_data = audio_data
+        stream_rate = sample_rate
+        if not self._output_supports(sample_rate) and _HAVE_SOXR:
+            target = self._playback_rate if self._output_supports(self._playback_rate) else sample_rate
+            play_data = np.asarray(soxr.resample(audio_data, sample_rate, target), dtype=np.float32)
+            stream_rate = target
+
         # Derive playback length from the actual buffer so a wrong caller-supplied
         # total_samples can't break the timeout or percentage math.
-        effective_total = len(audio_data)
+        effective_total = len(play_data)
         if effective_total <= 0:
             if self._pending_audio is audio_data:
                 self._pending_audio = None
@@ -210,7 +401,7 @@ class SoundDeviceAudioIO:
             chunk_size = min(frames, remaining)
 
             if chunk_size > 0:
-                outdata[:chunk_size, 0] = audio_data[position : position + chunk_size]
+                outdata[:chunk_size, 0] = play_data[position : position + chunk_size]
                 if chunk_size < frames:
                     outdata[chunk_size:].fill(0)
                 position += chunk_size
@@ -221,23 +412,49 @@ class SoundDeviceAudioIO:
                 completion_event.set()
                 raise sd.CallbackStop
 
-        try:
-            logger.debug(f"Using sample rate: {sample_rate} Hz, total samples: {effective_total}")
-            max_timeout = effective_total / sample_rate + 1
-            with sd.OutputStream(
-                callback=stream_callback,
-                samplerate=sample_rate,
-                channels=1,
-            ):
+        # raw-ALSA exclusive open races PipeWire -> intermittent failure + silent drop; retry with backoff
+        logger.debug(f"Using sample rate: {stream_rate} Hz, total samples: {effective_total}")
+        max_timeout = effective_total / stream_rate + 1
+        stream = None
+        last_err: Exception | None = None
+        deadline = time.monotonic() + 4.0
+        attempt = 0
+        while stream is None and time.monotonic() < deadline:
+            candidate = None
+            try:
+                candidate = sd.OutputStream(
+                    callback=stream_callback,
+                    samplerate=stream_rate,
+                    device=self._out_device,
+                    channels=1,
+                )
+                candidate.start()
+                stream = candidate
+            except (sd.PortAudioError, RuntimeError) as exc:
+                last_err = exc
+                if candidate is not None:  # constructed but start() failed: close it (no __del__ -> would leak)
+                    try:
+                        candidate.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                time.sleep(min(0.05 * (2**attempt), 0.4))  # 50,100,200,400,400…ms
+                attempt += 1
+        if stream is None:
+            logger.warning(f"TTS playback: output stream failed to open after retries ({last_err}); audio dropped")
+        else:
+            try:
                 completed = completion_event.wait(max_timeout)
                 if not completed:
                     # Timeout: signal stop and mark as interrupted
                     stop_event.set()
                     interrupted = True
                     logger.debug("Audio playback timed out, forcing interruption")
-
-        except (sd.PortAudioError, RuntimeError):
-            logger.debug("Audio stream already closed or invalid")
+            finally:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
         # Identity-checked teardown: only clear shared state if it still belongs to this
         # session, otherwise a new start_speaking() that ran concurrently could be wiped out.

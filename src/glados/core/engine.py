@@ -53,7 +53,8 @@ try:
     logger.remove(0)
 except ValueError:
     pass  # No default handler to remove
-logger.add(sys.stderr, level="SUCCESS")
+# INFO so run.log shows diagnostics (was SUCCESS, which hid them)
+logger.add(sys.stderr, level=os.environ.get("GLADOS_LOG_LEVEL", "INFO"))
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,10 @@ class GladosConfig(BaseModel):
     completion_url: HttpUrl
     api_key: str | None
     interruptible: bool
+    # Reasoning ("thinking") toggle for Ollama thinking-capable models (qwen3, deepseek-r1, …).
+    # None = leave the model's default (upstream behavior, param not sent). False = disable
+    # reasoning for snappy low-latency voice replies (sends Ollama `think: false`). True = force on.
+    llm_think: bool | None = None
     audio_io: str
     input_mode: Literal["audio", "text", "both"] = "audio"
     tts_enabled: bool = True
@@ -117,6 +122,7 @@ class GladosConfig(BaseModel):
     announcement: str | None
     llm_headers: dict[str, str] | None = None
     tui_theme: str | None = None
+    skills_retrieval: str = "keyword"  # "keyword" or "hybrid" (keyword + local-embedding fallback)
     personality_preprompt: list[PersonalityPrompt]
     slow_clap_audio_path: str = "data/slow-clap.mp3"
     tool_timeout: float = 30.0
@@ -137,6 +143,33 @@ class GladosConfig(BaseModel):
                 if env_key:
                     self.api_key = env_key
                     break
+        return self
+
+    @model_validator(mode="after")
+    def _apply_env_overrides(self) -> "GladosConfig":
+        """Quick runtime toggles via env (used by the ai-linux launcher).
+
+        GLADOS_INTERRUPTIBLE forces barge-in on/off without editing the config —
+        e.g. the launcher's --barge-in sets it to 1 (use with headphones or echo
+        cancellation; on bare speakers leave the half-duplex default).
+        """
+        val = os.environ.get("GLADOS_INTERRUPTIBLE", "").strip().lower()
+        if val in {"1", "true", "yes", "on"}:
+            self.interruptible = True
+        elif val in {"0", "false", "no", "off"}:
+            self.interruptible = False
+        # GLADOS_LLM_THINK toggles reasoning without editing the config (1 = think, 0 = no_think).
+        think = os.environ.get("GLADOS_LLM_THINK", "").strip().lower()
+        if think in {"1", "true", "yes", "on"}:
+            self.llm_think = True
+        elif think in {"0", "false", "no", "off"}:
+            self.llm_think = False
+        model = os.environ.get("GLADOS_LLM_MODEL", "").strip()  # Settings panel picks the model
+        if model:
+            self.llm_model = model
+        backend = os.environ.get("GLADOS_AUDIO_BACKEND", "").strip()  # --barge-in -> "pipewire" (WebRTC AEC)
+        if backend:
+            self.audio_io = backend
         return self
 
     @classmethod
@@ -248,6 +281,7 @@ class Glados:
         tts_enabled: bool = True,
         asr_muted: bool = False,
         llm_headers: dict[str, str] | None = None,
+        llm_think: bool | None = None,
     ) -> None:
         """
         Initialize the Glados voice assistant with configuration parameters.
@@ -277,11 +311,17 @@ class Glados:
             asr_muted (bool): Whether ASR starts muted.
             llm_headers (dict[str, str] | None): Extra headers for LLM requests.
         """
+        # AI_Linux: if the overlay is enabled, show a live 'loading' pulse during the slow CPU model
+        # init below. Re-stamped at key points (after MCP startup, again in run()) so its heartbeat
+        # ts never goes stale before the OverlayBridge thread takes over. Must never break init.
+        self._announce_overlay_loading()
+
         self._asr_model = asr_model
         self._tts = tts_model
         self.input_mode = input_mode
         self.completion_url = completion_url
         self.llm_model = llm_model
+        self.llm_think = llm_think
         self.api_key = api_key
         self.interruptible = interruptible
         self.wake_word = wake_word
@@ -377,8 +417,18 @@ class Glados:
         # Initialize spoken text converter, that converts text to spoken text. eg. 12 -> "twelve"
         self._stc = stc.SpokenTextConverter()
 
-        # warm up onnx ASR model, this is needed to avoid long pauses on first request
-        self._asr_model.transcribe_file(resource_path("data/0.wav"))
+        # warm up onnx ASR model, this is needed to avoid long pauses on first request.
+        # AI_Linux: run it on a background thread so the multi-second CPU warm-up overlaps the rest
+        # of init (MCP spawn, audio setup). run() joins this before the listen loop starts, so the
+        # model is always warm before the first real capture.
+        def _warm_up_asr() -> None:
+            try:
+                self._asr_model.transcribe_file(resource_path("data/0.wav"))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"ASR warm-up failed: {exc}")
+
+        self._asr_warmup_thread = threading.Thread(target=_warm_up_asr, name="ASRWarmup", daemon=True)
+        self._asr_warmup_thread.start()
 
         # Initialize queues for inter-thread communication
         self._autonomy_inflight = InFlightCounter()
@@ -398,6 +448,7 @@ class Glados:
                 observability_bus=self.observability_bus,
             )
             self.mcp_manager.start()
+            self._announce_overlay_loading()  # MCP startup can take seconds; keep the loading heartbeat fresh
 
         # Initialize audio input/output system
         self.audio_io: AudioProtocol = audio_io
@@ -458,6 +509,7 @@ class Glados:
             mcp_manager=self.mcp_manager,
             observability_bus=self.observability_bus,
             extra_headers=llm_headers,
+            think=self.llm_think,
             lane="priority",
         )
         self.autonomy_llm_processors: list[LanguageModelProcessor] = []
@@ -486,6 +538,7 @@ class Glados:
                     mcp_manager=self.mcp_manager,
                     observability_bus=self.observability_bus,
                     extra_headers=llm_headers,
+                    think=self.llm_think,
                     lane="autonomy",
                     inflight_counter=self._autonomy_inflight,
                 )
@@ -846,6 +899,10 @@ class Glados:
         Returns:
             Glados: A new Glados instance configured with the provided settings
         """
+        # Export the skills retrieval mode so it's set BEFORE the MCP servers spawn (they inherit env);
+        # setdefault lets an explicit GLADOS_SKILLS_RETRIEVAL override the config.
+        if config.skills_retrieval:
+            os.environ.setdefault("GLADOS_SKILLS_RETRIEVAL", config.skills_retrieval.strip().lower())
 
         asr_model = get_audio_transcriber(
             engine_type=config.asr_engine,
@@ -876,6 +933,7 @@ class Glados:
             tts_enabled=config.tts_enabled,
             asr_muted=config.asr_muted,
             llm_headers=config.llm_headers,
+            llm_think=config.llm_think,
         )
 
     @classmethod
@@ -895,6 +953,27 @@ class Glados:
         """
         return cls.from_config(GladosConfig.from_yaml(path))
 
+    def _announce_overlay_loading(self) -> None:
+        """Stamp a fresh 'loading' state for the overlay heartbeat during slow startup.
+
+        No-op unless GLADOS_OVERLAY is set; never raises (the overlay is optional).
+        """
+        if os.environ.get("GLADOS_OVERLAY", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return
+        try:
+            from ..overlay.bridge import write_state_file
+
+            write_state_file(
+                {
+                    "state": "loading",
+                    "mode": os.environ.get("GLADOS_OVERLAY_MODE", "always").strip().lower() or "always",
+                    "you": "",
+                    "assistant": "",
+                }
+            )
+        except Exception:  # noqa: BLE001 - overlay is optional, never block startup
+            pass
+
     def run(self) -> None:
         """
         Start the voice assistant's listening event loop, continuously processing audio input.
@@ -904,6 +983,13 @@ class Glados:
 
         This method is the main entry point for running the Glados voice assistant.
         """
+        # AI_Linux: ensure the background ASR warm-up (started in __init__) has finished before we
+        # begin capturing audio, so the first utterance hits an already-warm model.
+        warmup = getattr(self, "_asr_warmup_thread", None)
+        if warmup is not None and warmup.is_alive():
+            warmup.join()
+        self._announce_overlay_loading()  # final loading heartbeat right before the bridge thread takes over
+
         if self.input_mode in {"audio", "both"}:
             try:
                 self.audio_io.start_listening()
@@ -913,6 +999,20 @@ class Glados:
                 logger.warning("Voice input disabled - text input still available")
         else:
             logger.info("Text input mode active. Audio input is disabled.")
+
+        # AI_Linux: optional on-screen overlay bridge (state.json out / control.json in).
+        # Enabled by GLADOS_OVERLAY=1 (set by the ai-linux launcher). Drives the GNOME Shell
+        # overlay and its listening-mode controls (always / wake / click + mute).
+        self._overlay_bridge = None
+        if os.environ.get("GLADOS_OVERLAY", "").strip().lower() in {"1", "true", "yes", "on"}:
+            try:
+                from ..overlay import OverlayBridge
+
+                self._overlay_bridge = OverlayBridge(self)
+                self._overlay_bridge.start()
+                logger.success("Overlay bridge started")
+            except Exception as exc:  # noqa: BLE001 - overlay must never break the engine
+                logger.warning(f"Overlay bridge failed to start: {exc}")
 
         logger.success("Engine running")
         logger.success("Listening...")
@@ -938,6 +1038,13 @@ class Glados:
     def _graceful_shutdown(self) -> None:
         """Perform graceful shutdown of all components."""
         logger.info("Beginning graceful shutdown...")
+
+        # Stop the overlay bridge first (releases its polling thread + writes a final state)
+        if getattr(self, "_overlay_bridge", None) is not None:
+            try:
+                self._overlay_bridge.stop()
+            except Exception:  # noqa: BLE001
+                pass
 
         # Stop subagents first (they may be using shared resources)
         if self.subagent_manager:
@@ -994,6 +1101,34 @@ class Glados:
         muted = not self.asr_muted_event.is_set()
         self.set_asr_muted(muted)
         return muted
+
+    def set_voice(self, voice: str) -> bool:
+        """Switch the assistant's live TTS voice (e.g. SuperTonic ``M1``/``F3``).
+
+        Applied to the running synthesizer so the very next reply uses it — no restart.
+        Reassigning the voice style is a single attribute swap; if it lands mid-utterance
+        that utterance simply finishes in the previous voice. Returns True on success.
+        Driven by ``mcp.voice.set_voice`` via the overlay bridge's ``voice.json`` channel.
+        """
+        voice = (voice or "").strip()
+        tts = getattr(self, "_tts", None)
+        setter = getattr(tts, "set_voice", None)
+        if not voice or not callable(setter):
+            logger.warning(
+                "set_voice: active TTS '{}' has no runtime voice switching", type(tts).__name__
+            )
+            return False
+        try:
+            setter(voice)
+        except Exception as exc:  # noqa: BLE001 - bad voice id must not crash the engine
+            logger.warning("set_voice('{}') failed: {}", voice, exc)
+            return False
+        logger.info("TTS voice switched to '{}'", voice)
+        if self.observability_bus:
+            self.observability_bus.emit(
+                source="tts", kind="voice", message=f"voice -> {voice}", meta={"voice": voice}
+            )
+        return True
 
     def set_tts_muted(self, muted: bool) -> None:
         if muted:
@@ -1262,7 +1397,77 @@ class Glados:
                 handler=self._cmd_memory,
             )
         )
+        register(
+            CommandSpec(
+                name="learn",
+                description="Teach a new skill: /learn <name> :: <command>[; <command2>]",
+                usage="/learn take a screenshot :: grim ~/Pictures/shot.png",
+                handler=self._cmd_learn,
+            )
+        )
+        register(
+            CommandSpec(
+                name="tidy",
+                description="Review skills + outcomes; write a human-reviewable cleanup report",
+                usage="/tidy",
+                handler=self._cmd_tidy,
+            )
+        )
         return registry, order
+
+    def _cmd_learn(self, args: list[str]) -> str:
+        """Teach a skill from the CLI: '/learn <name> :: <cmd>[; <cmd2>]' (writes a draft, runs nothing)."""
+        raw = " ".join(args)
+        if "::" not in raw:
+            return "Usage: /learn <name> :: <command>   e.g.  /learn take a screenshot :: grim ~/Pictures/shot.png"
+        name, _, cmdpart = raw.partition("::")
+        cmds = [c.strip() for c in cmdpart.split(";") if c.strip()]
+        from . import skills_index
+
+        result = skills_index.write_skill(name=name.strip(), commands=cmds)
+        return f"Learned skill -> {result['file']}" if result.get("ok") else f"Could not learn: {result.get('error')}"
+
+    def _cmd_tidy(self, _args: list[str]) -> str:
+        """Ask the brain to review skills + recent outcomes and write a human-reviewable report (no auto-edits)."""
+        try:
+            from . import skills_feedback, skills_index
+
+            skills = skills_index.load_skills()
+            outcomes = skills_feedback.recent(120)
+            catalog = "\n".join(f"- {s['name']}: {s['trigger']} | cmds: {s.get('commands', [])}" for s in skills)
+            fails = [o for o in outcomes if not o.get("ok")]
+            fail_txt = "\n".join(f"- {o.get('command') or o.get('tool')} (rc={o.get('returncode')})" for o in fails[:40]) or "(none)"
+            prompt = (
+                "You maintain a local voice assistant's skill library. Review the skills and recent FAILED "
+                "command outcomes below. Produce a SHORT markdown report: (1) near-duplicate skills that "
+                "should be merged, (2) skills that look broken (repeated failures) with a suggested fix, "
+                "(3) unclear triggers to reword. Be concise and do not invent skills.\n\n"
+                f"## Skills\n{catalog}\n\n## Recent failed commands\n{fail_txt}\n"
+            )
+            report = self._oneshot_llm(prompt)
+            out = Path(__file__).resolve().parents[2].parent / "data" / "skills_tidy_report.md"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(f"# Skills tidy report\n\n{report}\n", encoding="utf-8")
+            return f"Tidy report written to {out} ({len(skills)} skills, {len(fails)} recent failures reviewed)."
+        except Exception as exc:  # noqa: BLE001
+            return f"Tidy failed: {exc}"
+
+    def _oneshot_llm(self, prompt: str) -> str:
+        """One-shot, non-streaming call to the configured brain (used by /tidy); returns the reply text."""
+        import requests
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        payload = {
+            "model": self.llm_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "think": False,
+        }
+        resp = requests.post(str(self.completion_url), json=payload, headers=headers, timeout=120).json()
+        msg = resp.get("message") or {}
+        return (msg.get("content") or resp.get("response") or "").strip() or "(no report generated)"
 
     def _cmd_help(self, _args: list[str]) -> str:
         lines = ["Commands:"]
