@@ -40,13 +40,28 @@ _HOME = os.path.expanduser("~")
 _FORK_BOMB = re.compile(r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:?\s*&\s*\}\s*;\s*:")
 _DENY: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"--no-preserve-root"), "rm --no-preserve-root"),
-    (re.compile(r"\bdd\b[^|;&\n]*\bof=/dev/(sd|nvme|mmcblk|vd|hd|disk)", re.I), "dd to a raw disk device"),
+    # dd/truncate/redirect to a raw disk device (of= tolerates whitespace around '=')
+    (re.compile(r"\bdd\b[^|;&\n]*\bof\s*=\s*/dev/(sd|nvme|mmcblk|vd|hd|disk)", re.I), "dd to a raw disk device"),
     (re.compile(r"\bmkfs(\.\w+)?\b[^|;&\n]*\s/dev/", re.I), "mkfs on a device"),
     (re.compile(r"\bwipefs\b", re.I), "wipefs"),
     (re.compile(r"\bshred\b[^|;&\n]*\s/dev/", re.I), "shred a device"),
+    (re.compile(r"\btruncate\b[^|;&\n]*\s/dev/(sd|nvme|mmcblk|vd|hd|disk)", re.I), "truncate a device"),
     (re.compile(r">\s*/dev/(sd|nvme|mmcblk|vd|hd)", re.I), "redirect to a raw disk device"),
+    (re.compile(r"\btee\b[^|;&\n]*\s/dev/(sd|nvme|mmcblk|vd|hd)", re.I), "tee to a raw disk device"),
+    # recursive chmod/chown of / — flag BEFORE or AFTER the mode/owner
     (re.compile(r"\bchmod\b\s+-\S*[Rr]\S*\s+(777|000)\s+/(\s|$)"), "recursive chmod of /"),
+    (re.compile(r"\bchmod\b\s+(777|000)\s+-\S*[Rr]\S*\s+/(\s|$)"), "recursive chmod of /"),
     (re.compile(r"\bchown\b\s+-\S*[Rr]\S*\s+\S+\s+/(\s|$)"), "recursive chown of /"),
+    (re.compile(r"\bchown\b\s+\S+\s+-\S*[Rr]\S*\s+/(\s|$)"), "recursive chown of /"),
+    # find <top-level-root> ... -delete (only a bare root target; subfolders like ~/Downloads stay allowed)
+    (
+        re.compile(
+            rf"\bfind\b\s+[\"']?(?:/|~/?|\$HOME/?|\$\{{HOME\}}/?|/home/?|{re.escape(_HOME)}/?)[\"']?\s"
+            rf"[^|;&\n]*-delete\b",
+            re.I,
+        ),
+        "find -delete of a top-level path",
+    ),
     (re.compile(r"\b(curl|wget)\b[^|;&\n]*\|\s*(sudo\s+)?(sh|bash|zsh|dash)\b", re.I), "pipe a download into a shell"),
     (_FORK_BOMB, "fork bomb"),
 ]
