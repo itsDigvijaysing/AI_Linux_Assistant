@@ -1,6 +1,10 @@
 # AI Linux Assistant — Issues Backlog (pre-completion)
 
-> **Status:** Documented, **NOT started.** Do not begin any fix until the owner explicitly approves.
+> **Status (updated 2026-06-30):** **RESOLVED.** All issues validated against live code (14 confirmed,
+> 1 confirmed-with-corrections, **LOW-3 refuted**) and fixed, plus extra catastrophic denylist gaps found
+> during validation. Committed in groups C1 (SEC-1/2 + extra gaps), C2a (SEC-3), C2c (BUG-1/2, UI-1),
+> C2d (AUD-1/2), C3 (the LOW set). **C2b (LLM-1/LLM-2 prompt) is implemented but UNCOMMITTED — it is gated on
+> a live small-model tool-call test** (see §5/§6). LOW-3 is a no-op-today defensive note, not a fix.
 > **Created:** 2026-06-30 · **Source:** full-project verification + small-LLM/safety re-validation pass.
 > **Scope reminder:** small local brain (`qwen3:4b` default, `qwen3:1.7b` lighter) — every prompt/flow must
 > stay within small-model capability. Runtime is sudo-free; the only privileged step is `./ai-linux setup`.
@@ -12,7 +16,7 @@ Line numbers are accurate as of 2026-06-30 and may drift as code changes — sea
 ## 0. How to use this file
 - Each issue has a stable **ID** (e.g. `SEC-1`). Reference it in commits/PRs/branches.
 - **Severity:** HIGH (fix before completion) · MEDIUM (should fix) · LOW (nice-to-have / housekeeping).
-- **Status:** `Open` for all (nothing fixed yet).
+- **Status:** all **Fixed** except **LOW-3 (Refuted)** and **LLM-1/LLM-2 (Fixed, uncommitted — pending the live gate)**.
 - "Docs to update" lists which markdown files must change when the issue is fixed, so docs and reality stay in sync.
 - Verification snippets are in [§5](#5-verification--repro-harness). Re-run them after any fix.
 
@@ -72,7 +76,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Safety / Security
 
-#### SEC-1 — Denylist misses long-form `rm` flags  [HIGH · Open]
+#### SEC-1 — Denylist misses long-form `rm` flags  [HIGH · Fixed]
 - **Location:** `src/glados/mcp/shell_server.py`, `_destructive_reason()` lines ~63-67 (flag detection).
 - **Symptom:** `rm -rf ~` is blocked, but the equivalent long-form/mixed forms are **allowed**:
   `rm --recursive --force ~`, `rm -r --force ~`, `rm -f --recursive /home`, `rm --force --recursive /`.
@@ -85,7 +89,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** all SEC-1 forms blocked; the benign allow-set (§5) still passes; no new false positives.
 - **Docs to update:** none (this makes reality match `SECURITY.md`); optionally note coverage in `CLAUDE.md` §8.
 
-#### SEC-2 — Denylist only inspects the first `rm` in a chained command  [HIGH · Open]
+#### SEC-2 — Denylist only inspects the first `rm` in a chained command  [HIGH · Fixed]
 - **Location:** `src/glados/mcp/shell_server.py`, `_destructive_reason()` lines ~63-65
   (`m = re.search(r"\brm\b(.*)", c)` + `re.split(r"[;&|]", m.group(1))[0]`).
 - **Symptom (verified):** a benign first `rm` lets a catastrophic later one through —
@@ -98,7 +102,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** both SEC-2 examples blocked; `cd ~/p && rm -rf *` and `rm -rf ~/Downloads/old` still allowed.
 - **Docs to update:** none required; align `CLAUDE.md` §8 wording if behavior notes change.
 
-#### SEC-3 — Other mass-delete forms not covered  [LOW · Open]
+#### SEC-3 — Other mass-delete forms not covered  [LOW · Fixed]
 - **Location:** `src/glados/mcp/shell_server.py`, `_DENY` list + `_destructive_reason()`.
 - **Symptom:** `find ~ -delete` / `find / -delete`, `truncate -s0` of a device, and `dd if=… of= /dev/sda`
   (space after `of=`) are not blocked. (The `dd of= ` form is not a functional command, so it's informational.)
@@ -112,7 +116,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Small-LLM suitability (prompts)
 
-#### LLM-1 — System prompt is dense; destructive-refusal clause is last  [MEDIUM · Open]
+#### LLM-1 — System prompt is dense; destructive-refusal clause is last  [MEDIUM · Fixed (uncommitted — pending live gate)]
 - **Location:** `configs/ai_linux_config.yaml` `personality_preprompt` (system, line ~31);
   `configs/ai_linux_groq.yaml` (system, line ~32).
 - **Symptom:** ~11 distinct directives packed into one paragraph; the "don't run destructive commands" instruction
@@ -126,7 +130,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
   refusal observed on a manual injection probe with `qwen3:1.7b`.
 - **Docs to update:** `CLAUDE.md` §6 (note prompt ordering rationale) if the structure changes.
 
-#### LLM-2 — Few-shot depicts tool calls as prose, not real tool calls  [MEDIUM · Open]
+#### LLM-2 — Few-shot depicts tool calls as prose, not real tool calls  [MEDIUM · Fixed (uncommitted — pending live gate)]
 - **Location:** both configs `personality_preprompt`, the assistant example:
   `"(calls mcp.shell.run_command with command 'wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-') Done, I lowered the volume."`
 - **Symptom:** the example teaches the model that an assistant turn can *describe* a tool call in prose. It works
@@ -143,7 +147,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Correctness bugs
 
-#### BUG-1 — `/tidy` returns an empty report on the Groq/OpenAI brain  [MEDIUM · Open]
+#### BUG-1 — `/tidy` returns an empty report on the Groq/OpenAI brain  [MEDIUM · Fixed]
 - **Location:** `src/glados/core/engine.py`, `_oneshot_llm()` lines ~1455-1470.
 - **Symptom:** parses only the Ollama response shape (`resp["message"]` / `resp["response"]`); the OpenAI/Groq shape
   is `resp["choices"][0]["message"]["content"]`, so `./ai-linux --groq` + `/tidy` always writes "(no report generated)".
@@ -155,7 +159,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** `/tidy` writes a non-empty report on both local Ollama and `--groq`.
 - **Docs to update:** none.
 
-#### BUG-2 — `skills_feedback.recent()` drops all history on one corrupt line  [MEDIUM · Open]
+#### BUG-2 — `skills_feedback.recent()` drops all history on one corrupt line  [MEDIUM · Fixed]
 - **Location:** `src/glados/core/skills_feedback.py`, `recent()` lines ~57-58
   (`return [json.loads(line) for line in lines if line.strip()]`).
 - **Symptom:** a single malformed JSONL line raises inside the comprehension; the `except` returns `[]`, so `/tidy`
@@ -164,7 +168,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** a file with one bad line still returns all the good entries.
 - **Docs to update:** none.
 
-#### BUG-3 — `shell_outcome()` logs non-JSON results as success  [LOW · Open]
+#### BUG-3 — `shell_outcome()` logs non-JSON results as success  [LOW · Fixed]
 - **Location:** `src/glados/core/skills_feedback.py`, `shell_outcome()` lines ~24-31 (`except → (True, None)`).
 - **Symptom:** any non-JSON result is recorded as `ok=True`. Mostly theoretical today (`run_command` always returns
   JSON), but if the MCP layer ever wraps the result, failures would be mislabeled as successes and skew ranking.
@@ -176,7 +180,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Audio / playback / overlay
 
-#### AUD-1 — Dropped/failed TTS playback reported as "fully heard"  [MEDIUM · Open]
+#### AUD-1 — Dropped/failed TTS playback reported as "fully heard"  [MEDIUM · Fixed]
 - **Location:** `src/glados/audio_io/pipewire_io.py` `measure_percentage_spoken()` lines ~228-229 & ~248
   (`pw-play` missing → `FileNotFoundError` logged, then `return False, 100`); temp-write failure lines ~207-210
   (`return False, 0`). Same `(interrupted=False, …)`-on-drop pattern exists in
@@ -190,7 +194,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** when `pw-play` is absent or temp-write fails, the reply is not logged as fully spoken.
 - **Docs to update:** none.
 
-#### AUD-2 — PipeWire capture reader thread never joined (restart race)  [MEDIUM · Open]
+#### AUD-2 — PipeWire capture reader thread never joined (restart race)  [MEDIUM · Fixed]
 - **Location:** `src/glados/audio_io/pipewire_io.py` `stop_listening()` (terminates `pw-record`, no `self._reader.join()`).
 - **Symptom:** a quick `stop_listening()` → `start_listening()` can spawn a second reader while the first still pushes
   to `_sample_queue` (duplicate/garbled frames). Also, an uncaught VAD exception in `_read_loop` can silently kill the
@@ -199,7 +203,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** rapid stop/start never runs two readers; a VAD error doesn't silently end capture.
 - **Docs to update:** none.
 
-#### AUD-3 — Capture at non-16 kHz without soxr can crash Silero VAD  [LOW · Open]
+#### AUD-3 — Capture at non-16 kHz without soxr can crash Silero VAD  [LOW · Fixed]
 - **Location:** `src/glados/audio_io/sounddevice_io.py` capture path (~lines 236-237, 271-272).
 - **Symptom:** if `_capture_rate != 16 kHz` and soxr is unavailable (import failure), the non-resample path can hand
   VAD a non-512-sample / wrong-rate frame → `ValueError`. soxr is a declared dependency, so this is unlikely.
@@ -208,7 +212,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Acceptance criteria:** missing soxr produces a clear log + graceful degrade, not a callback crash.
 - **Docs to update:** `CLAUDE.md` gotchas (audio) if behavior changes.
 
-#### UI-1 — Voice switch marked applied before apply; never retried on failure  [MEDIUM · Open]
+#### UI-1 — Voice switch marked applied before apply; never retried on failure  [MEDIUM · Fixed]
 - **Location:** `src/glados/overlay/bridge.py` lines ~245-251 (sets `_last_voice_applied` before calling
   `engine.set_voice`); `src/glados/core/engine.py` `set_voice()` lines ~1105-1131 returns `False` **without raising**.
 - **Symptom:** because `set_voice` never raises, the bridge's `try/except` can't detect failure; `_last_voice_applied`
@@ -224,7 +228,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Documentation
 
-#### DOC-1 — `llama3.2` "lighter fallback" vs implemented `qwen3:1.7b`  [LOW · Open]
+#### DOC-1 — `llama3.2` "lighter fallback" vs implemented `qwen3:1.7b`  [LOW · Fixed]
 - **Location:** `README.md` lines 17 & 119; `PLAN.md` line 38. (Decision/runtime reality: `CLAUDE.md` §2/§6 +
   Settings panel write `GLADOS_LLM_MODEL=qwen3:1.7b`.)
 - **Symptom:** docs name `llama3.2` (3B) as the lighter fallback, but the implemented lighter model is `qwen3:1.7b`;
@@ -238,27 +242,32 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 ### Low / housekeeping
 
-#### LOW-1 — `skills_embed` `_mem` cache has no lock  [LOW · Open]
+#### LOW-1 — `skills_embed` `_mem` cache has no lock  [LOW · Fixed]
 - **Location:** `src/glados/core/skills_embed.py` (`_mem` ~line 20; read/update ~lines 58-59).
 - **Symptom:** concurrent hybrid retrieval (overlapping MCP + engine threads on a cache miss) can race on `_mem`,
   duplicating Ollama embed calls / leaving a partial cache. Unlikely to crash.
 - **Recommended fix:** guard reads/writes with a `threading.Lock` (mirror `skills_feedback._LOCK`).
 - **Docs to update:** none.
 
-#### LOW-2 — ASR warm-up `join()` has no timeout  [LOW · Open]
+#### LOW-2 — ASR warm-up `join()` has no timeout  [LOW · Fixed]
 - **Location:** `src/glados/core/engine.py` (~lines 988-990).
 - **Symptom:** if warm-up hangs, `run()` blocks indefinitely before the listen loop starts.
 - **Recommended fix:** `join(timeout=…)` and proceed with a warning if it didn't finish.
 - **Docs to update:** none.
 
-#### LOW-3 — Skill matching stringifies non-string (multimodal) content  [LOW · Open]
+#### LOW-3 — Skill matching stringifies non-string (multimodal) content  [LOW · Refuted — no live bug]
+- **VALIDATION (2026-06-30):** **Refuted.** No multimodal/list user-content path exists in this build — ASR
+  (`speech_listener`) and text (`text_listener`) both enqueue plain-string `content`, and vision is injected as
+  a separate **system** message, never a user turn. So `str()` here can never mangle a list today. Left as-is;
+  the genuinely higher-risk sibling (if multimodal is ever added) is `_filter_tools_for_message`'s
+  `content.casefold()` at `llm_processor.py:~323`. No code change made.
 - **Location:** `src/glados/core/llm_processor.py` (~line 748, `content = str(llm_message.get("content", ""))`).
 - **Symptom:** list/multimodal content becomes a Python repr; keyword/semantic retrieval and command-suffix injection
   can mis-match. v1 is text/audio so impact is minimal.
 - **Recommended fix:** extract text parts before matching; skip injection if content isn't text.
 - **Docs to update:** none.
 
-#### LOW-4 — `SKILL-open-application.md` filename ≠ its `name:`/content  [LOW · Open]
+#### LOW-4 — `SKILL-open-application.md` filename ≠ its `name:`/content  [LOW · Fixed]
 - **Location:** `skills/SKILL-open-application.md` (front-matter `name: focus-or-control-window`,
   `tools: [mcp.computer_use.*]`, content about controlling already-open windows). Launching apps is actually
   `skills/SKILL-open-link-or-app.md`.
