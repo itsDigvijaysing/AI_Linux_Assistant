@@ -358,7 +358,7 @@ class SoundDeviceAudioIO:
             if self._pending_audio is audio_data:
                 self._pending_audio = None
                 self._is_playing = False
-            return False, 100
+            return False, -1  # sentinel: nothing played (caller must not record the reply as spoken)
 
         # AI_Linux: play at the TTS rate directly (SuperTonic 44.1 kHz, Kokoro 24 kHz) whenever the
         # output device supports it — the common case. Only resample when the device genuinely can't
@@ -378,7 +378,7 @@ class SoundDeviceAudioIO:
             if self._pending_audio is audio_data:
                 self._pending_audio = None
                 self._is_playing = False
-            return False, 100
+            return False, -1  # sentinel: nothing played (caller must not record the reply as spoken)
 
         position = 0
         interrupted = False
@@ -439,6 +439,7 @@ class SoundDeviceAudioIO:
                         pass
                 time.sleep(min(0.05 * (2**attempt), 0.4))  # 50,100,200,400,400…ms
                 attempt += 1
+        dropped = stream is None
         if stream is None:
             logger.warning(f"TTS playback: output stream failed to open after retries ({last_err}); audio dropped")
         else:
@@ -462,6 +463,8 @@ class SoundDeviceAudioIO:
             self._pending_audio = None
         if self._stop_event is stop_event:
             self._is_playing = False
+        if dropped:
+            return False, -1  # sentinel: stream never opened, nothing was heard
         percentage_played = min(int(position / effective_total * 100), 100)
         return interrupted, percentage_played
 

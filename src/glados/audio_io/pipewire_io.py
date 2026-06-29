@@ -162,9 +162,13 @@ class PipeWireAudioIO:
             buf += chunk
             while len(buf) >= nbytes:
                 raw, buf = buf[:nbytes], buf[nbytes:]
-                data = (np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0)
-                vad = self._vad_model(np.expand_dims(data, 0))
-                self._sample_queue.put((data.copy(), bool(vad > self.vad_threshold)))
+                try:
+                    data = (np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0)
+                    vad = self._vad_model(np.expand_dims(data, 0))
+                    self._sample_queue.put((data.copy(), bool(vad > self.vad_threshold)))
+                except Exception as exc:  # noqa: BLE001 - a bad frame must not silently kill capture
+                    logger.exception("PWCapture: VAD/emit failed ({}); stopping reader", exc)
+                    return
 
     def stop_listening(self) -> None:
         self._stop_rec.set()
@@ -178,6 +182,12 @@ class PipeWireAudioIO:
                 except Exception:  # noqa: BLE001
                     pass
             self._rec_proc = None
+        # Join the reader (its blocking read unblocks on the proc's EOF above) BEFORE a restart's
+        # _stop_rec.clear(), so a quick stop->start never runs two readers on the one sample queue.
+        reader = self._reader
+        if reader is not None and reader.is_alive():
+            reader.join(timeout=1.5)
+        self._reader = None
         self.input_stream = None
 
     # ------------------------------------------------------------------ playback
@@ -207,13 +217,14 @@ class PipeWireAudioIO:
         except Exception as exc:  # noqa: BLE001
             logger.warning("TTS temp write failed ({}); audio dropped", exc)
             self._is_playing = False
-            return False, 0
+            return False, -1  # sentinel: nothing played (see measure_percentage_spoken contract)
         cmd = ["pw-play"]
         if self._aec_ok:
             cmd += ["--target", self._sink]  # play to the AEC sink so it becomes the cancellation reference
         cmd += [path]
         dur = len(audio) / sr if sr else 0.0
         interrupted = False
+        dropped = False
         t0 = time.monotonic()
         try:
             self._play_proc = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
@@ -227,6 +238,7 @@ class PipeWireAudioIO:
                 interrupted = True
         except FileNotFoundError as exc:
             logger.warning("pw-play not found ({}); audio dropped", exc)
+            dropped = True
         finally:
             p = self._play_proc
             if p is not None:
@@ -243,6 +255,8 @@ class PipeWireAudioIO:
                 os.unlink(path)
             except Exception:  # noqa: BLE001
                 pass
+        if dropped:
+            return False, -1  # sentinel: player binary missing, nothing was heard
         if interrupted:
             return True, (min(int((time.monotonic() - t0) / dur * 100), 100) if dur > 0 else 0)
         return False, 100
