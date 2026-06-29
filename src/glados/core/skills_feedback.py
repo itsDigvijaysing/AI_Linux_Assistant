@@ -22,13 +22,17 @@ def _log_path() -> Path:
 
 
 def shell_outcome(result: str) -> tuple[bool, int | None]:
-    """Parse a mcp.shell.run_command JSON result -> (success, returncode); unknown -> (True, None)."""
+    """Parse a mcp.shell.run_command JSON result -> (success, returncode); unparseable -> (False, None).
+
+    An unparseable result is treated as NOT-success (don't assert a success we can't verify), so
+    success ranking and /tidy never count unknown output as a win.
+    """
     try:
         data = json.loads(result)
         rc = data.get("returncode")
         return (rc == 0, rc)
     except Exception:  # noqa: BLE001
-        return (True, None)
+        return (False, None)
 
 
 def record(tool: str, args: dict | None, ok: bool, returncode: int | None = None, detail: str = "") -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from pathlib import Path
 
 import requests
@@ -18,6 +19,7 @@ import requests
 _MODEL = os.environ.get("GLADOS_EMBED_MODEL", "nomic-embed-text")
 _HOST = os.environ.get("GLADOS_OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 _mem: dict = {"sig": None, "vecs": {}}
+_LOCK = threading.Lock()  # guards _mem (concurrent engine + MCP retrieval); _embed() stays outside it
 
 
 def _cache_path() -> Path:
@@ -55,25 +57,28 @@ def _content_sig(skills: list[dict]) -> str:
 def _skill_vectors(skills: list[dict]) -> dict[str, list[float]]:
     """Embeddings per skill, cached in memory + on disk, regenerated when skills/model change."""
     sig = _content_sig(skills)
-    if _mem["sig"] == sig:
-        return _mem["vecs"]
+    with _LOCK:
+        if _mem["sig"] == sig:
+            return _mem["vecs"]
     cache = _cache_path()
     if cache.exists():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             if data.get("sig") == sig:
-                _mem.update(sig=sig, vecs=data["vecs"])
+                with _LOCK:
+                    _mem.update(sig=sig, vecs=data["vecs"])
                 return data["vecs"]
         except Exception:  # noqa: BLE001
             pass
     texts = [f"{sk['name']}. {sk['trigger']}. {' '.join(sk.get('commands', []))}" for sk in skills]
-    embs = _embed(texts)
+    embs = _embed(texts)  # network call kept OUTSIDE the lock so it can't serialize all retrieval
     vecs = {sk["name"]: emb for sk, emb in zip(skills, embs)}
     try:
         cache.write_text(json.dumps({"sig": sig, "vecs": vecs}), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
-    _mem.update(sig=sig, vecs=vecs)
+    with _LOCK:
+        _mem.update(sig=sig, vecs=vecs)
     return vecs
 
 

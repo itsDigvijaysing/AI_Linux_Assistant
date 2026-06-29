@@ -14,7 +14,7 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
 ## ✨ Features
 - **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel — see [Barge-in](#-barge-in-interrupting-the-assistant)).
 - **Voice *and* text** input (`input_mode: both`).
-- **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); `llama3.2` (3B) as a lighter fallback.
+- **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); switch to the lighter `qwen3:1.7b` via the Settings panel / `GLADOS_LLM_MODEL`.
 - **CPU speech** — Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
 - **Acts on your desktop** — Wayland control (AT-SPI / portals / ydotool) + a shell executor, as MCP tools.
 - **Safety gate** — irreversible actions are denied unless you explicitly arm them; a destructive-command denylist backs it up.
@@ -116,7 +116,7 @@ Two interchangeable brains — **speech, tools, and the safety gate are identica
 
 | Brain | Config | Run | Notes |
 |---|---|---|---|
-| **Local** (default) | `configs/ai_linux_config.yaml` | `./ai-linux` | `qwen3:4b` via Ollama (GPU); `llama3.2` 3B = lighter fallback |
+| **Local** (default) | `configs/ai_linux_config.yaml` | `./ai-linux` | `qwen3:4b` via Ollama (GPU); lighter `qwen3:1.7b` via Settings / `GLADOS_LLM_MODEL` |
 | **Groq API** | `configs/ai_linux_groq.yaml` | `export GROQ_API_KEY=… && ./ai-linux --groq` | faster/stronger cloud model; key read from env, never stored |
 
 Any other OpenAI-compatible endpoint works too — point `completion_url`/`api_key` at it. **Local stays the

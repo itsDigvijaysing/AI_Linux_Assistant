@@ -1000,7 +1000,9 @@ class Glados:
         # begin capturing audio, so the first utterance hits an already-warm model.
         warmup = getattr(self, "_asr_warmup_thread", None)
         if warmup is not None and warmup.is_alive():
-            warmup.join()
+            warmup.join(timeout=60.0)  # bounded: never block startup forever if warm-up hangs
+            if warmup.is_alive():
+                logger.warning("ASR warm-up did not finish in time; first utterance may be slower.")
         self._announce_overlay_loading()  # final loading heartbeat right before the bridge thread takes over
 
         if self.input_mode in {"audio", "both"}:

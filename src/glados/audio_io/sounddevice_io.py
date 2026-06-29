@@ -233,6 +233,14 @@ class SoundDeviceAudioIO:
         if self.input_stream is not None:
             self.stop_listening()
 
+        if self._capture_rate != self.SAMPLE_RATE and not _HAVE_SOXR:
+            # Without soxr we'd hand the VAD a wrong-size frame and the PortAudio callback would abort
+            # silently. Fail loudly and actionably instead.
+            raise RuntimeError(
+                f"Capture device runs at {self._capture_rate} Hz but the pipeline needs "
+                f"{self.SAMPLE_RATE} Hz and 'soxr' is not installed; install soxr or use a "
+                "16 kHz-capable input device."
+            )
         resample_in = self._capture_rate != self.SAMPLE_RATE and _HAVE_SOXR
         self._in_buf = np.zeros(0, dtype=np.float32)
         self._in_resampler = None
@@ -370,6 +378,11 @@ class SoundDeviceAudioIO:
             target = self._playback_rate if self._output_supports(self._playback_rate) else sample_rate
             play_data = np.asarray(soxr.resample(audio_data, sample_rate, target), dtype=np.float32)
             stream_rate = target
+        elif not self._output_supports(sample_rate):  # soxr missing -> can't resample; the open will likely fail
+            logger.warning(
+                f"Output device can't open {sample_rate} Hz and 'soxr' is not installed; TTS may be "
+                "dropped. Install soxr or use a device that supports the TTS rate."
+            )
 
         # Derive playback length from the actual buffer so a wrong caller-supplied
         # total_samples can't break the timeout or percentage math.

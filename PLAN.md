@@ -35,7 +35,7 @@ A fully local, Wayland-native voice assistant you can **talk to naturally** and 
 | Build method | **Clone references first → study/verify → port patterns in**; never blind copy-paste |
 | Commits | **Never commit** (this doc + cloned repos stay untracked / uncommitted) |
 | Voice loop | Always-on (VAD), streaming STT/TTS on **CPU**, LLM on **GPU** |
-| Brain | Local LLM via **Ollama** with tool-calling. Default **`qwen3:4b`** (verified tool-calling, fits 6 GB @ Q4); `llama3.2` 3B = lighter fallback |
+| Brain | Local LLM via **Ollama** with tool-calling. Default **`qwen3:4b`** (verified tool-calling, fits 6 GB @ Q4); lighter **`qwen3:1.7b`** via Settings panel / `GLADOS_LLM_MODEL` |
 | Hands (Wayland) | **computer-use-linux** run as an **MCP server** + a few safe shell/file tools |
 | Safety | **Confirm-before-execute** gate on every action (Newelle's click-to-approve pattern) |
 | UX reference | **Newelle** (wake-word handler, approval UX, GTK4 polish) |
@@ -109,7 +109,7 @@ GLaDOS is the engine. We copy its MIT source in and own it here (manual upstream
 - **Not run yet** (per instruction — run later).
 
 ### To run later (when ready)
-1. Ollama up + model:  `ollama serve` &  `ollama pull qwen3:4b`  (or `llama3.2` fallback)
+1. Ollama up + model:  `ollama serve` &  `ollama pull qwen3:4b`  (or lighter `qwen3:1.7b`)
 2. `conda activate AI_Linux`
 3. First run downloads ONNX weights (Parakeet ASR + Kokoro TTS + Silero VAD):
    - `glados tui`                      # text UI — lightest first smoke test
