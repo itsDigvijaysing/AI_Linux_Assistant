@@ -12,13 +12,13 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
 ---
 
 ## ✨ Features
-- **Wake-word voice loop** with VAD (say "computer …"; half-duplex by default — see [Barge-in](#-barge-in-interrupting-the-assistant) for full-duplex).
+- **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel — see [Barge-in](#-barge-in-interrupting-the-assistant)).
 - **Voice *and* text** input (`input_mode: both`).
 - **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); `llama3.2` (3B) as a lighter fallback.
 - **CPU speech** — Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
 - **Acts on your desktop** — Wayland control (AT-SPI / portals / ydotool) + a shell executor, as MCP tools.
-- **Safety gate** — irreversible actions are denied unless you explicitly arm them.
-- **Skills** — small procedure library the model can retrieve at runtime.
+- **Safety gate** — irreversible actions are denied unless you explicitly arm them; a destructive-command denylist backs it up.
+- **Skills that run** — a procedure library the model retrieves at runtime (keyword-first **hybrid RAG**) and the matched command is injected so the model actually executes it; it can also **learn new skills** (`/learn`).
 - **On-screen overlay** (GNOME Shell extension) — top-right orb + transcript that tracks state, with
   listening-mode controls (always / wake / click) that can hand the mic back to other apps.
 
@@ -78,17 +78,20 @@ One script does everything — install and run:
 Then, day to day:
 
 ```bash
-./ai-linux           # voice + text, local qwen3:4b brain      [default]
-./ai-linux tui       # text-only Textual UI
-./ai-linux doctor    # check everything is ready
-./ai-linux download  # (re)fetch the ONNX speech weights
-./ai-linux say "hi"  # speak a phrase and exit
+./ai-linux            # voice + text, local qwen3:4b brain      [default]
+./ai-linux tui        # text-only Textual UI
+./ai-linux doctor     # check everything is ready
+./ai-linux download   # (re)fetch the ONNX speech weights
+./ai-linux say "hi"   # speak a phrase and exit
+./ai-linux uninstall  # revert everything setup changed (--dry-run to preview; --purge to also drop env/models/weights)
 # flags: --groq (cloud brain)   --local (default)   --no-actions (don't arm shell/desktop actions)
-#        --barge-in (interrupt by voice; use headphones)   --overlay-mode always|wake|click
+#        --half-duplex (turn off voice barge-in)   --overlay-mode always|wake|click
 ```
 
 Or click **AI Linux Assistant** in the GNOME app grid (installed by `setup`, with a custom glass-orb icon).
-`setup` is idempotent — safe to re-run. Speech weights download on first `setup` only if not already present.
+`setup` is idempotent — safe to re-run, and it records every system change to
+`~/.local/state/ai-linux/install-manifest.tsv` so `./ai-linux uninstall` cleanly reverts exactly those changes.
+Speech weights download on first `setup` only if not already present.
 
 ---
 
@@ -159,11 +162,13 @@ The autonomous loop can **never** run gated actions, regardless of settings (har
 
 The **running assistant never uses `sudo`/root** — every command runs as your user (verified: there is no
 `sudo` call anywhere in the runtime). The **only** place sudo is used is `./ai-linux setup`, which does a
-one-time `apt` install of a few user-level desktop tools (`brightnessctl`, `playerctl`, `gnome-screenshot`,
-`wl-clipboard`) so brightness / screenshots / media / clipboard work — skipped automatically if they're
-already present. If a tool somehow isn't installed, that skill tells you to run `./ai-linux setup` instead
-of failing silently. Setup also scopes `ydotool`'s input access via a **udev rule** (per-session ACL on
-`/dev/uinput`), not the broad `input` group, so nothing gains system-wide keystroke read.
+one-time `apt` install of a few user-level desktop tools (`brightnessctl`, `playerctl`, `wl-clipboard`,
+`ydotool`) so brightness / media / clipboard / input work — skipped automatically if they're already present.
+(Screenshots go through `computer-use-linux`'s sanctioned screen-capture portal; `gnome-screenshot` is **not**
+installed — it adds a stray app-grid icon and is broken on GNOME Wayland.) Setup also scopes `ydotool`'s input
+access via a **udev rule** (per-session ACL on `/dev/uinput`), not the broad `input` group, so nothing gains
+system-wide keystroke read. Every system change setup makes is recorded so **`./ai-linux uninstall`** reverts
+exactly those deltas — installs are fully and transparently reversible.
 
 A destructive-command **denylist** (`mcp/shell_server.py`) refuses clearly catastrophic commands
 (`rm -rf ~`, `dd of=/dev/…`, `mkfs`, fork bomb, `curl … | sh`, …) regardless of how they were produced.
@@ -174,25 +179,20 @@ See **[SECURITY.md](SECURITY.md)** for the full threat model, guarantees, and ho
 
 ## 🗣 Barge-in (interrupting the assistant)
 
-By default the loop is **half-duplex**: while the assistant speaks, the mic is ignored, because the
-capture path (conda PortAudio → raw ALSA on the USB device) has **no acoustic echo cancellation**, so an
-open mic would transcribe the assistant's own TTS coming back through the speakers.
+**On by default:** `./ai-linux` runs **full-duplex** so you can talk over the assistant on open speakers —
+your voice cuts it off mid-sentence (TTS is cancelled the instant VAD fires). It works because the launcher
+routes audio through **PipeWire's WebRTC echo-cancel** (`module-echo-cancel`): capture goes through `pw-record`
+and TTS plays through `pw-play` to an echo-cancelled sink, so the open mic never transcribes the assistant's
+own voice. No system packages and **no `sudo`** — the AEC module is loaded as your user for the session and
+unloaded on exit (fully reversible).
 
-`./ai-linux --barge-in` flips this to **full-duplex** (`interruptible: true`) — your voice cuts the
-assistant off mid-sentence (GLaDOS cancels TTS the instant VAD fires). **Use headphones or a headset** so
-the mic can't hear the speaker. This is exactly how LightSpeak stays echo-free — its audio reaches the agent
-as a clean, already-AEC'd client stream; locally, headphones give the same clean input.
+Why a separate PipeWire backend (`audio_io/pipewire_io.py`) instead of the in-process path: conda's PortAudio
+only enumerates raw `hw:` ALSA cards and can't open PipeWire's `pipewire`/`pulse` PCMs, so it can't be routed
+through `module-echo-cancel` directly. The PipeWire backend sidesteps that.
 
-**Hands-free over open speakers** needs real echo cancellation in the capture path. Two facts make this a
-deliberate, separate step on this machine (both verified):
-- conda's PortAudio only enumerates raw `hw:` cards — it cannot open PipeWire's `pipewire`/`pulse` PCMs, so
-  it can't be routed through PipeWire's built-in `module-echo-cancel` (WebRTC AEC).
-- the in-process AEC bindings (`speexdsp`, `webrtc-audio-processing`) need system `-dev` headers
-  (`sudo apt install libspeexdsp-dev`) before their wheels will build.
-
-So in-process AEC (capture raw, cancel the TTS echo in Python before VAD, using the played audio as the
-reference) is the route to speaker barge-in — it's scoped but needs that one `sudo` install plus on-hardware
-tuning. Ask and it can be wired behind `--barge-in` with a clean fall back to headphone/half-duplex mode.
+`./ai-linux --half-duplex` turns barge-in **off** — the mic is ignored while the assistant speaks (the echo
+guard) and re-opens after a short hangover. Use it if AEC misbehaves on your hardware, or just use headphones
+(a headset gives clean input with no echo to cancel).
 
 ---
 

@@ -6,6 +6,9 @@
 #   ./ai-linux setup           (re)run full setup — idempotent; installs desktop tools too (one-time sudo for apt,
 #                              skipped if already present). The running assistant itself never uses sudo.
 #   ./ai-linux doctor          check that everything is ready
+#   ./ai-linux uninstall       revert everything setup changed (reads the install manifest). Aliases: revert.
+#                              --dry-run preview · --yes no prompt · --keep-packages skip apt removal ·
+#                              --purge also remove the conda env, Ollama models, and downloaded weights
 #   ./ai-linux download        pre-fetch the ONNX speech weights
 #   ./ai-linux say "hello"     speak a phrase and exit
 #
@@ -35,6 +38,7 @@ MODEL="qwen3:4b"   # default brain; Settings panel can switch to qwen3:1.7b (wri
 CONFIG="$HERE/configs/ai_linux_config.yaml"
 ICON="$HERE/ui/icon/ai-linux.svg"
 EXT_UUID="ai-linux-assistant@local"
+CU_EXT_UUID="computer-use-linux@avifenesh.dev"   # window-control bridge that `computer-use-linux setup` installs
 OVERLAY=1          # drive the on-screen GNOME overlay (engine writes state.json)
 OMODE="wake"       # initial listening mode: always | wake (wake word) | click  (overlay 3-way; mute = off)
 OMODE_FROM_CLI=0   # set when --overlay-mode is passed; then settings.json must not override it
@@ -42,10 +46,24 @@ ACTIONS="auto"     # auto = arm shell/desktop actions for interactive start|tui;
                    #        (autonomy is ALWAYS blocked regardless — see core/tool_safety.py)
 BARGE=1            # default ON: route audio through PipeWire WebRTC echo-cancel for talk-over barge-in (--half-duplex to disable)
 
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"
+MANIFEST="$STATE_DIR/install-manifest.tsv"   # the "inversion file": every system change setup makes is recorded here so uninstall reverts exactly our deltas
+PURGE=0; DRYRUN=0; ASSUME_YES=0; KEEP_PKGS=0  # uninstall modifiers
+
 c_say(){  printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 c_ok(){   printf '   \033[0;32m✓ %s\033[0m\n' "$*"; }
 c_warn(){ printf '   \033[0;33m! %s\033[0m\n' "$*"; }
 c_err(){  printf '   \033[0;31m✗ %s\033[0m\n' "$*" >&2; }
+
+# ---- install manifest (the inversion file): record only what we actually change, deduped ----
+manifest_add(){  # manifest_add <kind> <value> — append once so re-running setup never double-records
+  mkdir -p "$STATE_DIR" 2>/dev/null; chmod 700 "$STATE_DIR" 2>/dev/null || true
+  local line; line="$(printf '%s\t%s' "$1" "$2")"
+  [ -f "$MANIFEST" ] && grep -qxF "$line" "$MANIFEST" 2>/dev/null && return 0
+  printf '%s\n' "$line" >> "$MANIFEST"
+}
+manifest_values(){ [ -f "$MANIFEST" ] && awk -F'\t' -v k="$1" '$1==k{sub(/^[^\t]*\t/,""); print}' "$MANIFEST"; }  # value = everything after the first tab (gsetting carries schema\tkey\tprior)
+manifest_has(){ [ -f "$MANIFEST" ] && grep -qxF "$(printf '%s\t%s' "$1" "$2")" "$MANIFEST" 2>/dev/null; }
 
 banner(){
   printf '\033[1;35m'
@@ -111,7 +129,7 @@ apply_settings(){
 ensure_env(){
   [ -z "${CONDA:-}" ] && { c_err "conda not found — install Miniconda: https://docs.conda.io/projects/miniconda"; exit 1; }
   if env_exists; then c_ok "conda env '$ENV_NAME'"; else
-    "$CONDA" create -y -n "$ENV_NAME" python=3.12 >/dev/null && c_ok "created env '$ENV_NAME' (python 3.12)"
+    "$CONDA" create -y -n "$ENV_NAME" python=3.12 >/dev/null && { manifest_add conda_env "$ENV_NAME"; c_ok "created env '$ENV_NAME' (python 3.12)"; }
   fi
   "$CONDA" install -y -n "$ENV_NAME" -c conda-forge portaudio >/dev/null 2>&1 && c_ok "portaudio"
 }
@@ -129,54 +147,90 @@ ensure_ollama(){
   [ -z "$url" ] && { c_err "could not resolve Ollama release URL"; return 1; }
   curl -fSL "$url" -o /tmp/ollama.tar.zst \
     && mkdir -p "$HOME/.local" && tar --zstd -C "$HOME/.local" -xf /tmp/ollama.tar.zst \
-    && rm -f /tmp/ollama.tar.zst && c_ok "ollama installed"
+    && rm -f /tmp/ollama.tar.zst && { manifest_add ollama_installed 1; c_ok "ollama installed"; }
 }
 ensure_model(){
   start_ollama || { c_warn "ollama not serving — skipping model pull"; return 0; }
   local ob; ob="$(ollama_bin)"
   if "$ob" list 2>/dev/null | grep -q "^${MODEL}"; then c_ok "model $MODEL present"; else
-    "$ob" pull "$MODEL" && c_ok "model $MODEL pulled"; fi
+    "$ob" pull "$MODEL" && { manifest_add ollama_model "$MODEL"; c_ok "model $MODEL pulled"; }; fi
 }
 EMBED_MODEL="nomic-embed-text"   # local embeddings for hybrid skills retrieval (optional; keyword fallback)
 ensure_embed_model(){
   ollama_up || return 0
   local ob; ob="$(ollama_bin)"; [ -z "$ob" ] && return 0
   if "$ob" list 2>/dev/null | grep -q "^${EMBED_MODEL}"; then c_ok "embeddings model $EMBED_MODEL present"; else
-    "$ob" pull "$EMBED_MODEL" >/dev/null 2>&1 && c_ok "embeddings model $EMBED_MODEL pulled" || c_warn "could not pull $EMBED_MODEL (skills retrieval will use keyword only)"; fi
+    "$ob" pull "$EMBED_MODEL" >/dev/null 2>&1 && { manifest_add ollama_model "$EMBED_MODEL"; c_ok "embeddings model $EMBED_MODEL pulled"; } || c_warn "could not pull $EMBED_MODEL (skills retrieval will use keyword only)"; fi
 }
 ensure_weights(){
   if ls "$HERE"/models/TTS/*.onnx >/dev/null 2>&1; then c_ok "speech weights present"; else
-    "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download && c_ok "speech weights downloaded"; fi
+    "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download && { manifest_add weights 1; c_ok "speech weights downloaded"; }; fi
 }
 ensure_binary(){  # optional desktop-control server
   if [ -x "$HOME/.local/bin/computer-use-linux" ]; then c_ok "desktop control (computer-use-linux)"
   elif command -v cargo >/dev/null 2>&1 && [ -d "$HERE/refs/computer-use-linux" ]; then
     c_warn "building computer-use-linux (cargo, ~3 min) ..."
     ( cd "$HERE/refs/computer-use-linux" && cargo build --release -q ) \
-      && cp "$HERE/refs/computer-use-linux/target/release/computer-use-linux" "$HOME/.local/bin/" && c_ok "built + installed"
+      && cp "$HERE/refs/computer-use-linux/target/release/computer-use-linux" "$HOME/.local/bin/" \
+      && { manifest_add file "$HOME/.local/bin/computer-use-linux"; c_ok "built + installed"; }
   else c_warn "desktop control skipped (optional) — 'npm i -g @agent-sh/computer-use-linux' to add it"; fi
   # Enable AT-SPI + window targeting (gsettings, NO sudo) so the assistant can see/focus windows (re-login to apply).
+  # `setup-window-targeting` installs + enables the computer-use GNOME Shell extension — record it so uninstall removes it.
   if [ -x "$HOME/.local/bin/computer-use-linux" ]; then
+    # `computer-use-linux setup` flips org.gnome.desktop.interface toolkit-accessibility=true. Capture the prior
+    # value first and record it (only if it actually changed) so uninstall restores exactly our delta.
+    local a11y_before=""
+    command -v gsettings >/dev/null 2>&1 && a11y_before="$(gsettings get org.gnome.desktop.interface toolkit-accessibility 2>/dev/null)"
     "$HOME/.local/bin/computer-use-linux" setup >/dev/null 2>&1 && c_ok "desktop control accessibility enabled (re-login to apply)" || true
     "$HOME/.local/bin/computer-use-linux" setup-window-targeting >/dev/null 2>&1 || true
+    if [ -n "$a11y_before" ] && command -v gsettings >/dev/null 2>&1; then
+      local a11y_after; a11y_after="$(gsettings get org.gnome.desktop.interface toolkit-accessibility 2>/dev/null)"
+      [ "$a11y_after" != "$a11y_before" ] && manifest_add gsetting "$(printf 'org.gnome.desktop.interface\ttoolkit-accessibility\t%s' "$a11y_before")"
+    fi
+    if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
+      manifest_add gext "$CU_EXT_UUID"
+      gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$CU_EXT_UUID" && manifest_add gext_enabled "$CU_EXT_UUID"
+      c_ok "window-targeting bridge extension installed ($CU_EXT_UUID)"
+    fi
+    # Screenshot helper: saves a PNG via computer-use's sanctioned capture portal (no gnome-screenshot, no app icon).
+    if [ -f "$HERE/bin/ai-linux-screenshot" ]; then
+      install -Dm755 "$HERE/bin/ai-linux-screenshot" "$HOME/.local/bin/ai-linux-screenshot" 2>/dev/null \
+        && { manifest_add file "$HOME/.local/bin/ai-linux-screenshot"; c_ok "screenshot helper installed (~/.local/bin/ai-linux-screenshot)"; }
+    fi
   fi
 }
-ensure_desktop_tools(){  # one-time apt for brightness/screenshot/media/clipboard; skipped (no sudo) if already present
-  local miss=0; for t in brightnessctl playerctl gnome-screenshot wl-copy; do command -v "$t" >/dev/null 2>&1 || miss=1; done
-  if [ "$miss" = 0 ]; then c_ok "desktop tools present (brightness, screenshots, media, clipboard)"; return 0; fi
-  command -v apt-get >/dev/null 2>&1 || { c_warn "apt not found — install brightnessctl playerctl gnome-screenshot wl-clipboard yourself"; return 0; }
-  c_warn "installing desktop tools (one-time sudo; the running assistant itself never uses sudo) ..."
-  if sudo apt-get install -y brightnessctl playerctl gnome-screenshot wl-clipboard ydotool >/dev/null 2>&1; then
-    c_ok "desktop tools installed (brightnessctl, playerctl, gnome-screenshot, wl-clipboard, ydotool)"
-  else c_warn "some desktop tools failed to install (skills will say so when used)"; fi
-  sudo usermod -aG video "$USER" >/dev/null 2>&1 && c_warn "added $USER to the video group (brightnessctl) — log out/in to apply"
+ensure_desktop_tools(){  # one-time apt for brightness/media/clipboard/input; skipped (no sudo) if already present.
+  # NOTE: gnome-screenshot is deliberately NOT installed — it adds a stray "Screenshot" app-grid icon and is
+  # broken on GNOME Wayland anyway; screenshots go through computer-use-linux's sanctioned screen-capture portal.
+  local pkgs=(brightnessctl playerctl wl-clipboard ydotool)   # package names
+  local bins=(brightnessctl playerctl wl-copy        ydotool)  # the binary each provides
+  local need=() i
+  for i in "${!pkgs[@]}"; do command -v "${bins[$i]}" >/dev/null 2>&1 || need+=("${pkgs[$i]}"); done
+  if [ "${#need[@]}" -eq 0 ]; then c_ok "desktop tools present (brightness, media, clipboard, input)"
+  elif ! command -v apt-get >/dev/null 2>&1; then c_warn "apt not found — install yourself: ${need[*]}"
+  else
+    c_warn "installing desktop tools (one-time sudo; the running assistant itself never uses sudo): ${need[*]}"
+    if sudo apt-get install -y "${need[@]}" >/dev/null 2>&1; then
+      for i in "${need[@]}"; do manifest_add apt_pkg "$i"; done   # record only what WE installed, for clean uninstall
+      c_ok "desktop tools installed (${need[*]})"
+    else c_warn "some desktop tools failed to install (skills will say so when used)"; fi
+  fi
+  # video group (brightnessctl needs it) — record only if we actually add the user (so uninstall only reverts our change).
+  if ! id -nG "$USER" 2>/dev/null | grep -qw video; then
+    sudo usermod -aG video "$USER" >/dev/null 2>&1 && { manifest_add group video; c_warn "added $USER to the video group (brightnessctl) — log out/in to apply"; }
+  fi
   # Scoped uinput access for ydotool via a session ACL (NO `input` group, so no system-wide keylog surface).
-  if [ -f "$HERE/configs/udev/99-ai-linux-uinput.rules" ]; then
+  if [ -f "$HERE/configs/udev/99-ai-linux-uinput.rules" ] && [ ! -f /etc/udev/rules.d/99-ai-linux-uinput.rules ]; then
     sudo cp "$HERE/configs/udev/99-ai-linux-uinput.rules" /etc/udev/rules.d/ 2>/dev/null \
       && sudo udevadm control --reload 2>/dev/null && sudo udevadm trigger /dev/uinput 2>/dev/null \
-      && c_ok "uinput access scoped via udev (session ACL; no input-group keylog surface)"
+      && { manifest_add udev /etc/udev/rules.d/99-ai-linux-uinput.rules; c_ok "uinput access scoped via udev (session ACL; no input-group keylog surface)"; }
   fi
-  systemctl --user enable --now ydotoold >/dev/null 2>&1 || true
+  # Enable ydotoold; record it ONLY if it wasn't already enabled (so uninstall never disables a unit the user enabled).
+  if ! systemctl --user is-enabled ydotoold >/dev/null 2>&1; then
+    systemctl --user enable --now ydotoold >/dev/null 2>&1 && manifest_add ydotoold 1 || true
+  else
+    systemctl --user start ydotoold >/dev/null 2>&1 || true
+  fi
   id -nG 2>/dev/null | grep -qw input && c_warn "you're already in the 'input' group (keylog surface) — remove with: sudo gpasswd -d $USER input"
 }
 ensure_desktop(){
@@ -205,6 +259,8 @@ NoDisplay=true
 EOF
   command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" >/dev/null 2>&1 || true
+  manifest_add file "$apps/ai-linux-assistant.desktop"
+  manifest_add file "$icondir/ai-linux-assistant.svg"
   c_ok "GNOME launcher + icon installed (hicolor: ai-linux-assistant)"
 }
 ensure_overlay(){  # install + enable the on-screen overlay GNOME Shell extension
@@ -212,10 +268,12 @@ ensure_overlay(){  # install + enable the on-screen overlay GNOME Shell extensio
   local dst="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
   [ -d "$src" ] || { c_warn "overlay extension source missing; skipped"; return 0; }
   mkdir -p "$(dirname "$dst")"; rm -rf "$dst"; cp -r "$src" "$dst"
+  manifest_add gext "$EXT_UUID"
   # Enable it. On Wayland a freshly-copied extension isn't registered with the running Shell
   # yet, so `gnome-extensions enable` fails until re-login — fall back to adding the UUID to
   # the enabled-extensions gsettings key directly, which the Shell honors at the next login.
   if command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions enable "$EXT_UUID" >/dev/null 2>&1; then
+    manifest_add gext_enabled "$EXT_UUID"
     c_ok "overlay extension installed + enabled"
   elif command -v gsettings >/dev/null 2>&1; then
     local cur; cur="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null)"
@@ -228,6 +286,7 @@ ensure_overlay(){  # install + enable the on-screen overlay GNOME Shell extensio
         *)                new="${cur%]}, '$EXT_UUID']" ;;
       esac
       if gsettings set org.gnome.shell enabled-extensions "$new" 2>/dev/null; then
+        manifest_add gext_enabled "$EXT_UUID"
         c_ok "overlay extension installed + enabled (loads at re-login)"
       else
         c_ok "overlay extension installed ($dst)"
@@ -252,11 +311,132 @@ cmd_setup(){
   c_say "Desktop control (optional)";     ensure_binary
   c_say "GNOME launcher + icon";          ensure_desktop
   c_say "On-screen overlay (extension)";  ensure_overlay
-  c_say "Desktop tools (brightness/screenshots/media/clipboard)"; ensure_desktop_tools
+  c_say "Desktop tools (brightness/media/clipboard/input)"; ensure_desktop_tools
   c_say "Setup complete"
-  echo "   Launch:  ./ai-linux        (or click 'AI Linux Assistant' in the app grid)"
-  echo "   Groq:    export GROQ_API_KEY=… ; ./ai-linux --groq"
-  echo "   Actions: ./ai-linux --allow-actions"
+  [ -f "$MANIFEST" ] && c_ok "changes recorded in $MANIFEST (./ai-linux uninstall reverts them)"
+  echo "   Launch:    ./ai-linux        (or click 'AI Linux Assistant' in the app grid)"
+  echo "   Groq:      export GROQ_API_KEY=… ; ./ai-linux --groq"
+  echo "   Actions:   ./ai-linux --allow-actions"
+  echo "   Uninstall: ./ai-linux uninstall   (reverts everything; --dry-run to preview)"
+}
+
+# ---- uninstall / revert ------------------------------------------------------------------
+# Driven by the install manifest (the "inversion file") so it reverts EXACTLY our deltas. If no manifest
+# exists (e.g. installed before this feature), it falls back to the deterministic default artifacts.
+gext_remove(){  # disable + drop from enabled-extensions + delete the installed copy of one extension
+  local uuid="$1"
+  [ -n "$uuid" ] || { c_warn "gext_remove: empty uuid — refusing"; return 1; }  # never rm -rf the whole extensions dir
+  command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions disable "$uuid" >/dev/null 2>&1 || true
+  if command -v gsettings >/dev/null 2>&1; then
+    local cur; cur="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null)"
+    if printf '%s' "$cur" | grep -q "'$uuid'"; then
+      local new; new="$(python3 -c "import sys,ast; a=ast.literal_eval(sys.argv[1]); print([x for x in a if x!=sys.argv[2]])" "$cur" "$uuid" 2>/dev/null)"
+      [ -n "$new" ] && gsettings set org.gnome.shell enabled-extensions "$new" >/dev/null 2>&1 || true
+    fi
+  fi
+  rm -rf "$HOME/.local/share/gnome-shell/extensions/$uuid"
+}
+purge_weights(){ rm -f "$HERE"/models/*/*.onnx "$HERE"/models/*/*.bin 2>/dev/null; }
+
+cmd_uninstall(){
+  banner; resolve_conda
+  local tag=""; [ "$DRYRUN" = 1 ] && tag="  (dry-run — nothing will change)"
+  c_say "Uninstall / revert AI Linux Assistant$tag"
+  local hm=0; [ -f "$MANIFEST" ] && hm=1
+  [ "$hm" = 1 ] && c_ok "install manifest: $MANIFEST" || c_warn "no install manifest — reverting the known default artifacts"
+
+  # --- compute the plan (manifest first; deterministic fallbacks otherwise) ---
+  # Our own overlay + the launcher/icon are ALWAYS created by setup, so always revert them. The computer-use
+  # bridge + binary are reverted from the manifest when present (only if WE installed them), else by fallback.
+  local exts files pkgs udevs models
+  local dsk="$HOME/.local/share/applications/ai-linux-assistant.desktop"
+  local ico="$HOME/.local/share/icons/hicolor/scalable/apps/ai-linux-assistant.svg"
+  # Idempotent: if there's no manifest AND none of our always-created artifacts remain (e.g. a second
+  # uninstall — the first deletes the manifest), there is nothing of ours left. Do NOT fall into the
+  # dpkg-guessing fallback, which could touch unrelated packages.
+  if [ "$hm" = 0 ] && [ ! -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ] && [ ! -e "$dsk" ]; then
+    c_ok "nothing to uninstall — AI Linux Assistant artifacts already removed."; return 0
+  fi
+  if [ "$hm" = 1 ]; then
+    exts="$( { printf '%s\n' "$EXT_UUID"; manifest_values gext; } | awk 'NF&&!s[$0]++')"
+    files="$( { printf '%s\n%s\n' "$dsk" "$ico"; manifest_values file; } | awk 'NF&&!s[$0]++')"
+  else
+    exts="$(printf '%s\n%s\n' "$EXT_UUID" "$CU_EXT_UUID")"
+    files="$(printf '%s\n%s\n%s\n' "$dsk" "$ico" "$HOME/.local/bin/ai-linux-screenshot")"
+  fi
+  local nomanifest_pkgs=""
+  if [ "$hm" = 1 ]; then pkgs="$(manifest_values apt_pkg)"
+  else
+    # No manifest = no proof we installed any package. "Revert only our deltas" means we must NOT guess
+    # from mere presence — gnome-screenshot is a stock component we never install, and the others may
+    # predate us. Collect candidates only to TELL the user; never auto-remove them.
+    pkgs=""
+    for p in brightnessctl playerctl wl-clipboard ydotool; do dpkg -s "$p" >/dev/null 2>&1 && nomanifest_pkgs="$nomanifest_pkgs $p"; done
+  fi
+  [ "$KEEP_PKGS" = 1 ] && pkgs=""
+  udevs="$(manifest_values udev)"; { [ "$hm" = 0 ] && [ -f /etc/udev/rules.d/99-ai-linux-uinput.rules ]; } && udevs="/etc/udev/rules.d/99-ai-linux-uinput.rules"
+  local drop_video=0; manifest_has group video && drop_video=1
+  local drop_ydo=0; manifest_has ydotoold 1 && systemctl --user is-enabled ydotoold >/dev/null 2>&1 && drop_ydo=1
+  if [ "$hm" = 1 ]; then models="$(manifest_values ollama_model)"; else models=""; fi  # no manifest: never rm global models we can't prove we pulled
+
+  # --- preview ---
+  echo; c_say "Remove (user-level, no sudo):"
+  for u in $exts; do [ -d "$HOME/.local/share/gnome-shell/extensions/$u" ] && echo "   • GNOME extension  $u   (disable + delete)"; done
+  while IFS= read -r f; do [ -n "$f" ] && [ -e "$f" ] && echo "   • file             $f"; done <<< "$files"
+  [ "$drop_ydo" = 1 ] && echo "   • user service     ydotoold (disable)"
+  manifest_values gsetting | while IFS=$'\t' read -r s k p; do [ -n "$k" ] && echo "   • gsetting         $s $k → restore $p"; done
+  echo   "   • state/runtime    $STATE_DIR , app+icon caches refreshed"
+  if [ -n "$(echo "$pkgs$udevs" | tr -d '[:space:]')" ] || [ "$drop_video" = 1 ]; then
+    c_say "Remove (needs sudo):"
+    [ -n "$(echo "$pkgs" | tr -d '[:space:]')" ] && echo "   • apt packages     $(echo $pkgs)"
+    for r in $udevs; do echo "   • udev rule        $r   (+ udev reload)"; done
+    [ "$drop_video" = 1 ] && echo "   • group            remove $USER from 'video'"
+  fi
+  [ -n "$(echo "$nomanifest_pkgs" | tr -d '[:space:]')" ] && c_warn "no manifest — leaving apt packages installed (can't prove they're ours):$nomanifest_pkgs"
+  if [ "$PURGE" = 1 ]; then
+    c_say "PURGE (heavy — full rebuild needed next time):"
+    { [ "$hm" = 0 ] || manifest_has conda_env "$ENV_NAME"; } && env_exists && echo "   • conda env        $ENV_NAME"
+    if [ -n "$(echo "$models" | tr -d '[:space:]')" ]; then echo "   • ollama models    $(echo $models)"
+    elif [ "$hm" = 0 ]; then echo "   • ollama models    kept (no record — won't remove models you may have pulled yourself)"; fi
+    { [ "$hm" = 0 ] || manifest_has weights 1; } && echo "   • speech weights   $HERE/models/*/*.onnx"
+    manifest_has ollama_installed 1 && echo "   • ollama binary    ~/.local/bin/ollama (+ ~/.local/lib/ollama)"
+    echo   "   • config/data      ~/.config/ai-linux , $HERE/data/skills_*"
+  fi
+  echo
+  if [ "$DRYRUN" = 1 ]; then c_warn "dry-run complete — nothing was changed. Re-run without --dry-run to apply."; return 0; fi
+  if [ "$ASSUME_YES" != 1 ]; then
+    printf '   Proceed with uninstall? [y/N] '; local ans; read -r ans </dev/tty 2>/dev/null || read -r ans
+    case "$ans" in y|Y|yes|YES) ;; *) c_warn "aborted — nothing changed."; return 0 ;; esac
+  fi
+
+  # --- execute ---
+  c_say "Removing"
+  [ "$drop_ydo" = 1 ] && { systemctl --user disable --now ydotoold >/dev/null 2>&1; c_ok "ydotoold disabled"; }
+  for u in $exts; do [ -d "$HOME/.local/share/gnome-shell/extensions/$u" ] && { gext_remove "$u"; c_ok "extension removed: $u"; }; done
+  while IFS= read -r f; do [ -n "$f" ] && [ -e "$f" ] && { rm -f "$f"; c_ok "removed: $f"; }; done <<< "$files"
+  manifest_values gsetting | while IFS=$'\t' read -r schema key prior; do  # restore gsettings we changed (e.g. AT-SPI)
+    [ -n "$schema" ] && [ -n "$key" ] && gsettings set "$schema" "$key" "$prior" >/dev/null 2>&1 && c_ok "restored $schema $key = $prior"
+  done
+  command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+  command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+  if [ -n "$(echo "$pkgs" | tr -d '[:space:]')" ]; then
+    sudo apt-get remove -y $pkgs >/dev/null 2>&1 && c_ok "apt packages removed: $(echo $pkgs)" || c_warn "apt remove failed (run: sudo apt-get remove $(echo $pkgs))"
+  fi
+  for r in $udevs; do sudo rm -f "$r" 2>/dev/null && { sudo udevadm control --reload 2>/dev/null || true; c_ok "udev rule removed: $r"; }; done
+  [ "$drop_video" = 1 ] && { sudo gpasswd -d "$USER" video >/dev/null 2>&1 && c_ok "removed $USER from 'video' (log out/in to apply)" || c_warn "could not remove from 'video'"; }
+  if [ "$PURGE" = 1 ]; then
+    c_say "Purging"
+    { [ "$hm" = 0 ] || manifest_has conda_env "$ENV_NAME"; } && env_exists && [ -n "${CONDA:-}" ] && { "$CONDA" env remove -y -n "$ENV_NAME" >/dev/null 2>&1 && c_ok "conda env removed: $ENV_NAME"; }
+    local ob; ob="$(ollama_bin)"
+    if [ -n "$ob" ]; then for m in $models; do "$ob" rm "$m" >/dev/null 2>&1 && c_ok "ollama model removed: $m"; done; fi
+    { [ "$hm" = 0 ] || manifest_has weights 1; } && { purge_weights; c_ok "speech weights removed"; }
+    manifest_has ollama_installed 1 && { rm -rf "$HOME/.local/bin/ollama" "$HOME/.local/lib/ollama"; c_ok "ollama binary removed"; }
+    rm -rf "$HOME/.config/ai-linux" "$HERE/data/skills_feedback.jsonl" "$HERE/data/skills_vectors.json" 2>/dev/null; c_ok "config/data removed"
+  fi
+  rm -rf "$STATE_DIR"   # last: drops the manifest + run logs
+  c_say "Uninstall complete"
+  c_warn "log out / log back in so GNOME drops the removed extension(s) and group change."
+  [ -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ] || c_ok "AI Linux Assistant removed."
 }
 
 cmd_doctor(){
@@ -269,8 +449,8 @@ cmd_doctor(){
   [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^nomic-embed-text" && c_ok "embeddings model (hybrid skills RAG)" || c_warn "embeddings model not pulled — skills retrieval uses keyword only"; }
   local n; n=$(find "$HERE"/models -name '*.onnx' 2>/dev/null | wc -l); [ "$n" -gt 0 ] && c_ok "speech weights ($n .onnx files)" || c_warn "speech weights missing — ./ai-linux download"
   [ -x "$HOME/.local/bin/computer-use-linux" ] && c_ok "desktop control binary" || c_warn "desktop control not installed (optional)"
-  local miss=""; for t in brightnessctl playerctl gnome-screenshot wl-copy; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
-  [ -z "$miss" ] && c_ok "desktop tools (brightness/screenshots/media/clipboard)" || c_warn "desktop tools missing:$miss — run './ai-linux setup'"
+  local miss=""; for t in brightnessctl playerctl wl-copy ydotool; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
+  [ -z "$miss" ] && c_ok "desktop tools (brightness/media/clipboard/input)" || c_warn "desktop tools missing:$miss — run './ai-linux setup'"
   if [ -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ]; then
     if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$EXT_UUID"; then
       if command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions list --enabled 2>/dev/null | grep -q "$EXT_UUID"; then
@@ -307,9 +487,14 @@ for a in "$@"; do
     --no-overlay)    OVERLAY=0 ;;
     --overlay)       OVERLAY=1 ;;
     --overlay-mode=*) OMODE="${a#*=}"; OMODE_FROM_CLI=1 ;;
+    --dry-run)       DRYRUN=1 ;;
+    --yes|-y)        ASSUME_YES=1 ;;
+    --purge)         PURGE=1 ;;
+    --keep-packages) KEEP_PKGS=1 ;;
     -h|--help|help)  usage; exit 0 ;;
     setup)           SUB="setup" ;;
     doctor)          SUB="doctor" ;;
+    uninstall|revert) SUB="uninstall" ;;
     start|tui|download|say) SUB="$a" ;;
     *)               ARGS+=("$a") ;;
   esac
@@ -319,6 +504,7 @@ resolve_conda
 case "$SUB" in
   setup)    cmd_setup; exit 0 ;;
   doctor)   cmd_doctor; exit 0 ;;
+  uninstall) cmd_uninstall; exit 0 ;;
   download) env_exists || { c_err "no env yet — run ./ai-linux setup first"; exit 1; }
             exec "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download ;;
   *)        # Windowless desktop launch (GNOME icon sets AI_LINUX_DESKTOP=1, Terminal=false): no

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""ai-linux-screenshot — save a screenshot to ~/Pictures via computer-use-linux's screen-capture portal.
+
+GNOME/Wayland blocks apps from grabbing the screen directly (anti-spyware). The sanctioned path is the XDG
+screen-capture portal, which computer-use-linux already holds a pre-authorized session for. We drive its MCP
+`screenshot` tool, decode the returned PNG, and write it to a file. No extra app, no app-grid icon, no sudo.
+
+Usage: ai-linux-screenshot [--window "<title or app id>"] [OUTPUT]
+  OUTPUT defaults to ~/Pictures/shot-<unixtime>.png. --window targets one window instead of the whole screen.
+Prints the saved path on success; exits non-zero with a short reason otherwise.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+
+def _resolve_binary() -> str | None:
+    cand = shutil.which("computer-use-linux")
+    if cand:
+        return cand
+    local = os.path.expanduser("~/.local/bin/computer-use-linux")
+    return local if os.access(local, os.X_OK) else None
+
+
+def main() -> int:
+    window = None
+    out = None
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        elif a in ("--full", "--screen", "--whole"):
+            pass  # whole screen is the default; accepted so the skill's primary command reads clearly
+        elif a in ("--window", "-w"):
+            i += 1
+            window = args[i] if i < len(args) else None
+        else:
+            out = a
+        i += 1
+    if not out:
+        pics = os.path.join(os.path.expanduser("~"), "Pictures")
+        os.makedirs(pics, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        out = os.path.join(pics, f"shot-{stamp}.png")
+        n = 1
+        while os.path.exists(out):  # avoid clobbering a same-second capture
+            out = os.path.join(pics, f"shot-{stamp}-{n}.png")
+            n += 1
+    out = os.path.abspath(os.path.expanduser(out))
+
+    binary = _resolve_binary()
+    if not binary:
+        sys.stderr.write("computer-use-linux not found — run ./ai-linux setup\n")
+        return 1
+
+    # Minimal MCP (JSON-RPC over stdio) handshake + a single screenshot tool call.
+    tool_args: dict = {}
+    if window:
+        tool_args["title"] = window
+    reqs = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "ai-linux-screenshot", "version": "1"}}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "screenshot", "arguments": tool_args}},
+    ]
+    stdin = "".join(json.dumps(r) + "\n" for r in reqs)
+    try:
+        proc = subprocess.run([binary, "mcp"], input=stdin, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("screenshot timed out\n")
+        return 1
+    except Exception as exc:  # noqa: BLE001 - report any spawn failure
+        sys.stderr.write(f"failed to run computer-use-linux: {exc}\n")
+        return 1
+
+    b64 = None
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if msg.get("id") != 2:
+            continue
+        if msg.get("error"):
+            sys.stderr.write(f"capture denied: {msg['error'].get('message', 'error')}\n")
+            return 1
+        for block in msg.get("result", {}).get("content", []):
+            if block.get("type") == "image" and block.get("data"):
+                b64 = block["data"]
+                break
+    if not b64:
+        sys.stderr.write("no image returned (is screen capture permitted? re-run ./ai-linux setup)\n")
+        return 1
+
+    with open(out, "wb") as fh:
+        fh.write(base64.b64decode(b64))
+    print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

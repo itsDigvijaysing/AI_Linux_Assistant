@@ -14,10 +14,14 @@ threat model, what's guaranteed, and the safeguards.
 - **No superuser at runtime.** The running assistant never calls `sudo`/`root` — every command runs as
   your user. (Verified: there is no `sudo`/`pkexec`/`setuid` in the runtime code path.)
 - **The only privileged step is `./ai-linux setup`**, which does a one-time `apt` install of helper tools
-  (`brightnessctl`, `playerctl`, `gnome-screenshot`, `wl-clipboard`, `ydotool`), adds you to the `video`
-  group (brightness), and installs a scoped **udev rule** so `ydotool` can use `/dev/uinput` via a
-  per-session ACL — deliberately **not** the `input` group, so no process gains system-wide keystroke
-  read (which would defeat Wayland's input isolation). Package names are hardcoded (no injection).
+  (`brightnessctl`, `playerctl`, `wl-clipboard`, `ydotool`), adds you to the `video` group (brightness),
+  and installs a scoped **udev rule** so `ydotool` can use `/dev/uinput` via a per-session ACL —
+  deliberately **not** the `input` group, so no process gains system-wide keystroke read (which would
+  defeat Wayland's input isolation). Package names are hardcoded (no injection). Screenshots go through
+  GNOME's consent-based screen-capture **portal** (via `computer-use-linux`), never a silent grabber.
+- **Fully reversible.** Setup records every system change to `~/.local/state/ai-linux/install-manifest.tsv`,
+  and **`./ai-linux uninstall`** reverts exactly those deltas (`--dry-run` to preview, `--purge` for a deep
+  clean). Nothing is installed that you can't cleanly remove.
 - **No inbound network.** No listening socket is opened. Ollama is reached only on `127.0.0.1:11434`;
   an optional cloud brain (Groq/OpenAI-compatible) is outbound HTTPS. MCP tool servers use stdio.
 - **No secrets in the repo.** API keys are read from environment variables only (`GROQ_API_KEY` /

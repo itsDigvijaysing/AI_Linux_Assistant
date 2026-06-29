@@ -162,6 +162,56 @@ Speech (Parakeet/Kokoro on CPU), MCP tools, and the safety gate are identical ac
 remote. The Groq key comes from `GROQ_API_KEY` (engine env fallback generalized to
 `GLADOS_API_KEY`/`GROQ_API_KEY`/`MINIMAX_API_KEY`) and is **never stored in a config**. Local stays the focus.
 
+## 2i. v1 COMPLETE + committed + security-hardened (2026-06-27)
+
+Everything below is implemented, verified, and **committed** — HEAD `4574bf2` on `main`, working tree clean.
+Earlier "Never commit" was lifted: the user gave explicit per-change permission (short, plain messages, **no
+AI/Claude attribution**). Session commits on top of `a07bc24`: `2d398c3` (v1 features), `934699d` (desktop
+tools by default), `6b8374b` (skill-cmd extraction fix), `4574bf2` (security hardening).
+
+What shipped beyond the Phase 1–7 baseline:
+- **Skills now EXECUTE, not just retrieve.** Per turn the engine retrieves the best `SKILL-*.md`, narrows the
+  offered tools, and **injects that skill's exact command into the user message** → small qwen3 reliably emits
+  one `mcp.shell.run_command` call. A system-message hint was found to SUPPRESS tool-calling (0/5 → 4/4). 16
+  desktop skills (brightness/volume/lock/suspend/night-light/DND/screenshot/media/clipboard/open-app/link/…).
+- **Self-improving skills + hybrid RAG:** `skills_retrieval: hybrid` (keyword-first, local `nomic-embed-text`
+  semantic fallback); `mcp.skills_writer.save_skill` + `/learn` write `skills/learned/`; `skills_feedback.py`
+  logs returncode-aware outcomes; `/tidy` reorganizes.
+- **Voice/audio:** TTS default = **SuperTonic-3** (`supertonic:M1`, Kokoro fallback); **barge-in default** via a
+  new **PipeWire WebRTC AEC** backend (`pipewire_io.py`, `--half-duplex` to disable) — revisits the earlier
+  "AEC infeasible" verdict (works as a PipeWire backend, just not via conda's raw-ALSA PortAudio).
+- **UI:** native flowing multi-color GNOME-overlay orb (per-state), wake-word **conversation window** (say
+  "computer" once → ~30 s of wake-free follow-ups), live voice switch via `mcp.voice`.
+- **Security (no-sudo runtime — confirmed):** the running assistant never escalates; only `./ai-linux setup`
+  uses sudo (one-time apt + `video` group + a **scoped `/dev/uinput` udev rule**, NOT the `input` group). Added
+  a **catastrophic-only destructive-command denylist** (`shell_server._destructive_reason`, the single exec
+  chokepoint — 24 blocked / 21 benign allowed), untrusted-content prompt framing, 0700 state/data dirs,
+  randomized TTS temp names. Full model in **`SECURITY.md`**. The arm-based action gate + autonomy hard-floor
+  are unchanged and remain the primary control.
+
+**Remaining = user-only (NOT code):** run `./ai-linux setup` once (the one-time sudo), a live voice+GPU run,
+and one GNOME log out/in (Wayland: overlay extension + AT-SPI window targeting). Deferred by design:
+per-action confirmation modal (reserved `prompt_fn`), Ollama checksum pinning, heavier executor for complex
+multi-step tasks.
+
+## 2j. Reversible installs + remove the stray GNOME icon (2026-06-27, follow-up)
+
+Two user requests after the live install: (1) a clean **uninstall/revert**, and (2) a new GNOME "Screenshot"
+app-grid icon they didn't ask for.
+- **Root cause of the icon:** `setup` apt-installed **`gnome-screenshot`**, which ships a visible `.desktop`
+  (no `NoDisplay`). It is also broken on GNOME 50/Wayland. The orb + the two Shell extensions are intended.
+- **Fix:** dropped `gnome-screenshot` from the default install; screenshots now use **`bin/ai-linux-screenshot`**,
+  a stdlib MCP client that drives `computer-use-linux`'s sanctioned, pre-authorized screen-capture portal and
+  saves a PNG to `~/Pictures` (no extra package, no app icon, no silent grab). The take-screenshot skill stays a
+  shell skill so the reliable command-injection applies. (Remove the already-installed package once with
+  `sudo apt-get remove -y gnome-screenshot`.)
+- **Uninstall/revert ("inversion file"):** `setup` now records every system change to
+  `~/.local/state/ai-linux/install-manifest.tsv`. **`./ai-linux uninstall`** (alias `revert`) reverts exactly
+  those deltas — our files, both GNOME extensions, the udev rule, the `video`-group add, the apt packages WE
+  installed — with a deterministic fallback when no manifest exists. `--dry-run` previews, `--keep-packages`
+  skips apt, `--purge` also drops the conda env, Ollama models, weights, and config/data. Records are
+  pre-existence-gated, so it never removes something that was already there.
+
 ## 3. Architecture
 
 ```
