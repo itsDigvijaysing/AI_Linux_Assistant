@@ -35,9 +35,13 @@ threat model, what's guaranteed, and the safeguards.
    so the assistant can act; `./ai-linux --no-actions` runs it disarmed (chat/info only).
 2. **Autonomy hard-floor:** the autonomous loop can **never** run gated actions, regardless of env/config.
 3. **Destructive-command denylist** (`mcp/shell_server.py`): a conservative backstop that refuses clearly
-   catastrophic commands (`rm -rf /`/`~`/`$HOME`/`/home`, `dd of=/dev/…`, `mkfs`/`wipefs`/`shred`, redirect
-   to a raw disk, fork bomb, `chmod/chown -R /`, `curl … | sh`) **regardless of how the command was
-   produced** (model, skill, or learned skill). It is a safety net, not a sandbox.
+   catastrophic commands (`rm -rf /`/`~`/`$HOME`/`/home` — including long-form `--recursive --force`, quoted,
+   `~user`, and chained/`cd <root> &&` variants — `dd of=/dev/…`, `mkfs`/`wipefs`/`shred`, redirect to a raw
+   disk, fork bomb, `chmod/chown -R /`, `curl … | sh`) **regardless of how the command was produced** (model,
+   skill, or learned skill). It matches the *literal* command text, so it **cannot** catch indirection —
+   `X=/; rm -rf $X`, `eval "$cmd"`, `python -c 'shutil.rmtree(…)'`, `find / -exec rm -rf {} +`,
+   `… | base64 -d | sh`, and similar. It is a safety net, **not a sandbox**; the **action gate** (1) is the
+   real boundary.
 4. **Prompt-injection mitigation:** the system prompt instructs the model to treat tool/file/web/screenshot
    text as untrusted *data*, never instructions, and to refuse data-destroying actions.
 

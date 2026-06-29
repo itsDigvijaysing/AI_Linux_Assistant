@@ -52,27 +52,52 @@ _DENY: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+# Top-level roots: a recursive force-delete OR a `cd` target hitting one of these is catastrophic.
+# A `cd` into anything NOT in this set is treated as scoping (so `cd ~/proj && rm -rf *` stays allowed).
+_ROOT_TARGETS = frozenset(
+    {"", "/", "~", "~/", "$HOME", "$HOME/", "${HOME}", "${HOME}/", "/home", "/home/", _HOME, _HOME + "/"}
+)
+
+
+def _is_root_target(target: str) -> bool:
+    """True if a `cd` target is a top-level root (so cd-ing into it does NOT scope a bare-* delete).
+
+    Bare `cd` (empty target) goes to $HOME, which is also a root.
+    """
+    return target.strip().strip('"').strip("'") in _ROOT_TARGETS
+
+
 def _destructive_reason(command: str) -> str | None:
     """Return a reason string if the command matches a catastrophic pattern, else None."""
     c = " ".join(command.split())  # normalize whitespace
     for pattern, reason in _DENY:
         if pattern.search(c):
             return reason
-    # rm with recursive+force flags AND a top-level target (/, ~, $HOME, /home, the home dir) — but NOT
-    # a subfolder like ~/Downloads (those stay allowed).
-    m = re.search(r"\brm\b(.*)", c)
-    if m:
-        rm_args = re.split(r"[;&|]", m.group(1))[0]  # only THIS rm's args (stop at a command separator)
-        flags = "".join(re.findall(r"(?:^|\s)-([A-Za-z]+)", rm_args)).lower()
-        if "r" in flags and "f" in flags:
-            home = re.escape(_HOME)
-            roots = rf"(?:^|\s)(?:/|~|~/|\$HOME|\$\{{HOME\}}|/home|/home/|{home}|{home}/)(?:\s|$)"
-            globs = rf"(?:^|\s)(?:/\*|~/\*|/home/\*|{home}/\*)(?:\s|$)"
-            if re.search(roots, rm_args) or re.search(globs, rm_args):
-                return "recursive force-delete of a top-level path"
-            # bare *, ., ./ wipe the current dir — and the shell's cwd is the user's home. Block UNLESS a
-            # `cd` earlier in the command moved into a subfolder (then it's a scoped clear, allowed).
-            if re.search(r"(?:^|\s)(?:\*|\.|\./)(?:\s|$)", rm_args) and not re.search(r"\bcd\s", c[: m.start()]):
+    # rm with recursive+force flags AND a top-level target (/, ~, $HOME, /home, the home dir, ~user) — but
+    # NOT a subfolder like ~/Downloads (those stay allowed). Every rm in a chained command is checked, and
+    # long-form flags (--recursive/--force) are normalized first so they can't slip past the short-flag scan.
+    home = re.escape(_HOME)
+    roots = (
+        rf"(?:^|\s)(?:/|~/|~\w+|~|\$HOME/|\$HOME|\$\{{HOME\}}/|\$\{{HOME\}}|"
+        rf"/home/|/home|{home}/|{home})(?:\s|$)"
+    )
+    globs = rf"(?:^|\s)(?:/\*|~/\*|/home/\*|{home}/\*)(?:\s|$)"
+    for m in re.finditer(r"\brm\b", c):
+        rm_args = re.split(r"[;&|]", c[m.end() :])[0]  # only THIS rm's args (stop at a command separator)
+        norm = re.sub(r"--recursive(?:=\S*)?", " -r ", rm_args)  # long flags -> short so findall sees them
+        norm = re.sub(r"--force(?:=\S*)?", " -f ", norm)
+        flags = "".join(re.findall(r"(?:^|\s)-([A-Za-z]+)", norm)).lower()
+        if "r" not in flags or "f" not in flags:
+            continue
+        scan = rm_args.replace('"', " ").replace("'", " ")  # strip quotes so the boundary regex still matches
+        if re.search(roots, scan) or re.search(globs, scan):
+            return "recursive force-delete of a top-level path"
+        # bare *, ., ./ wipe the current dir — the shell's cwd is the user's home (a root). Block UNLESS a
+        # `cd` into a NON-root subfolder precedes this rm (then it's a scoped clear, allowed). A bare `cd`
+        # or `cd <root>` does NOT scope it.
+        if re.search(r"(?:^|\s)(?:\*|\.|\./)(?:\s|$)", scan):
+            cds = re.findall(r"\bcd\b\s*([^\s;&|]*)", c[: m.start()])  # governing cd = the last one
+            if not cds or _is_root_target(cds[-1]):
                 return "recursive force-delete of the home directory contents"
     return None
 
