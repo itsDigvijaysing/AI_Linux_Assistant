@@ -242,6 +242,19 @@ class GladosConfig(BaseModel):
         return [prompt.to_chat_message() for prompt in self.personality_preprompt]
 
 
+def _parse_oneshot_response(resp: dict, is_ollama: bool) -> str:
+    """Extract reply text from a non-streaming LLM response. Pure (offline-testable).
+
+    Ollama /api/chat -> {"message": {"content": ...}} (or legacy {"response": ...});
+    OpenAI/Groq -> {"choices": [{"message": {"content": ...}}]}.
+    """
+    if is_ollama:
+        text = (resp.get("message") or {}).get("content") or resp.get("response") or ""
+    else:
+        text = ((resp.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    return text.strip() or "(no report generated)"
+
+
 class Glados:
     """
     Glados voice assistant orchestrator.
@@ -1453,9 +1466,17 @@ class Glados:
             return f"Tidy failed: {exc}"
 
     def _oneshot_llm(self, prompt: str) -> str:
-        """One-shot, non-streaming call to the configured brain (used by /tidy); returns the reply text."""
-        import requests
+        """One-shot, non-streaming call to the configured brain (used by /tidy); returns the reply text.
 
+        Handles both endpoint shapes: native Ollama ``/api/chat`` and OpenAI/Groq ``/chat/completions``.
+        """
+        import requests
+        from urllib.parse import urlparse
+
+        try:
+            is_ollama = urlparse(str(self.completion_url)).path.rstrip("/").endswith("/api/chat")
+        except Exception:  # noqa: BLE001
+            is_ollama = False
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -1463,11 +1484,11 @@ class Glados:
             "model": self.llm_model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "think": False,
         }
+        if is_ollama:
+            payload["think"] = False  # native-Ollama-only field; strict OpenAI servers 400 on unknown keys
         resp = requests.post(str(self.completion_url), json=payload, headers=headers, timeout=120).json()
-        msg = resp.get("message") or {}
-        return (msg.get("content") or resp.get("response") or "").strip() or "(no report generated)"
+        return _parse_oneshot_response(resp, is_ollama)
 
     def _cmd_help(self, _args: list[str]) -> str:
         lines = ["Commands:"]

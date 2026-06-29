@@ -77,6 +77,7 @@ class OverlayBridge:
         self._thread: threading.Thread | None = None
         self._last_control_mtime = 0.0
         self._last_voice_applied = ""
+        self._voice_attempt: tuple[str, int, float] | None = None  # (value, attempts, next_retry_ts) while failing
         self._last_event_ts = time.time()
         self._you = ""
         self._assistant = ""
@@ -240,15 +241,35 @@ class OverlayBridge:
             logger.debug("OverlayBridge: voice.json unreadable this tick ({}); retrying", exc)
             return
         voice = data.get("voice") if isinstance(data, dict) else None
-        if not voice or str(voice) == self._last_voice_applied:
+        if not voice:
             return
-        self._last_voice_applied = str(voice)  # attempt once per distinct requested value
+        voice = str(voice)
+        if voice == self._last_voice_applied:
+            return
+        # Latch only after set_voice actually succeeds. A failing value (bad id, or a TTS with no runtime
+        # switching) must not call set_voice 10x/sec forever, so back off and give up after a few tries;
+        # the counter resets when a *different* voice is requested.
+        now = time.time()
+        attempts = 0
+        if self._voice_attempt and self._voice_attempt[0] == voice:
+            _, attempts, next_retry_ts = self._voice_attempt
+            if attempts >= 3 or now < next_retry_ts:
+                return
         setter = getattr(self.engine, "set_voice", None)
+        ok = False
         if callable(setter):
             try:
-                setter(str(voice))
+                ok = bool(setter(voice))
             except Exception as exc:  # noqa: BLE001 - voice switching must never break the loop
-                logger.warning("OverlayBridge: set_voice failed: {}", exc)
+                logger.warning("OverlayBridge: set_voice raised: {}", exc)
+        if ok:
+            self._last_voice_applied = voice  # success: stop retrying this value
+            self._voice_attempt = None
+        else:
+            attempts += 1
+            self._voice_attempt = (voice, attempts, now + 1.0)  # ~1s backoff, up to 3 tries
+            if attempts >= 3:
+                logger.warning("OverlayBridge: giving up on voice '{}' after {} failed attempts", voice, attempts)
 
     # ------------------------------------------------------------------ transcript
     def _scan_transcript(self) -> None:

@@ -55,6 +55,14 @@ def recent(limit: int = 200) -> list[dict]:
         return []
     try:
         lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
-        return [json.loads(line) for line in lines if line.strip()]
     except Exception:  # noqa: BLE001
         return []
+    out: list[dict] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except Exception:  # noqa: BLE001 - skip one corrupt/partial line, keep the rest of the history
+            continue
+    return out
