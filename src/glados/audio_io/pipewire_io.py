@@ -208,7 +208,7 @@ class PipeWireAudioIO:
 
         audio = self._pending_audio
         if audio is None:
-            return False, 100
+            return False, -1  # sentinel: nothing queued, nothing played
         sr = sample_rate or self._pending_sample_rate
         stop = self._stop_event
         # pw-play needs a recognized container (raw PCM via stdin is rejected by libsndfile), so write a

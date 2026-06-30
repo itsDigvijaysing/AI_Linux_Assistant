@@ -356,7 +356,7 @@ class SoundDeviceAudioIO:
         """
         audio_data = self._pending_audio
         if audio_data is None:
-            return False, 100
+            return False, -1  # sentinel: nothing queued, nothing played
 
         if sample_rate is None:
             sample_rate = self._pending_sample_rate
