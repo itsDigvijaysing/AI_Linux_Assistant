@@ -92,11 +92,12 @@ def _destructive_reason(command: str) -> str | None:
     # NOT a subfolder like ~/Downloads (those stay allowed). Every rm in a chained command is checked, and
     # long-form flags (--recursive/--force) are normalized first so they can't slip past the short-flag scan.
     home = re.escape(_HOME)
+    bound = r"(?:\s|$|\))"  # token ends at whitespace, end, or a subshell ')' — so '(rm -rf /)' is caught
     roots = (
         rf"(?:^|\s)(?:/|~/|~\w+|~|\$HOME/|\$HOME|\$\{{HOME\}}/|\$\{{HOME\}}|"
-        rf"/home/|/home|{home}/|{home})(?:\s|$)"
+        rf"/home/|/home|{home}/|{home}){bound}"
     )
-    globs = rf"(?:^|\s)(?:/\*|~/\*|/home/\*|{home}/\*)(?:\s|$)"
+    globs = rf"(?:^|\s)(?:/\*|~/\*|/home/\*|{home}/\*){bound}"
     for m in re.finditer(r"\brm\b", c):
         rm_args = re.split(r"[;&|]", c[m.end() :])[0]  # only THIS rm's args (stop at a command separator)
         norm = re.sub(r"--recursive(?:=\S*)?", " -r ", rm_args)  # long flags -> short so findall sees them
@@ -110,7 +111,7 @@ def _destructive_reason(command: str) -> str | None:
         # bare *, ., ./ wipe the current dir — the shell's cwd is the user's home (a root). Block UNLESS a
         # `cd` into a NON-root subfolder precedes this rm (then it's a scoped clear, allowed). A bare `cd`
         # or `cd <root>` does NOT scope it.
-        if re.search(r"(?:^|\s)(?:\*|\.|\./)(?:\s|$)", scan):
+        if re.search(rf"(?:^|\s)(?:\*|\.|\./){bound}", scan):
             cds = re.findall(r"\bcd\b\s*([^\s;&|]*)", c[: m.start()])  # governing cd = the last one
             if not cds or _is_root_target(cds[-1]):
                 return "recursive force-delete of the home directory contents"

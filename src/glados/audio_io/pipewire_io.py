@@ -127,7 +127,7 @@ class PipeWireAudioIO:
         return self._sample_queue
 
     def start_listening(self) -> None:
-        if self._rec_proc is not None:
+        if self._rec_proc is not None or (self._reader is not None and self._reader.is_alive()):
             self.stop_listening()
         self._ensure_aec()
         self._stop_rec.clear()
@@ -184,10 +184,13 @@ class PipeWireAudioIO:
             self._rec_proc = None
         # Join the reader (its blocking read unblocks on the proc's EOF above) BEFORE a restart's
         # _stop_rec.clear(), so a quick stop->start never runs two readers on the one sample queue.
+        # Only drop the reference once it's actually dead; if the join times out, keep it so the next
+        # start_listening's guard re-joins it instead of spawning a second reader alongside it.
         reader = self._reader
         if reader is not None and reader.is_alive():
             reader.join(timeout=1.5)
-        self._reader = None
+        if reader is None or not reader.is_alive():
+            self._reader = None
         self.input_stream = None
 
     # ------------------------------------------------------------------ playback
@@ -225,6 +228,7 @@ class PipeWireAudioIO:
         dur = len(audio) / sr if sr else 0.0
         interrupted = False
         dropped = False
+        play_rc: int | None = None
         t0 = time.monotonic()
         try:
             self._play_proc = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
@@ -249,6 +253,7 @@ class PipeWireAudioIO:
                         p.kill()
                     except Exception:  # noqa: BLE001
                         pass
+                play_rc = p.returncode
             self._play_proc = None
             self._is_playing = False
             try:
@@ -259,6 +264,9 @@ class PipeWireAudioIO:
             return False, -1  # sentinel: player binary missing, nothing was heard
         if interrupted:
             return True, (min(int((time.monotonic() - t0) / dur * 100), 100) if dur > 0 else 0)
+        if play_rc not in (0, None):  # pw-play launched but exited non-zero (sink gone, ALSA busy) -> not heard
+            logger.warning("pw-play exited {}; audio dropped", play_rc)
+            return False, -1
         return False, 100
 
     def check_if_speaking(self) -> bool:
