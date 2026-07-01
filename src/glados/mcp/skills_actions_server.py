@@ -14,6 +14,8 @@ import json
 import logging
 import re
 import shlex
+import shutil
+import urllib.parse
 
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
@@ -36,6 +38,42 @@ _KNOWN_FOLDERS = {
 def _run(command: str) -> str:
     """Execute a fixed/curated command through the shared gated executor; return its JSON result."""
     return json.dumps(run_shell(command))
+
+
+# Friendly app name -> executable / .desktop id (binary preferred when it's on PATH; robust vs gtk-launch).
+_APP_ALIASES = {
+    "brave": "brave-browser", "brave browser": "brave-browser", "brave-browser": "brave-browser",
+    "chrome": "google-chrome", "google chrome": "google-chrome", "chromium": "chromium",
+    "firefox": "firefox",
+    "vscode": "code", "vs code": "code", "code": "code", "visual studio code": "code",
+    "files": "nautilus", "file manager": "nautilus", "nautilus": "nautilus",
+    "terminal": "ptyxis", "console": "ptyxis",
+    "text editor": "gnome-text-editor", "editor": "gnome-text-editor",
+    "calculator": "gnome-calculator",
+}
+_SEARCH_SITES = {
+    "web": "https://www.google.com/search?q=", "google": "https://www.google.com/search?q=",
+    "youtube": "https://www.youtube.com/results?search_query=",
+    "maps": "https://www.google.com/maps/search/",
+    "github": "https://github.com/search?q=",
+    "wikipedia": "https://en.wikipedia.org/w/index.php?search=",
+}
+
+
+def _is_url(s: str) -> bool:
+    low = s.lower()
+    return "://" in s or low.startswith("www.") or bool(
+        re.match(r"^[\w.-]+\.(com|org|net|io|dev|gov|edu|co|ai|app|tv)(/|$)", low)
+    )
+
+
+def _launch_app(name: str) -> str:
+    """Launch a GUI app by friendly name: alias -> run the binary if on PATH -> gtk-launch -> xdg-open."""
+    key = re.sub(r"\s+", " ", name.strip().lower())
+    target = _APP_ALIASES.get(key, key.replace(" ", "-"))
+    if shutil.which(target):
+        return _run(shlex.quote(target))  # launch the binary directly (works on Wayland; no gtk-launch quirks)
+    return _run(f"gtk-launch {shlex.quote(target)} || xdg-open {shlex.quote(name)}")  # .desktop id, then guess
 
 
 @mcp.tool()
@@ -88,19 +126,26 @@ def take_screenshot(window: str = "") -> str:
 
 @mcp.tool()
 def open_app_or_link(target: str) -> str:
-    """Open/launch an application, file, folder, or website. target = an app name, a path, or a URL."""
+    """Open/launch an application (e.g. 'brave', 'vs code', 'files'), a file/folder path, or a website URL."""
     t = (target or "").strip()
     if not t:
         return json.dumps({"error": "open_app_or_link needs a target (app name, path, or URL)"})
-    low = t.lower()
-    if "://" in t or low.startswith("www.") or re.match(r"^[\w.-]+\.(com|org|net|io|dev|gov|edu|co)(/|$)", low):
+    if _is_url(t):
         url = t if "://" in t else "https://" + t
         return _run(f"xdg-open {shlex.quote(url)}")
     if t.startswith(("/", "~", "$HOME")):
         return _run(f"xdg-open {shlex.quote(t)}")
-    if re.fullmatch(r"[\w.+-]+", t):  # a bare token -> treat as an application id (Files=org.gnome.Nautilus, etc.)
-        return _run(f"gtk-launch {shlex.quote(t)}")
-    return _run(f"xdg-open {shlex.quote(t)}")
+    return _launch_app(t)  # an application name -> resolve + launch
+
+
+@mcp.tool()
+def search_web(query: str, site: str = "web") -> str:
+    """Search the web in the browser. site = 'web'/'google', 'youtube', 'maps', 'github', or 'wikipedia'."""
+    q = (query or "").strip()
+    if not q:
+        return json.dumps({"error": "search_web needs a query"})
+    base = _SEARCH_SITES.get((site or "web").strip().lower(), _SEARCH_SITES["web"])
+    return _run(f"xdg-open {shlex.quote(base + urllib.parse.quote(q))}")
 
 
 @mcp.tool()

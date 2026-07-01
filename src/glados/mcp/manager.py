@@ -1,5 +1,6 @@
 import asyncio
 import fnmatch
+import os
 import subprocess
 import threading
 import time
@@ -270,7 +271,13 @@ class MCPManager:
         if config.transport == "stdio":
             if not config.command:
                 raise MCPError(f"MCP server '{config.name}' requires a command for stdio transport.")
-            params = StdioServerParameters(command=config.command, args=config.args, env=config.env)
+            # The MCP SDK scrubs the child env to a safe default (HOME/PATH/SHELL/TERM/USER/LOGNAME) and DROPS
+            # the display/session vars — so GUI launches (gtk-launch/xdg-open/brave-browser) and the portal
+            # (XDG_RUNTIME_DIR/DBUS) fail. Passing a non-None env MERGES with that default, so we only add the
+            # missing GUI/session vars from our own environment.
+            _GUI_ENV = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP")
+            env = {**{k: os.environ[k] for k in _GUI_ENV if k in os.environ}, **(config.env or {})}
+            params = StdioServerParameters(command=config.command, args=config.args, env=(env or None))
             # Suppress subprocess stderr to prevent MCP logs from corrupting TUI
             return stdio_client(params, errlog=subprocess.DEVNULL)
 
