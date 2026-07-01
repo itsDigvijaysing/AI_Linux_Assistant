@@ -113,10 +113,12 @@ apply_settings(){
   [ -f "$f" ] || return 0
   local m t w
   m="$(python3 -c "import json;print(json.load(open('$f')).get('model',''))" 2>/dev/null)"
-  t="$(python3 -c "import json;print(str(json.load(open('$f')).get('think',False)).lower())" 2>/dev/null)"
+  t="$(python3 -c "import json;d=json.load(open('$f'));print('' if 'think' not in d else str(d['think']).lower())" 2>/dev/null)"
   w="$(python3 -c "import json;print(json.load(open('$f')).get('wake_word',''))" 2>/dev/null)"
   [ -n "$m" ] && { MODEL="$m"; export GLADOS_LLM_MODEL="$m"; }
-  if [ "$t" = "true" ]; then export GLADOS_LLM_THINK=1; else export GLADOS_LLM_THINK=0; fi  # 0 = reasoning off = fast voice
+  # Only override reasoning when the Settings panel sets it EXPLICITLY; otherwise keep the config default
+  # (llm_think: true). Verified: reasoning OFF leaks the model's thinking into spoken content on qwen3.
+  case "$t" in true) export GLADOS_LLM_THINK=1 ;; false) export GLADOS_LLM_THINK=0 ;; esac
   if [ -n "$w" ]; then                              # listening mode/word chosen in the overlay settings
     [ "$w" != "always" ] && [ "$w" != "click" ] && export GLADOS_OVERLAY_WAKE="$w"  # carry a custom wake word
     if [ "${OMODE_FROM_CLI:-0}" != 1 ]; then        # explicit --overlay-mode wins; only steer if it was absent
@@ -192,11 +194,14 @@ ensure_binary(){  # optional desktop-control server
       gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$CU_EXT_UUID" && manifest_add gext_enabled "$CU_EXT_UUID"
       c_ok "window-targeting bridge extension installed ($CU_EXT_UUID)"
     fi
-    # Screenshot helper: saves a PNG via computer-use's sanctioned capture portal (no gnome-screenshot, no app icon).
-    if [ -f "$HERE/bin/ai-linux-screenshot" ]; then
-      install -Dm755 "$HERE/bin/ai-linux-screenshot" "$HOME/.local/bin/ai-linux-screenshot" 2>/dev/null \
-        && { manifest_add file "$HOME/.local/bin/ai-linux-screenshot"; c_ok "screenshot helper installed (~/.local/bin/ai-linux-screenshot)"; }
-    fi
+  fi
+}
+ensure_screenshot(){  # install the portal-based screenshot helper to ~/.local/bin — UNCONDITIONAL (works without computer-use).
+  # Saves a PNG via computer-use's sanctioned capture portal (no gnome-screenshot, no app-grid icon).
+  if [ -f "$HERE/bin/ai-linux-screenshot" ]; then
+    if install -Dm755 "$HERE/bin/ai-linux-screenshot" "$HOME/.local/bin/ai-linux-screenshot" 2>/dev/null; then
+      manifest_add file "$HOME/.local/bin/ai-linux-screenshot"; c_ok "screenshot helper installed (~/.local/bin/ai-linux-screenshot)"
+    else c_warn "could not install screenshot helper to ~/.local/bin"; fi
   fi
 }
 ensure_desktop_tools(){  # one-time apt for brightness/media/clipboard/input; skipped (no sudo) if already present.
@@ -312,6 +317,7 @@ cmd_setup(){
   c_say "GNOME launcher + icon";          ensure_desktop
   c_say "On-screen overlay (extension)";  ensure_overlay
   c_say "Desktop tools (brightness/media/clipboard/input)"; ensure_desktop_tools
+  c_say "Screenshot helper";               ensure_screenshot
   c_say "Setup complete"
   [ -f "$MANIFEST" ] && c_ok "changes recorded in $MANIFEST (./ai-linux uninstall reverts them)"
   echo "   Launch:    ./ai-linux        (or click 'AI Linux Assistant' in the app grid)"
@@ -464,6 +470,7 @@ cmd_doctor(){
 # ---- make sure we can launch; auto-setup on a fresh machine ----
 ensure_ready_for_run(){
   resolve_conda
+  export PATH="$HOME/.local/bin:$PATH"   # so the shell/skills tools resolve ~/.local/bin binaries (ai-linux-screenshot, etc.) in the conda-run subprocess
   apply_settings
   if ! env_exists; then c_warn "first run — setting up (one time)…"; cmd_setup; fi
   if [ "$SUB" != "say" ] && [[ "$CONFIG" == *ai_linux_config.yaml ]]; then  # local brain needs Ollama (not `say`, which is TTS-only)
