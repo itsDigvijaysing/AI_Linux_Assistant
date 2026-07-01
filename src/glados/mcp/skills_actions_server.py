@@ -101,18 +101,9 @@ def set_volume(action: str = "", percent: int = -1) -> str:
 
 
 @mcp.tool()
-def lock_or_suspend(action: str = "lock") -> str:
-    """Lock the screen, suspend/sleep the laptop, or log out. action = 'lock' | 'suspend' | 'logout'."""
-    a = (action or "lock").strip().lower()
-    cmd = {
-        "lock": "loginctl lock-session",
-        "suspend": "systemctl suspend",
-        "sleep": "systemctl suspend",
-        "logout": "gnome-session-quit --logout --no-prompt",
-    }.get(a)
-    if not cmd:
-        return json.dumps({"error": "lock_or_suspend needs action lock|suspend|logout"})
-    return _run(cmd)
+def lock_screen() -> str:
+    """Lock the screen. Locking ONLY — this never suspends, sleeps, logs out, or turns off the computer."""
+    return _run("loginctl lock-session")
 
 
 @mcp.tool()

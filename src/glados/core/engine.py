@@ -570,6 +570,8 @@ class Glados:
                 "tts_queue": self.tts_queue,
                 "preferences_store": self.preferences_store,
                 "slot_store": self.autonomy_slots,
+                "speech_listener": self.speech_listener,  # for the go_to_sleep tool (end the wake session)
+                "audio_io": self.audio_io,
             },
             tool_timeout=self.tool_timeout,
             pause_time=self.PAUSE_TIME,
