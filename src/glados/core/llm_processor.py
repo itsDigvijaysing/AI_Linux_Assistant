@@ -319,49 +319,6 @@ class LanguageModelProcessor:
                 continue
             tool_call["function"]["name"] = self._normalize_tool_name(tool_name, tool_names)
 
-    @staticmethod
-    def _filter_tools_for_message(tools: list[dict[str, Any]], content: str) -> list[dict[str, Any]]:
-        text = content.casefold()
-        wants_system = any(
-            keyword in text
-            for keyword in (
-                "system",
-                "status",
-                "cpu",
-                "memory",
-                "ram",
-                "disk",
-                "storage",
-                "network",
-                "ip",
-                "uptime",
-                "temperature",
-                "temp",
-                "process",
-                "battery",
-                "power",
-                "load",
-            )
-        )
-        wants_clap = "clap" in text
-        # AI_Linux: the action + skill + voice tools are the whole point of this assistant
-        # ("open firefox", "run ls", "find a skill", "use a female voice"), and such requests
-        # contain none of the system-status keywords above — so never hide them behind the
-        # heuristic (mcp.voice.* in particular must stay offered or voice-switch requests can
-        # never reach the model). Execution is still governed by the action safety gate
-        # (tool_safety.py), so merely offering them to the model is safe; only the read-only
-        # info servers stay keyword-gated to keep the small local model focused.
-        always_offer = ("mcp.shell.", "mcp.computer_use.", "mcp.skills.", "mcp.skills_writer.", "mcp.voice.")
-        filtered: list[dict[str, Any]] = []
-        for tool in tools:
-            name = tool.get("function", {}).get("name", "")
-            if name == "slow clap" and not wants_clap:
-                continue
-            if name.startswith("mcp.") and not wants_system and not name.startswith(always_offer):
-                continue
-            filtered.append(tool)
-        return filtered
-
     def _process_tool_call(
         self,
         tool_calls: list[dict[str, Any]],
