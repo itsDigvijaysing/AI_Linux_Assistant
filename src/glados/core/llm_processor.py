@@ -92,9 +92,10 @@ class LanguageModelProcessor:
         self._lane = lane
         self._inflight_counter = inflight_counter
         self._think = think  # None=leave model default; False=no_think (low latency); True=force reasoning
-        self._skills_hint_enabled = skills_hint_enabled  # inject the matching skill's exact command per turn
+        self._skills_hint_enabled = skills_hint_enabled  # (legacy; injection removed — skills are native tools now)
         self._skills_hint_k = skills_hint_k
         self._ollama_mode = self._is_ollama_endpoint()
+        self._reply_accumulator: list[str] = []  # spoken sentences of the current turn -> one transcript event at EOS
 
         self.prompt_headers = {"Content-Type": "application/json"}
         if api_key:
@@ -457,8 +458,23 @@ class LanguageModelProcessor:
         sentence = re.sub(r"\*.*?\*|\(.*?\)", "", sentence)
         sentence = sentence.replace("\n\n", ". ").replace("\n", ". ").replace("  ", " ").replace(":", " ")
 
+        # Robustness: a weak model can emit a tool call as TEXT ({"name":...,"arguments":{...}} or an mcp.* blob)
+        # instead of a real tool_call. Never speak raw JSON — drop the fragment (the reliable path is a real call).
+        low = sentence.lower()
+        looks_toolish = (
+            '"arguments"' in low
+            or ('"name"' in low and ("{" in sentence or "mcp." in low))
+            or ("mcp." in low and ('"' in sentence or "{" in sentence or "}" in sentence))
+        )
+        if not re.sub(r'[\s{}\[\]",:]+', "", sentence):  # nothing but JSON punctuation -> don't speak
+            return
+        if looks_toolish and ('"' in sentence or "{" in sentence or "}" in sentence):
+            logger.warning("LLM Processor: not speaking tool-call/JSON fragment: {}", sentence[:80])
+            return
+
         if sentence and sentence != ".":  # Avoid sending just a period
             logger.info(f"LLM Processor: Sending to TTS queue: '{sentence}'")
+            self._reply_accumulator.append(sentence)  # for the single per-turn transcript event (emitted at EOS)
             self.tts_input_queue.put(sentence)
 
     def _extract_thinking(
@@ -907,8 +923,16 @@ class LanguageModelProcessor:
                     if self.processing_active_event.is_set():  # Only send EOS if not interrupted
                         logger.debug("LLM Processor: Sending EOS token to TTS queue.")
                         self.tts_input_queue.put("<EOS>")
+                        # ONE transcript event per turn (the full spoken reply) so the overlay shows a single
+                        # bubble instead of one per streamed sentence.
+                        if not autonomy_mode and self._observability_bus and self._reply_accumulator:
+                            full_reply = " ".join(self._reply_accumulator).strip()
+                            if full_reply:
+                                self._observability_bus.emit(source="llm", kind="reply", message=full_reply)
+                        self._reply_accumulator = []
                     else:
                         logger.info("LLM Processor: Interrupted, not sending EOS from LLM processing.")
+                        self._reply_accumulator = []
                         # The AudioPlayer will handle clearing its state.
                         # If an EOS was already sent by TTS from a *previous* partial sentence,
                         # this could lead to an early clear of currently_speaking.

@@ -292,8 +292,12 @@ class OverlayBridge:
             if kind == "user_input" and src in ("asr", "text"):
                 self._you = msg
                 self._you_ts = ts
-            elif src == "tts" and kind == "play":
+            elif kind == "reply":  # the full assistant reply for the turn -> one transcript bubble
                 self._assistant = msg
+                self._assistant_ts = ts
+            elif src == "tts" and kind == "play":
+                # keep the "speaking" timestamp fresh for liveness, but DON'T set the transcript text from a
+                # single sentence (the whole reply arrives once via the 'reply' event above -> one bubble).
                 self._assistant_ts = ts
         self._last_event_ts = newest
 
