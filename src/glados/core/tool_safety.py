@@ -36,9 +36,9 @@ from typing import Any
 
 from loguru import logger
 
-_DEFAULT_CONFIRM_PATTERNS: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*")
+_DEFAULT_CONFIRM_PATTERNS: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*", "mcp.skills_actions.*")
 # Families an autonomous loop may NEVER run, independent of GLADOS_CONFIRM_TOOLS.
-_AUTONOMY_HARD_DENY: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*")
+_AUTONOMY_HARD_DENY: tuple[str, ...] = ("mcp.computer_use.*", "mcp.shell.*", "mcp.skills_actions.*")
 _TRUTHY = {"1", "true", "yes", "on"}
 
 

@@ -128,6 +128,29 @@ def system_overview() -> str:
     return json.dumps(payload)
 
 
+# Read-only status tools (no state change) — kept on this NON-gated server so they answer questions
+# even in chat/info mode. They shell out through the shared denylist-checked executor.
+@mcp.tool()
+def battery_status() -> str:
+    """Report the battery charge level and whether it is charging."""
+    from glados.mcp.shell_exec import run_shell
+
+    return json.dumps(run_shell('upower -i "$(upower -e | grep -m1 BAT)" | grep -E "state|percentage|time to"'))
+
+
+@mcp.tool()
+def network_status() -> str:
+    """Report the active network connection, IP, and whether the machine is online."""
+    from glados.mcp.shell_exec import run_shell
+
+    return json.dumps(
+        run_shell(
+            "nmcli -t -f NAME connection show --active; hostname -I; "
+            "ping -c1 -W1 8.8.8.8 >/dev/null 2>&1 && echo online || echo offline"
+        )
+    )
+
+
 def main() -> None:
     mcp.run()
 

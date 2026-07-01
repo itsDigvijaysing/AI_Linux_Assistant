@@ -742,48 +742,17 @@ class LanguageModelProcessor:
                 self._conversation_store.append(llm_message)
 
                 allow_tools = bool(llm_input.get("_allow_tools", True))
+                # Skills are native function-calling tools (mcp.skills_actions.*): the model selects them
+                # directly from the tool list, so there is NO per-turn keyword retrieval / command-suffix
+                # injection / tool-narrowing (that fragile machinery misfired on ambient words and hid the
+                # model's own capabilities). The curated tool set every turn IS the model's skill menu.
                 tools = self._build_tools(autonomy_mode) if allow_tools else []
-                cmd_suffix: str | None = None
-                if tools and not autonomy_mode and llm_message.get("role") == "user":
-                    content = str(llm_message.get("content", ""))
-                    tools = self._filter_tools_for_message(tools, content)
-                    if self._skills_hint_enabled:
-                        # When a shell-skill clearly matches, focus a small model: narrow the tool list to
-                        # shell/skills/voice (drop computer_use's 16 tools that lure it into a useless
-                        # keypress) and append the exact command to the USER turn. System-message hints
-                        # were verified to SUPPRESS tool-calling, so the command rides the user message.
-                        try:
-                            from . import skills_index
-
-                            matched = skills_index.top_skills(content, self._skills_hint_k)
-                            if skills_index.has_shell_commands(matched):
-                                focused = [
-                                    t for t in tools
-                                    if t.get("function", {}).get("name", "").startswith(
-                                        ("mcp.shell.", "mcp.skills.", "mcp.voice.")
-                                    )
-                                ]
-                                if focused:
-                                    tools = focused
-                                # Only the single best skill's commands — backfilling from the 2nd match
-                                # mixes unrelated commands (e.g. terminal + file-manager) and misleads the model.
-                                cmd_suffix = skills_index.render_command_suffix(matched[:1])
-                        except Exception as exc:  # noqa: BLE001 - retrieval must never break a turn
-                            logger.warning(f"LLM Processor: skills hint failed: {exc}")
                 tool_names = {
                     tool.get("function", {}).get("name", "")
                     for tool in tools
                     if tool.get("function", {}).get("name")
                 }
                 base_messages = self._build_messages(autonomy_mode)
-                if cmd_suffix:  # append to the last user message (a NEW dict; the conversation store is untouched)
-                    for i in range(len(base_messages) - 1, -1, -1):
-                        if base_messages[i].get("role") == "user":
-                            base_messages[i] = {
-                                **base_messages[i],
-                                "content": f"{base_messages[i].get('content', '')}{cmd_suffix}",
-                            }
-                            break
                 data = {
                     "model": self.model_name,
                     "stream": True,
