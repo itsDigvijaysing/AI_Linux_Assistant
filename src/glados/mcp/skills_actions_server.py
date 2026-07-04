@@ -40,6 +40,16 @@ def _run(command: str) -> str:
     return json.dumps(run_shell(command))
 
 
+def _launch(command: str) -> str:
+    """Launch a foreground GUI command detached so it outlives the tool call.
+
+    Without this, run_shell's 20s timeout would block the turn and then SIGKILL the app the user
+    just opened (sh -c execs a single command directly). setsid -f forks it into its own session,
+    and the /dev/null redirect keeps the child from holding run_shell's capture pipes open.
+    """
+    return _run(f"setsid -f {command} >/dev/null 2>&1")
+
+
 # Friendly app name -> executable / .desktop id (binary preferred when it's on PATH; robust vs gtk-launch).
 _APP_ALIASES = {
     "brave": "brave-browser", "brave browser": "brave-browser", "brave-browser": "brave-browser",
@@ -72,7 +82,7 @@ def _launch_app(name: str) -> str:
     key = re.sub(r"\s+", " ", name.strip().lower())
     target = _APP_ALIASES.get(key, key.replace(" ", "-"))
     if shutil.which(target):
-        return _run(shlex.quote(target))  # launch the binary directly (works on Wayland; no gtk-launch quirks)
+        return _launch(shlex.quote(target))  # launch the binary directly (works on Wayland; no gtk-launch quirks)
     return _run(f"gtk-launch {shlex.quote(target)} || xdg-open {shlex.quote(name)}")  # .desktop id, then guess
 
 
@@ -173,8 +183,8 @@ def open_settings(panel: str = "") -> str:
     """Open GNOME Settings, optionally a panel: sound, display, wifi, network, bluetooth, power, notifications, privacy."""
     p = (panel or "").strip().lower()
     if p in _SETTINGS_PANELS:
-        return _run(f"gnome-control-center {p}")
-    return _run("gnome-control-center")
+        return _launch(f"gnome-control-center {p}")
+    return _launch("gnome-control-center")
 
 
 @mcp.tool()

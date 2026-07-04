@@ -1,14 +1,23 @@
-# Skills — procedure seed
+# Skills — procedure library
 
-A tiny seed of SKILL-style procedures the assistant can follow. This is the
-**placeholder for the Phase 6 "Memory & skills" layer**: a retriever
-(keyword first, later a small hybrid RAG seeded from Fabric patterns) will pick
-the relevant SKILL at runtime and feed it to the model.
-
-These procedures are **live** via the `skills` MCP server (`glados.mcp.skills_server`,
-registered in `configs/ai_linux_config.yaml`): `list_skills` and `find_skill` let the
-model fetch the matching SKILL at runtime. Embeddings / hybrid RAG remain a future
-enhancement behind the same interface.
-
-**Format:** one markdown file per skill, short and imperative, with a small
+One markdown file per desktop procedure, short and imperative, with a small
 front-matter block (`name`, `trigger`, `tools`).
+
+**Role since the native-tools pivot (commit 305a97c):** the default runtime does NOT
+retrieve these files per turn. Each desktop capability is a typed, named
+function-calling tool in `glados.mcp.skills_actions_server` (gated, executed through the
+shared denylisted `shell_exec.run_shell`); the commands in these SKILL files are the
+curated source those tools were built from, and this library remains their reference
+documentation.
+
+The files are still consumed at runtime by:
+
+- the **optional** `skills` MCP server (`glados.mcp.skills_server`: `list_skills` /
+  `find_skill` — commented out in `configs/ai_linux_config.yaml`; re-enable to get
+  keyword/hybrid retrieval over this library again),
+- `/learn` (writes new drafts to `skills/learned/` via `skills_writer`), and
+- `/tidy` (catalog + feedback review).
+
+When a command here changes (or a capability is added/removed), update the matching
+typed tool in `skills_actions_server.py` — the SKILL file alone no longer changes
+runtime behavior.

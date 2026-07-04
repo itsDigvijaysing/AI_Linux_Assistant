@@ -66,8 +66,6 @@ class LanguageModelProcessor:
         observability_bus: ObservabilityBus | None = None,
         extra_headers: dict[str, str] | None = None,
         think: bool | None = None,
-        skills_hint_enabled: bool = True,
-        skills_hint_k: int = 2,
         lane: str = "priority",
         inflight_counter: InFlightCounter | None = None,
     ) -> None:
@@ -92,8 +90,6 @@ class LanguageModelProcessor:
         self._lane = lane
         self._inflight_counter = inflight_counter
         self._think = think  # None=leave model default; False=no_think (low latency); True=force reasoning
-        self._skills_hint_enabled = skills_hint_enabled  # (legacy; injection removed — skills are native tools now)
-        self._skills_hint_k = skills_hint_k
         self._ollama_mode = self._is_ollama_endpoint()
         self._reply_accumulator: list[str] = []  # spoken sentences of the current turn -> one transcript event at EOS
 

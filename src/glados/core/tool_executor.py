@@ -13,7 +13,8 @@ from ..tools import all_tools, tool_classes
 from . import skills_feedback
 from .tool_safety import confirm_tool_call
 
-_ACTION_PREFIXES = ("mcp.shell.", "mcp.computer_use.")  # outcomes worth logging for self-improvement
+_ACTION_PREFIXES = ("mcp.shell.", "mcp.computer_use.", "mcp.skills_actions.")  # outcomes worth logging for self-improvement
+_SHELL_RESULT_PREFIXES = ("mcp.shell.", "mcp.skills_actions.")  # tools whose result is run_shell JSON
 
 # Callback signature: (event_type: str, tool_name: str) -> None
 ToolEventCallback = Callable[[str, str], None]
@@ -178,7 +179,11 @@ class ToolExecutor:
                         logger.success("ToolExecutor: finished {}", tool)
                         self._emit_tool_event("tool_success", tool)
                         if tool.startswith(_ACTION_PREFIXES):  # MCP "success" can still be a failed shell command
-                            ok, rc = skills_feedback.shell_outcome(str(result)) if tool.startswith("mcp.shell.") else (True, None)
+                            ok, rc = (
+                                skills_feedback.shell_outcome(str(result))
+                                if tool.startswith(_SHELL_RESULT_PREFIXES)
+                                else (True, None)
+                            )
                             skills_feedback.record(tool, args, ok=ok, returncode=rc)
                         self._enqueue(
                             llm_queue,

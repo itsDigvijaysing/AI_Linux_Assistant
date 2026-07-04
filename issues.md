@@ -1,10 +1,11 @@
 # AI Linux Assistant — Issues Backlog (pre-completion)
 
-> **Status (updated 2026-06-30):** **RESOLVED.** All issues validated against live code (14 confirmed,
-> 1 confirmed-with-corrections, **LOW-3 refuted**) and fixed, plus extra catastrophic denylist gaps found
-> during validation. Committed in groups C1 (SEC-1/2 + extra gaps), C2a (SEC-3), C2c (BUG-1/2, UI-1),
-> C2d (AUD-1/2), C3 (the LOW set). **C2b (LLM-1/LLM-2 prompt) is implemented but UNCOMMITTED — it is gated on
-> a live small-model tool-call test** (see §5/§6). LOW-3 is a no-op-today defensive note, not a fix.
+> **Status (updated 2026-07-04):** **RESOLVED**, partly superseded by the native-tools pivot (305a97c).
+> All issues validated against live code (14 confirmed, 1 confirmed-with-corrections, **LOW-3 refuted**)
+> and fixed. **LLM-1/LLM-2 are now COMMITTED:** the "pending live gate" prompt work was subsumed by the
+> 305a97c redesign (skills as native function-calling tools, rewritten system prompt, plain-text few-shot;
+> reasoning ON, verified 9/9 tool calls). A post-pivot validation pass on 2026-07-04 fixed further items
+> and opened two deep ones — see **§7**. LOW-3 is a no-op-today defensive note, not a fix.
 > **Created:** 2026-06-30 · **Source:** full-project verification + small-LLM/safety re-validation pass.
 > **Scope reminder:** small local brain (`qwen3:4b` default, `qwen3:1.7b` lighter) — every prompt/flow must
 > stay within small-model capability. Runtime is sudo-free; the only privileged step is `./ai-linux setup`.
@@ -16,7 +17,7 @@ Line numbers are accurate as of 2026-06-30 and may drift as code changes — sea
 ## 0. How to use this file
 - Each issue has a stable **ID** (e.g. `SEC-1`). Reference it in commits/PRs/branches.
 - **Severity:** HIGH (fix before completion) · MEDIUM (should fix) · LOW (nice-to-have / housekeeping).
-- **Status:** all **Fixed** except **LOW-3 (Refuted)** and **LLM-1/LLM-2 (Fixed, uncommitted — pending the live gate)**.
+- **Status:** all **Fixed** (LLM-1/LLM-2 landed via 305a97c) except **LOW-3 (Refuted)**; new open items live in §7.
 - "Docs to update" lists which markdown files must change when the issue is fixed, so docs and reality stay in sync.
 - Verification snippets are in [§5](#5-verification--repro-harness). Re-run them after any fix.
 
@@ -334,3 +335,44 @@ bash -n ai-linux && echo "launcher OK"
 4. Re-run §5 regression guard; update the "Docs to update" targets for every fixed issue.
 
 > Reminder: **do not start any of the above until the owner approves.**
+
+---
+
+## 7. Post-pivot validation pass — 2026-07-04
+
+A full code-vs-docs audit after the native-tools pivot (`305a97c`…`745f20e`). Everything below was
+verified against the live code before fixing.
+
+### Fixed in this pass (uncommitted)
+| ID | What | Where |
+|---|---|---|
+| SEC-4 | Denylist glob gaps: `rm -rf $HOME/*`, `${HOME}/*`, and dotfile wipes `<root>/.*` were not refused; glob rule now derives from a shared root-prefix alternation | `mcp/shell_exec.py` |
+| UI-2 | Settings panel persisted the merged `think:false` default on ANY save, so the launcher (honors only explicit values, 7c20abd) forced reasoning off — re-breaking tool-calling. Defaults now applied at display time only, never written back | `ui/gnome-extension/…/extension.js` |
+| ACT-1 | Direct-binary app launches (and `open_settings`) ran foreground GUI apps under `run_shell`'s 20s timeout → turn blocked ~20s, then the just-opened app was SIGKILLed. Now launched detached (`setsid -f … >/dev/null 2>&1`) | `mcp/skills_actions_server.py` |
+| FBK-1 | `_ACTION_PREFIXES` lacked `mcp.skills_actions.` → the primary action family was never recorded to skills_feedback (blinding `/tidy`); its run_shell JSON results are now parsed by `shell_outcome` too | `core/tool_executor.py` |
+| AUD-4 | pw-play poll loop had no absolute deadline: a hung `pw-play` stalled the SpeechPlayer thread forever. Killed at clip-duration+5s and counted as heard (clip time fully elapsed) | `audio_io/pipewire_io.py` |
+| AUD-5 | One VAD/frame exception permanently stopped the capture reader while `pw-record` kept running ("listening" but deaf). Now drops the frame; stops only after 10 consecutive failures | `audio_io/pipewire_io.py` |
+| AUD-6 | Sample queue never drained across `stop_listening`/`start_listening` → stale pre-stop frames leaked into the next session | `audio_io/pipewire_io.py` |
+| UI-3 | `control.json` change detection was float-mtime-based (two commands within one timestamp tick could drop the second). Now ns-mtime + content watermark (startup stale-file seeding preserved) | `overlay/bridge.py` |
+| UI-4 | Transcript dedup by text equality hid a REPEATED identical utterance/reply. state.json now carries `you_ts`/`reply_ts` (reply_ts bumps only on `reply` events, not TTS liveness) and the extension dedups on (text, ts) | `overlay/bridge.py` + `extension.js` |
+| LNCH-1 | `apply_settings` interpolated the settings path inside `python -c '…'` string literals (breaks on a quote in the path); now passed via `sys.argv` | `ai-linux` |
+| LNCH-2 | `ensure_weights` checked only `models/TTS/*.onnx`, so missing ASR/VAD weights skipped the download; now requires TTS AND ASR | `ai-linux` |
+| LNCH-3 | `--groq` had no API-key preflight (engine failed later, opaquely); start/tui now exit early without `GROQ_API_KEY`/`GLADOS_API_KEY` | `ai-linux` |
+| LNCH-4 | Desktop-launch EXIT trap said "Failed to start" for ANY nonzero exit (even a crash hours in, or Ctrl-C). Now skips 130/143 and labels by runtime (<60s = startup failure) | `ai-linux` |
+| SCF-1 | Dead post-pivot scaffolding removed/relabeled: `render_command_suffix`/`has_shell_commands` + stale docstring (skills_index), dead `skills_hint_*` params (llm_processor), `skills_retrieval` config comment, nomic-embed pull now skipped while the optional skills server is disabled, doctor label fixed | several |
+| DOC-2 | Stale docs synced: SECURITY.md (3 gated families incl. `mcp.skills_actions.*`; denylist lives in `shell_exec.py`), skills/README.md (library is reference material post-pivot), `SKILL-lock-or-suspend.md` → `SKILL-lock-screen.md` (lock-only policy, 745f20e) | docs |
+
+### Newly tracked — OPEN (deep; fix deliberately deferred, do not fix blind)
+- **INT-1 [MEDIUM] Interrupted tool call leaves dangling `tool_calls` history.** `tool_executor.run()`
+  discards a queued tool call when `processing_active_event` is cleared (barge-in) without enqueueing any
+  tool-result, so the ConversationStore keeps an assistant `tool_calls` message with no matching `tool`
+  reply. Ollama tolerates it; strict OpenAI-compatible endpoints may not, and it can confuse the next turn.
+  Fix needs care: writing a synthetic tool-result must NOT re-trigger generation post-interrupt.
+- **INT-2 [MEDIUM] Barge-in between sentences merges turns.** A stop that lands between sentences (or inside
+  `start_speaking`'s event swap — the race deferred in the 2026-06-25 review) lets already-synthesized
+  sentences keep playing, and the suppressed EOS can fold the old turn's spoken text into the next turn's
+  assistant history. Needs a synthesis/playback-generation ID; touches listener + player + processor.
+- **UI-5 [LOW, known-deferred] `set_voice` returns ok for any underscore-style (Kokoro) name** without
+  validating against the live engine (deferred on purpose in the 2026-06-25 review; bridge retry caps the blast).
+- **SLP-1 [LOW, design note] `go_to_sleep` in always-listening mode releases the mic with no voice recovery**
+  (recovery = overlay click/unmute). Documented behavior for now; revisit if it bites in practice.

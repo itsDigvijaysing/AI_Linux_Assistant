@@ -112,9 +112,9 @@ apply_settings(){
   local f="${XDG_CONFIG_HOME:-$HOME/.config}/ai-linux/settings.json"
   [ -f "$f" ] || return 0
   local m t w
-  m="$(python3 -c "import json;print(json.load(open('$f')).get('model',''))" 2>/dev/null)"
-  t="$(python3 -c "import json;d=json.load(open('$f'));print('' if 'think' not in d else str(d['think']).lower())" 2>/dev/null)"
-  w="$(python3 -c "import json;print(json.load(open('$f')).get('wake_word',''))" 2>/dev/null)"
+  m="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('model',''))" "$f" 2>/dev/null)"
+  t="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'think' not in d else str(d['think']).lower())" "$f" 2>/dev/null)"
+  w="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('wake_word',''))" "$f" 2>/dev/null)"
   [ -n "$m" ] && { MODEL="$m"; export GLADOS_LLM_MODEL="$m"; }
   # Only override reasoning when the Settings panel sets it EXPLICITLY; otherwise keep the config default
   # (llm_think: true). Verified: reasoning OFF leaks the model's thinking into spoken content on qwen3.
@@ -157,15 +157,19 @@ ensure_model(){
   if "$ob" list 2>/dev/null | grep -q "^${MODEL}"; then c_ok "model $MODEL present"; else
     "$ob" pull "$MODEL" && { manifest_add ollama_model "$MODEL"; c_ok "model $MODEL pulled"; }; fi
 }
-EMBED_MODEL="nomic-embed-text"   # local embeddings for hybrid skills retrieval (optional; keyword fallback)
+EMBED_MODEL="nomic-embed-text"   # embeddings for the OPTIONAL mcp.skills retrieval server (disabled by default)
 ensure_embed_model(){
+  # Only the optional mcp.skills server uses embeddings; skip the pull while it's disabled in the config.
+  grep -Eq '^[[:space:]]*- name: "skills"[[:space:]]*$' "$HERE/configs/ai_linux_config.yaml" \
+    || { c_ok "embeddings model skipped (optional skills-retrieval server is disabled)"; return 0; }
   ollama_up || return 0
   local ob; ob="$(ollama_bin)"; [ -z "$ob" ] && return 0
   if "$ob" list 2>/dev/null | grep -q "^${EMBED_MODEL}"; then c_ok "embeddings model $EMBED_MODEL present"; else
     "$ob" pull "$EMBED_MODEL" >/dev/null 2>&1 && { manifest_add ollama_model "$EMBED_MODEL"; c_ok "embeddings model $EMBED_MODEL pulled"; } || c_warn "could not pull $EMBED_MODEL (skills retrieval will use keyword only)"; fi
 }
 ensure_weights(){
-  if ls "$HERE"/models/TTS/*.onnx >/dev/null 2>&1; then c_ok "speech weights present"; else
+  # both families must be present: TTS alone with missing ASR/VAD weights must not skip the download
+  if ls "$HERE"/models/TTS/*.onnx >/dev/null 2>&1 && ls "$HERE"/models/ASR/*.onnx >/dev/null 2>&1; then c_ok "speech weights present"; else
     "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download && { manifest_add weights 1; c_ok "speech weights downloaded"; }; fi
 }
 ensure_binary(){  # optional desktop-control server
@@ -452,7 +456,7 @@ cmd_doctor(){
   local ob; ob="$(ollama_bin)"; [ -n "$ob" ] && c_ok "ollama: $ob" || c_warn "ollama not installed"
   ollama_up && c_ok "ollama serving" || c_warn "ollama not running (auto-starts on launch)"
   [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^${MODEL}" && c_ok "model $MODEL" || c_warn "model $MODEL not pulled"; }
-  [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^nomic-embed-text" && c_ok "embeddings model (hybrid skills RAG)" || c_warn "embeddings model not pulled — skills retrieval uses keyword only"; }
+  [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^nomic-embed-text" && c_ok "embeddings model (optional skills-retrieval server)" || c_ok "embeddings model not pulled (only the optional skills-retrieval server uses it)"; }
   local n; n=$(find "$HERE"/models -name '*.onnx' 2>/dev/null | wc -l); [ "$n" -gt 0 ] && c_ok "speech weights ($n .onnx files)" || c_warn "speech weights missing — ./ai-linux download"
   [ -x "$HOME/.local/bin/computer-use-linux" ] && c_ok "desktop control binary" || c_warn "desktop control not installed (optional)"
   local miss=""; for t in brightnessctl playerctl wl-copy ydotool; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
@@ -523,7 +527,13 @@ case "$SUB" in
               LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"; mkdir -p "$LOG_DIR"
               exec >>"$LOG_DIR/run.log" 2>&1
               echo "===== $(date '+%Y-%m-%d %H:%M:%S') ai-linux $SUB ====="
-              trap '[ $? -ne 0 ] && command -v notify-send >/dev/null 2>&1 && notify-send -u critical "AI Linux Assistant" "Failed to start — see $LOG_DIR/run.log"' EXIT
+              # Notify on abnormal exit only: skip user-initiated stops (130=SIGINT, 143=SIGTERM) and
+              # label by runtime — a crash hours in is not a startup failure.
+              RUN_T0=$SECONDS
+              trap 'rc=$?; if [ $rc -ne 0 ] && [ $rc -ne 130 ] && [ $rc -ne 143 ] && command -v notify-send >/dev/null 2>&1; then
+                      [ $((SECONDS - RUN_T0)) -lt 60 ] && m="Failed to start" || m="Stopped unexpectedly"
+                      notify-send -u critical "AI Linux Assistant" "$m — see $LOG_DIR/run.log"
+                    fi' EXIT
             fi
             # Arm gated shell/desktop actions so the assistant can actually act (mute, open apps,
             # run commands). The autonomy hard-floor in core/tool_safety.py still blocks unattended
@@ -532,6 +542,11 @@ case "$SUB" in
               on)   export GLADOS_ALLOW_ACTIONS=1 ;;
               auto) { [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; } && export GLADOS_ALLOW_ACTIONS=1 ;;
             esac
+            # Groq brain needs an API key before the engine gets anywhere (say/download don't use the LLM).
+            if [ "${CONFIG##*/}" = "ai_linux_groq.yaml" ] && { [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; } \
+               && [ -z "${GROQ_API_KEY:-}${GLADOS_API_KEY:-}" ]; then
+              c_err "--groq needs GROQ_API_KEY (or GLADOS_API_KEY) exported in the environment"; exit 1
+            fi
             ensure_ready_for_run
             if [ "$BARGE" = "1" ]; then
               if command -v pw-record >/dev/null 2>&1 && command -v pw-play >/dev/null 2>&1; then

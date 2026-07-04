@@ -30,14 +30,17 @@ threat model, what's guaranteed, and the safeguards.
   TTS temp files use unpredictable names and are deleted after playback.
 
 ## How actions are controlled
-1. **Action gate** (`core/tool_safety.py`): `mcp.shell.*` and `mcp.computer_use.*` are **denied by default**
-   and run only when the session is *armed* (`GLADOS_ALLOW_ACTIONS=1`). Interactive `./ai-linux` arms them
-   so the assistant can act; `./ai-linux --no-actions` runs it disarmed (chat/info only).
+1. **Action gate** (`core/tool_safety.py`): `mcp.shell.*`, `mcp.skills_actions.*` (the typed desktop
+   tools) and `mcp.computer_use.*` are **denied by default** and run only when the session is *armed*
+   (`GLADOS_ALLOW_ACTIONS=1`). Interactive `./ai-linux` arms them so the assistant can act;
+   `./ai-linux --no-actions` runs it disarmed (chat/info only).
 2. **Autonomy hard-floor:** the autonomous loop can **never** run gated actions, regardless of env/config.
-3. **Destructive-command denylist** (`mcp/shell_server.py`): a conservative backstop that refuses clearly
-   catastrophic commands (`rm -rf /`/`~`/`$HOME`/`/home` — including long-form `--recursive --force`, quoted,
-   `~user`, and chained/`cd <root> &&` variants — `dd of=/dev/…`, `mkfs`/`wipefs`/`shred`/`truncate`/`tee` of a
-   device, `find <root> … -delete`, redirect to a raw disk, fork bomb, `chmod/chown -R /`, `curl … | sh`)
+3. **Destructive-command denylist** (`mcp/shell_exec.py`, the single execution chokepoint shared by
+   `mcp.shell.run_command` AND every `mcp.skills_actions.*` tool): a conservative backstop that refuses
+   clearly catastrophic commands (`rm -rf /`/`~`/`$HOME`/`/home` — including long-form `--recursive --force`,
+   quoted, `~user`, glob (`<root>/*`, `<root>/.*`), and chained/`cd <root> &&` variants — `dd of=/dev/…`,
+   `mkfs`/`wipefs`/`shred`/`truncate`/`tee` of a device, `find <root> … -delete`, redirect to a raw disk,
+   fork bomb, `chmod/chown -R /`, `curl … | sh`)
    **regardless of how the command was produced** (model,
    skill, or learned skill). It matches the *literal* command text, so it **cannot** catch indirection —
    `X=/; rm -rf $X`, `eval "$cmd"`, `python -c 'shutil.rmtree(…)'`, `find / -exec rm -rf {} +`,

@@ -131,6 +131,11 @@ class PipeWireAudioIO:
             self.stop_listening()
         self._ensure_aec()
         self._stop_rec.clear()
+        while True:  # drop stale frames captured before the last stop so they can't leak into this session
+            try:
+                self._sample_queue.get_nowait()
+            except queue.Empty:
+                break
         # --container raw -> headerless PCM on stdout; target the AEC'd source when available
         cmd = ["pw-record", "--container", "raw"]
         if self._aec_ok:
@@ -149,6 +154,7 @@ class PipeWireAudioIO:
         frame = int(self.SAMPLE_RATE * self.VAD_SIZE / 1000)  # 512 samples
         nbytes = frame * 2  # s16 = 2 bytes/sample
         buf = b""
+        bad = 0  # consecutive frame failures: isolated glitches drop the frame, persistent failure stops
         stream = self._rec_proc.stdout if self._rec_proc else None
         if stream is None:
             return
@@ -166,9 +172,13 @@ class PipeWireAudioIO:
                     data = (np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0)
                     vad = self._vad_model(np.expand_dims(data, 0))
                     self._sample_queue.put((data.copy(), bool(vad > self.vad_threshold)))
+                    bad = 0
                 except Exception as exc:  # noqa: BLE001 - a bad frame must not silently kill capture
-                    logger.exception("PWCapture: VAD/emit failed ({}); stopping reader", exc)
-                    return
+                    bad += 1
+                    logger.warning("PWCapture: VAD/emit failed ({}); dropping frame ({}/10)", exc, bad)
+                    if bad >= 10:
+                        logger.error("PWCapture: 10 consecutive frame failures; stopping reader")
+                        return
 
     def stop_listening(self) -> None:
         self._stop_rec.set()
@@ -228,6 +238,7 @@ class PipeWireAudioIO:
         dur = len(audio) / sr if sr else 0.0
         interrupted = False
         dropped = False
+        timed_out = False
         play_rc: int | None = None
         t0 = time.monotonic()
         try:
@@ -236,6 +247,11 @@ class PipeWireAudioIO:
                 if stop.is_set():
                     interrupted = True
                     self._play_proc.terminate()
+                    break
+                if time.monotonic() - t0 > dur + 5.0:  # absolute deadline: a hung pw-play must not stall the speak loop
+                    timed_out = True
+                    logger.warning("pw-play still running 5s past clip end; killing it")
+                    self._play_proc.kill()
                     break
                 time.sleep(0.02)  # ~20ms barge-in abort granularity
             if stop.is_set():  # stop_speaking() may have killed the proc before the check above ran
@@ -262,6 +278,8 @@ class PipeWireAudioIO:
                 pass
         if dropped:
             return False, -1  # sentinel: player binary missing, nothing was heard
+        if timed_out:
+            return False, 100  # the clip's duration fully elapsed before the kill; count it as heard
         if interrupted:
             return True, (min(int((time.monotonic() - t0) / dur * 100), 100) if dur > 0 else 0)
         if play_rc not in (0, None):  # pw-play launched but exited non-zero (sink gone, ALSA busy) -> not heard

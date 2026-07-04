@@ -57,13 +57,17 @@ const WAKE_WORDS = [
     {id: 'click', label: 'Click to talk (mic off until clicked)'},
 ];
 
+// Defaults are applied at DISPLAY time only and never written back: persisting a merged
+// think:false would look like an explicit user choice to the launcher, which honors only
+// explicit settings.json values, and would force reasoning off (breaking tool-calling).
+const SETTINGS_DEFAULTS = {model: 'qwen3:4b', think: false, wake_word: 'computer'};
+
 function readSettings() {
-    const def = {model: 'qwen3:4b', think: false, wake_word: 'computer'};
     try {
         const [ok, c] = GLib.file_get_contents(SETTINGS_PATH);
-        if (ok) return {...def, ...JSON.parse(new TextDecoder().decode(c))};
+        if (ok) return JSON.parse(new TextDecoder().decode(c));
     } catch (e) {}
-    return def;
+    return {};
 }
 
 function writeSettings(s) {
@@ -344,27 +348,30 @@ class Indicator extends PanelMenu.Button {
 
         // settings: model + deep-thinking (apply on next Start)
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._settings = readSettings();
-        this._modelSub = new PopupMenu.PopupSubMenuMenuItem('Model: ' + this._settings.model);
+        this._settings = readSettings();  // stored keys only; defaults applied for display
+        const model = this._settings.model ?? SETTINGS_DEFAULTS.model;
+        this._modelSub = new PopupMenu.PopupSubMenuMenuItem('Model: ' + model);
         this._modelItems = {};
         for (const m of MODELS) {
             const it = new PopupMenu.PopupMenuItem(m.label);
-            it.setOrnament(this._settings.model === m.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
+            it.setOrnament(model === m.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
             it.connect('activate', () => this._pickModel(m.id));
             this._modelItems[m.id] = it;
             this._modelSub.menu.addMenuItem(it);
         }
         this.menu.addMenuItem(this._modelSub);
-        this._thinkSwitch = new PopupMenu.PopupSwitchMenuItem('Deep thinking (slower)', !!this._settings.think);
+        this._thinkSwitch = new PopupMenu.PopupSwitchMenuItem(
+            'Deep thinking (slower)', !!(this._settings.think ?? SETTINGS_DEFAULTS.think));
         this._thinkSwitch.connect('toggled', (_i, state) => { this._settings.think = state; this._saveSettings(); });
         this.menu.addMenuItem(this._thinkSwitch);
 
         // wake word: pick from options; applies live to a running engine and persists for next Start
         this._wakeSub = new PopupMenu.PopupSubMenuMenuItem(this._wakeLabel());
         this._wakeItems = {};
+        const wake = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
         for (const w of WAKE_WORDS) {
             const it = new PopupMenu.PopupMenuItem(w.label);
-            it.setOrnament(this._settings.wake_word === w.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
+            it.setOrnament(wake === w.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
             it.connect('activate', () => this._pickWake(w.id));
             this._wakeItems[w.id] = it;
             this._wakeSub.menu.addMenuItem(it);
@@ -410,8 +417,9 @@ class Indicator extends PanelMenu.Button {
     }
 
     _wakeLabel() {
-        const w = WAKE_WORDS.find(x => x.id === this._settings.wake_word);
-        return 'Listening: ' + (w ? w.label : this._settings.wake_word);
+        const cur = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
+        const w = WAKE_WORDS.find(x => x.id === cur);
+        return 'Listening: ' + (w ? w.label : cur);
     }
 
     _pickWake(id) {
@@ -445,6 +453,8 @@ export default class AiLinuxOverlayExtension extends Extension {
         this._activeUntil = 0;
         this._lastYou = '';
         this._lastReply = '';
+        this._lastYouTs = 0;
+        this._lastReplyTs = 0;
         this._lastTranscriptTs = 0;
         this._pinTimeoutId = 0;
         this._log = [];
@@ -571,6 +581,8 @@ export default class AiLinuxOverlayExtension extends Extension {
                 if (this._log.length) { this._log = []; this._overlay?.renderLog(this._log); }
                 this._lastYou = '';
                 this._lastReply = '';
+                this._lastYouTs = 0;
+                this._lastReplyTs = 0;
                 this._session = false;
                 this._indicator?.setState('off', false);
                 this._applyVisibility('off');
@@ -584,9 +596,16 @@ export default class AiLinuxOverlayExtension extends Extension {
 
             const you = (data.you || '').trim();
             const reply = (data.assistant || '').trim();
+            // dedup on (text, event ts): the ts lets a REPEATED identical utterance/reply still bubble
+            const youTs = data.you_ts ?? 0;
+            const replyTs = data.reply_ts ?? 0;
             let changed = false;
-            if (you && you !== this._lastYou) { this._lastYou = you; this._pushLog('you', you); changed = true; }
-            if (reply && reply !== this._lastReply) { this._lastReply = reply; this._pushLog('ai', reply); changed = true; }
+            if (you && (you !== this._lastYou || youTs !== this._lastYouTs)) {
+                this._lastYou = you; this._lastYouTs = youTs; this._pushLog('you', you); changed = true;
+            }
+            if (reply && (reply !== this._lastReply || replyTs !== this._lastReplyTs)) {
+                this._lastReply = reply; this._lastReplyTs = replyTs; this._pushLog('ai', reply); changed = true;
+            }
             if (changed) {
                 this._overlay.renderLog(this._log);
                 this._lastTranscriptTs = GLib.get_monotonic_time() / 1000;

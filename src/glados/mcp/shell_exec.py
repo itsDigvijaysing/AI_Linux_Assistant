@@ -78,7 +78,9 @@ def _destructive_reason(command: str) -> str | None:
         rf"(?:^|\s)(?:/|~/|~\w+|~|\$HOME/|\$HOME|\$\{{HOME\}}/|\$\{{HOME\}}|"
         rf"/home/|/home|{home}/|{home}){bound}"
     )
-    globs = rf"(?:^|\s)(?:/\*|~/\*|/home/\*|{home}/\*){bound}"
+    # top-level glob wipes: <root>/* and the dotfile form <root>/.* — for every way of writing the root
+    glob_roots = rf"(?:/|~/|\$HOME/|\$\{{HOME\}}/|/home/|{home}/)"
+    globs = rf"(?:^|\s){glob_roots}(?:\*|\.\*){bound}"
     for m in re.finditer(r"\brm\b", c):
         rm_args = re.split(r"[;&|]", c[m.end() :])[0]  # only THIS rm's args (stop at a command separator)
         norm = re.sub(r"--recursive(?:=\S*)?", " -r ", rm_args)  # long flags -> short so findall sees them

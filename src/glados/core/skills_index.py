@@ -1,10 +1,11 @@
 """Shared, in-process skills index (AI_Linux).
 
-Single source of truth for reading skills/SKILL-*.md and ranking them for a query. Used both by
-the mcp.skills server (find_skill/list_skills) and by the LLM processor's per-turn capability-hint
-injection — so the model is handed the exact shell command and can act in ONE tool call instead of
-the unreliable two-hop find_skill->run on a small model. Keyword retrieval by default; the hybrid
-embedding path (Phase 3) plugs in behind top_skills() with automatic keyword fallback.
+Single source of truth for reading skills/SKILL-*.md and ranking them for a query. Since the
+native-tools pivot (305a97c) the default runtime does NOT retrieve or inject skills per turn —
+desktop actions are typed mcp.skills_actions.* tools. This index now serves: the OPTIONAL
+mcp.skills server (find_skill/list_skills, disabled by default), /learn's write_skill, and
+/tidy's catalog. Keyword retrieval by default; the hybrid embedding path plugs in behind
+top_skills() with automatic keyword fallback.
 """
 
 from __future__ import annotations
@@ -138,11 +139,6 @@ def best_skill(query: str) -> dict | None:
     return top[0] if top else None
 
 
-def has_shell_commands(skills: list[dict]) -> bool:
-    """True if the top matched skill carries runnable shell commands (so we narrow tools + suffix it)."""
-    return bool(skills and skills[0].get("commands"))
-
-
 def _slug(name: str) -> str:
     """Sanitize a name to [a-z0-9-] so a learned skill can only land inside skills/learned/."""
     slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
@@ -179,27 +175,3 @@ def write_skill(name: str, trigger: str = "", commands: list[str] | str | None =
     except Exception as exc:  # noqa: BLE001
         return {"error": f"could not write skill: {exc}"}
     return {"ok": True, "file": str(path.relative_to(skills_dir()))}
-
-
-def render_command_suffix(skills: list[dict], max_cmds: int = 4) -> str | None:
-    """A short ' (use one of these exact commands ...)' note appended to the USER turn.
-
-    Appended to the user message — NOT a system message (system messages suppress tool-calling on a
-    small model; verified). Handing the model the exact command makes it act correctly in one call.
-    """
-    cmds: list[str] = []
-    for skill in skills:
-        for cmd in skill.get("commands", []):
-            if cmd not in cmds:
-                cmds.append(cmd)
-            if len(cmds) >= max_cmds:
-                break
-        if len(cmds) >= max_cmds:
-            break
-    if not cmds:
-        return None
-    return (
-        "  (to do this, call mcp.shell.run_command with one of these exact commands, adjusting values: "
-        + ", ".join(f"`{c}`" for c in cmds)
-        + ")"
-    )

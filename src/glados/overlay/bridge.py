@@ -16,7 +16,9 @@ A ``mute`` action releases the mic; ``unmute`` reacquires. Releasing the mic
 point of the click / mute controls.
 
 state.json   : {"state": idle|listening|thinking|speaking|muted|off, "mode": always|wake|click,
-                "you": "<last user text>", "assistant": "<last reply>", "session": <bool>, "ts": <ms>}
+                "you": "<last user text>", "assistant": "<last reply>", "you_ts": <ms>, "reply_ts": <ms>,
+                "session": <bool>, "ts": <ms>}  (you_ts/reply_ts let the UI show a REPEATED identical
+                utterance/reply as a new bubble — text equality alone can't)
 control.json : {"mode": always|wake|click, "action": activate|mute|unmute|toggle_mute, "wake_word": "<word>"}
 """
 
@@ -75,14 +77,16 @@ class OverlayBridge:
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_control_mtime = 0.0
+        self._last_control_mtime_ns = 0
+        self._last_control_raw: str | None = None
         self._last_voice_applied = ""
         self._voice_attempt: tuple[str, int, float] | None = None  # (value, attempts, next_retry_ts) while failing
         self._last_event_ts = time.time()
         self._you = ""
         self._assistant = ""
         self._you_ts = 0.0
-        self._assistant_ts = 0.0
+        self._assistant_ts = 0.0  # liveness (also bumped by tts play events)
+        self._reply_ts = 0.0  # bumped ONLY by 'reply' events -> the UI's new-bubble signal
         self._muted = False
         self._last_written: tuple[str, str, str, str] | None = None
         self._last_write_at = 0.0  # wall-clock of the last state.json write (for the heartbeat)
@@ -99,9 +103,12 @@ class OverlayBridge:
         # existing file's mtime so only commands written AFTER startup are applied. Otherwise the
         # first loop tick re-applies the stale command and clobbers the configured startup mode.
         try:
-            self._last_control_mtime = self.control_path.stat().st_mtime
-        except FileNotFoundError:
-            self._last_control_mtime = 0.0
+            self._last_control_mtime_ns = self.control_path.stat().st_mtime_ns
+            self._last_control_raw = self.control_path.read_text()  # seed content too, or the first
+            # tick would re-apply the stale command via the content-differs path in _read_control
+        except (FileNotFoundError, OSError):
+            self._last_control_mtime_ns = 0
+            self._last_control_raw = None
         self._apply_mode(self.mode)
         self._thread = threading.Thread(target=self._loop, name="OverlayBridge", daemon=True)
         self._thread.start()
@@ -203,14 +210,23 @@ class OverlayBridge:
     # ------------------------------------------------------------------ control file
     def _read_control(self) -> None:
         try:
-            mtime = self.control_path.stat().st_mtime
+            mtime_ns = self.control_path.stat().st_mtime_ns
         except FileNotFoundError:
             return
-        if mtime <= self._last_control_mtime:
+        if mtime_ns < self._last_control_mtime_ns:
             return
-        self._last_control_mtime = mtime
         try:
-            data = json.loads(self.control_path.read_text() or "{}")
+            raw = self.control_path.read_text()
+        except Exception:  # noqa: BLE001
+            return
+        # ns mtime + content watermark: a second command landing within the same timestamp tick
+        # still applies (different content), while an unchanged file is processed exactly once.
+        if mtime_ns == self._last_control_mtime_ns and raw == self._last_control_raw:
+            return
+        self._last_control_mtime_ns = mtime_ns
+        self._last_control_raw = raw
+        try:
+            data = json.loads(raw or "{}")
         except Exception:  # noqa: BLE001
             return
         if not isinstance(data, dict):
@@ -295,6 +311,7 @@ class OverlayBridge:
             elif kind == "reply":  # the full assistant reply for the turn -> one transcript bubble
                 self._assistant = msg
                 self._assistant_ts = ts
+                self._reply_ts = ts
             elif src == "tts" and kind == "play":
                 # keep the "speaking" timestamp fresh for liveness, but DON'T set the transcript text from a
                 # single sentence (the whole reply arrives once via the 'reply' event above -> one bubble).
@@ -361,6 +378,8 @@ class OverlayBridge:
                         "mode": self.mode,
                         "you": self._you,
                         "assistant": self._assistant,
+                        "you_ts": int(self._you_ts * 1000),
+                        "reply_ts": int(self._reply_ts * 1000),
                         "session": self._wake_session(),
                     }
                 )
@@ -379,7 +398,15 @@ class OverlayBridge:
             return False
 
     def _write(self, payload: dict) -> None:
-        key = (payload["state"], payload["mode"], payload["you"], payload["assistant"], payload.get("session"))
+        key = (
+            payload["state"],
+            payload["mode"],
+            payload["you"],
+            payload["assistant"],
+            payload.get("you_ts"),
+            payload.get("reply_ts"),
+            payload.get("session"),
+        )
         now = time.time()
         # dedup identical states but heartbeat every 2s so the overlay can tell the engine is alive
         # (ts freshness); stale ts -> overlay shows 'off'.
