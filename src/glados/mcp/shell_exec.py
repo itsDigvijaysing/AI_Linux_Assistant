@@ -101,8 +101,32 @@ def _destructive_reason(command: str) -> str | None:
     return None
 
 
-def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT) -> dict:
+_SD_RUN_OK: bool | None = None  # lazily-probed: can we open systemd --user transient scopes here?
+
+
+def _systemd_run_available() -> bool:
+    global _SD_RUN_OK
+    if _SD_RUN_OK is None:
+        try:
+            probe = subprocess.run(
+                ["systemd-run", "--user", "--scope", "-q", "--collect", "true"],
+                capture_output=True, timeout=5,
+            )
+            _SD_RUN_OK = probe.returncode == 0
+        except Exception:  # noqa: BLE001 - no systemd-run / no user manager -> plain subprocess
+            _SD_RUN_OK = False
+    return _SD_RUN_OK
+
+
+def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT, resource_caps: bool = True) -> dict:
     """Run a shell command (gated by the denylist) and return a JSON-able result dict.
+
+    With resource_caps (default) the command runs in a transient ``systemd-run --user --scope``
+    with TasksMax/MemoryMax/RuntimeMaxSec — kernel-enforced containment of fork bombs and runaway
+    memory that the regex denylist can't pattern-match (see SECURITY.md: a full OS sandbox is
+    non-load-bearing here, resource caps are not). Falls back to a plain subprocess when scopes
+    are unavailable. Pass resource_caps=False for detached GUI launches — the launched app would
+    otherwise stay in the capped scope for its whole lifetime.
 
     Returns {returncode, stdout, stderr} on success, or {error: ...} for empty/refused/timeout/spawn
     failure. stdout/stderr are truncated to the last _MAX_OUTPUT chars.
@@ -114,9 +138,20 @@ def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT) -> dict:
     if reason is not None:
         return {"error": f"refused: destructive command blocked by the safety denylist ({reason})", "refused": reason}
     try:
-        proc = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=timeout, cwd=_HOME
-        )
+        if resource_caps and _systemd_run_available():
+            # RuntimeMaxSec backstops the scope itself: if our timeout kill only reaches
+            # systemd-run, the scope's survivors still die a moment later.
+            argv = [
+                "systemd-run", "--user", "--scope", "-q", "--collect",
+                "-p", "MemoryMax=2G", "-p", "TasksMax=512",
+                "-p", f"RuntimeMaxSec={int(timeout) + 2}",
+                "/bin/sh", "-c", command,
+            ]
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=_HOME)
+        else:
+            proc = subprocess.run(
+                command, shell=True, capture_output=True, text=True, timeout=timeout, cwd=_HOME
+            )
     except subprocess.TimeoutExpired:
         return {"error": f"command timed out after {timeout}s"}
     except Exception as exc:  # noqa: BLE001 - report any spawn failure to the model

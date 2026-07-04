@@ -46,8 +46,9 @@ def _launch(command: str) -> str:
     Without this, run_shell's 20s timeout would block the turn and then SIGKILL the app the user
     just opened (sh -c execs a single command directly). setsid -f forks it into its own session,
     and the /dev/null redirect keeps the child from holding run_shell's capture pipes open.
+    resource_caps=False: the app must NOT live out its life inside run_shell's capped scope.
     """
-    return _run(f"setsid -f {command} >/dev/null 2>&1")
+    return json.dumps(run_shell(f"setsid -f {command} >/dev/null 2>&1", resource_caps=False))
 
 
 # Friendly app name -> executable / .desktop id (binary preferred when it's on PATH; robust vs gtk-launch).

@@ -49,6 +49,17 @@ threat model, what's guaranteed, and the safeguards.
 4. **Prompt-injection mitigation:** the system prompt instructs the model to treat tool/file/web/screenshot
    text as untrusted *data*, never instructions, and to refuse data-destroying actions.
 
+### Why there is no OS sandbox (evaluated 2026-07-05, don't re-litigate without a threat-model change)
+Filesystem/namespace sandboxes (bubblewrap, firejail, Landlock, systemd `ProtectHome=`) were evaluated and
+rejected for the shell executor: every desktop tool NEEDS the live session — `$XDG_RUNTIME_DIR` sockets
+(Wayland, PipeWire, D-Bus), `gsettings`, `wpctl`, launching GUI apps — and a process holding an open
+**session bus** can escape any such sandbox anyway (e.g. `org.freedesktop.systemd1 StartTransientUnit`
+starts an unconfined unit). So a sandbox here would break the assistant's purpose while adding no real
+boundary. What we DO use is kernel-enforced **resource containment**: `run_shell` wraps commands in a
+`systemd-run --user --scope` with `TasksMax`/`MemoryMax` caps (graceful fallback to a plain subprocess
+when unavailable), which contains fork bombs and runaway memory without restricting session access.
+Re-evaluate only if the machine becomes multi-user or tools stop needing session access.
+
 ## Residual risk & recommendations
 When armed, the LLM can run shell commands and control the desktop — that's the point of an assistant, but
 it means a sufficiently clever **prompt injection** (spoken, or text in a file/screenshot it reads) could

@@ -326,3 +326,28 @@ All clones live in untracked `refs/`, mined not merged, deleted only after their
 - **OpenClaw as a runtime** (harvest skills only).
 - **PersonaPlex** (7B full-duplex — fights the 6 GB ceiling and the modular design).
 - LiveKit / networked transport; heavyweight multi-agent orchestration.
+
+---
+
+## 9. Build-vs-reuse audit (2026-07-05) — pre-researched upgrade paths, build only if triggered
+
+A 6-area web audit confirmed every hand-built subsystem should stay (custom code is thin glue; each
+alternative added dependency surface or broke a constraint). Watch items so this isn't re-researched:
+
+- **Wake word:** if wake-mode battery drain or false wakes become a REAL observed problem, add
+  **openWakeWord** (Apache-2.0; onnxruntime already in the env) as a dormant-state front gate only —
+  run it on VAD frames before ASR when NOT in a wake session; keep the ASR Levenshtein match as the
+  confirmation layer. A community MIT `computer` model exists (fwartner/home-assistant-wakewords-collection,
+  computer_v1/v2, ~200KB). ~Half a day incl. threshold tuning. Do NOT use Picovoice Porcupine — its free
+  keys were remotely disabled 2026-06-30 (vendor kill-switch).
+- **PipeWire backend:** `pw-play --raw` (≥1.6) CAN stream raw PCM on stdin — could drop the temp-WAV if it
+  ever bites (it doesn't: tmpfs + clean kill semantics). Re-evaluate bindings only if PortAudio merges a
+  PipeWire/Pulse host API (PortAudio #425 / PR #336) or PipeWire ships official Python bindings.
+- **ASR/TTS:** Parakeet ONNX + SuperTonic-3 remain near-optimal for CPU. Watch Moonshine v2 (latency) and
+  parakeet-unified ONNX streaming (live partials). AVOID Piper (now GPL-3.0, quality downgrade).
+- **Desktop tools:** revisit mbeps/linux-gnome-mcp (MIT) yearly as an IDEA source only; adopt `dbus-fast`
+  only if a feature ever needs D-Bus *signals* (reacting to state changes) rather than issuing commands.
+- **Engine:** no rebase (pipecat/LiveKit cloud-first; Wyoming/OVOS appliance stacks). For issues.md INT-2,
+  study pipecat's smart-turn detection as a PATTERN (BSD-2). Re-pull upstream GLaDOS fixes selectively —
+  verified 2026-07-05: the vendor point (c0648ca) ALREADY includes upstream's sounddevice-race fix (PR #195)
+  and VAD onnxruntime thread cap (PR #198), and upstream main has not advanced past it.
