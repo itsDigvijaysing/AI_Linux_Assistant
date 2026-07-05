@@ -16,11 +16,15 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
 - **Voice *and* text** input (`input_mode: both`).
 - **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); switch to the lighter `qwen3:1.7b` via the Settings panel / `GLADOS_LLM_MODEL`.
 - **CPU speech** — Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
-- **Acts on your desktop** — Wayland control (AT-SPI / portals / ydotool) + a shell executor, as MCP tools.
-- **Safety gate** — irreversible actions are denied unless you explicitly arm them; a destructive-command denylist backs it up.
-- **Skills that run** — a procedure library the model retrieves at runtime (keyword-first **hybrid RAG**) and the matched command is injected so the model actually executes it; it can also **learn new skills** (`/learn`).
+- **Acts on your desktop** — **13 native typed tools** (`mcp.skills_actions.*`: brightness, volume, lock,
+  screenshot, open app/link/folder, web/YouTube search, media, night light, do-not-disturb, settings,
+  terminal, clipboard) the model calls directly, plus a general `shell` fallback. Reasoning is **on** so the
+  small model reliably picks the right tool (verified 22/22 in a live test).
+- **Safety gate** — irreversible actions (shell, desktop tools) are denied unless you explicitly arm them;
+  a catastrophic-command denylist and kernel-enforced resource caps (`systemd-run`) back it up.
 - **On-screen overlay** (GNOME Shell extension) — top-right orb + transcript that tracks state, with
-  listening-mode controls (always / wake / click) that can hand the mic back to other apps.
+  listening-mode controls (always / wake / click) that can hand the mic back to other apps, plus a
+  **Settings window** (model, voice, listening, actions, barge-in) reachable from Extension Manager.
 
 ---
 
@@ -85,7 +89,8 @@ Then, day to day:
 ./ai-linux say "hi"   # speak a phrase and exit
 ./ai-linux uninstall  # revert everything setup changed (--dry-run to preview; --purge to also drop env/models/weights)
 # flags: --groq (cloud brain)   --local (default)   --no-actions (don't arm shell/desktop actions)
-#        --half-duplex (turn off voice barge-in)   --overlay-mode always|wake|click
+#        --half-duplex (turn off voice barge-in)   --overlay-mode=always|wake|click
+./ai-linux --version  # print the repo version (also shown in the overlay menu header + prefs)
 ```
 
 Or click **AI Linux Assistant** in the GNOME app grid (installed by `setup`, with a custom glass-orb icon).
@@ -126,26 +131,31 @@ default focus.**
 
 ## 🛠 Tools (MCP servers)
 
-Tools are exposed to the model as `mcp.<server>.<tool>`.
+Tools are exposed to the model as `mcp.<server>.<tool>`. The menu is deliberately **lean** — a short, stable
+set of typed tools is what makes a small model reliably pick the right one (verified). **5 servers are active:**
 
 | Server | Tools | Purpose | Gated |
 |---|---|---|:---:|
-| `system_info` | `cpu_load`, `memory_usage`, `temperatures`, … | system stats | — |
-| `time_info` | `now_iso`, `uptime_seconds`, … | time / uptime | — |
-| `memory` | — | conversation memory | — |
-| `skills` | `list_skills`, `find_skill` | retrieve a procedure (the relevant command is also auto-injected per turn) | — |
-| `skills_writer` | `save_skill` | learn a new skill — writes a markdown draft only, never runs anything | — |
-| `voice` | `list_voices`, `set_voice` | change the assistant's own TTS voice live | — |
-| **`shell`** | `run_command` | run a local command (as you, never sudo) | ✅ |
-| **`computer_use`** | click / type / window / screenshot … | Wayland desktop control | ✅ |
+| `system_info` | `system_overview`, `battery_status`, `network_status` | read-only system/battery/network status | — |
+| `time_info` | `now_iso` | current time | — |
+| **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions** — the model's main capability surface | ✅ |
+| **`shell`** | `run_command` | general local command fallback (as you, never sudo) | ✅ |
+| `voice` | `set_voice` | change the assistant's own TTS voice live | — |
+
+Each `skills_actions` tool builds its exact command and runs it through the **same** gated + denylisted
+executor as `shell` (`mcp/shell_exec.py::run_shell`), so nothing bypasses the safety layer. Built-in (non-MCP)
+tools add `go_to_sleep` (ends the wake session — never the OS). Four more servers ship but are **disabled by
+default** to keep the menu small (uncomment in the config to enable): `memory`, `skills` (keyword/hybrid
+retrieval over `skills/`), `skills_writer` (`/learn` drafts), and `computer_use` (Wayland click/type GUI
+automation — its window-control service is vendored into the overlay extension, dormant until enabled).
 
 ### Safety gate
 
-Gated tools (shell + desktop control) are **off by default** and fail safe:
+Gated tools (`skills_actions` + `shell` + `computer_use`) are **off by default** and fail safe:
 
 ```mermaid
 flowchart TD
-    A["Tool call"] --> B{"Gated family?<br/>mcp.shell.* / mcp.computer_use.*"}
+    A["Tool call"] --> B{"Gated family?<br/>mcp.skills_actions.* / mcp.shell.* / mcp.computer_use.*"}
     B -->|"no"| RUN["✅ Run tool"]
     B -->|"yes"| C{"Autonomy mode?"}
     C -->|"yes"| HF["⛔ Deny — hard floor"]
@@ -170,10 +180,12 @@ access via a **udev rule** (per-session ACL on `/dev/uinput`), not the broad `in
 system-wide keystroke read. Every system change setup makes is recorded so **`./ai-linux uninstall`** reverts
 exactly those deltas — installs are fully and transparently reversible.
 
-A destructive-command **denylist** (`mcp/shell_server.py`) refuses clearly catastrophic commands
-(`rm -rf ~`, `dd of=/dev/…`, `mkfs`, fork bomb, `curl … | sh`, …) regardless of how they were produced.
-See **[SECURITY.md](SECURITY.md)** for the full threat model, guarantees, and how to run disarmed
-(`./ai-linux --no-actions`).
+A destructive-command **denylist** (`mcp/shell_exec.py::_destructive_reason`, the single execution chokepoint
+shared by every gated tool) refuses clearly catastrophic commands (`rm -rf ~`/`$HOME`/globs, `dd of=/dev/…`,
+`mkfs`, `find <root> -delete`, fork bomb, `curl … | sh`, …) regardless of how they were produced. Commands
+also run inside a `systemd-run --user --scope` with `TasksMax`/`MemoryMax` caps (kernel-enforced containment
+of fork bombs / runaway memory; graceful fallback when unavailable). See **[SECURITY.md](SECURITY.md)** for
+the full threat model, guarantees, and how to run disarmed (`./ai-linux --no-actions`).
 
 ---
 
@@ -212,14 +224,22 @@ A GNOME Shell extension shows a top-right **orb + transcript** that tracks the a
 loads new extensions at login). The orb is drawn natively by the Shell (not the browser Rive demo). Run
 without it via `./ai-linux --no-overlay`, or pick the starting mode with `--overlay-mode=click`.
 
+**Settings** live in two places sharing one store (`~/.config/ai-linux/settings.json`): the top-bar menu holds
+the quick live controls (Voice, Listening), and **Extension Manager → Settings** (a full preferences window)
+adds Model, Deep-thinking, Allow-actions, Barge-in, and Window-control. A change in one reflects in the other
+instantly. The menu header shows the running build (**"AI Linux v2.4.0 — …"**); `./ai-linux doctor` warns if
+the installed copy differs from the repo (Wayland loads extension code only at login, so re-copy + re-login
+after edits).
+
 ## 📁 Project layout
 
 ```
-ai-linux                       # single launcher + installer (setup · doctor · run)
+ai-linux                       # single launcher + installer (setup · doctor · run · --version)
+VERSION                        # repo version (MAJOR.MINOR.PATCH), kept in sync with the extension
 configs/ai_linux_config.yaml   # active config  (+ ai_linux_groq.yaml for the Groq brain)
-skills/                        # SKILL-*.md procedures (served by mcp.skills)
-ui/                            # persona.html demo, icon/, gnome-extension/ (on-screen overlay)
-src/glados/                    # vendored GLaDOS engine (core/ mcp/ overlay/ ASR/ TTS/ audio_io/ …)
+skills/                        # SKILL-*.md reference library (docs-only since the native-tools pivot)
+ui/gnome-extension/…/          # overlay: extension.js + settingsLib.js (shared core) + prefs.js + windowControl.js
+src/glados/                    # vendored GLaDOS engine (core/ mcp/ overlay/ tools/ ASR/ TTS/ audio_io/ …)
 models/                        # model configs + ONNX speech weights (weights gitignored)
 data/                          # ASR warm-up sample + demo assets
 PLAN.md                        # design notes & decisions  (CLAUDE.md = local agent guide)
@@ -228,16 +248,21 @@ PLAN.md                        # design notes & decisions  (CLAUDE.md = local ag
 ---
 
 ## 📌 Status
-v1 is built, committed, and verified hands-on (configs load; safety gate incl. the autonomy hard-floor; all
-MCP servers; launcher + CLI wiring). The runtime is fully provisioned locally — Ollama + `qwen3:4b` and all
-ONNX speech weights are already in place — so **the one remaining step is the first live voice run** (mic +
-GPU). See [PLAN.md](PLAN.md) for the roadmap (delegated executor, richer memory/RAG, per-action voice confirmation).
+**v2.4.0.** v1 plus the native-tools pivot (skills are typed function-calling tools, reasoning on), a
+shared-core Settings/preferences system with versioning, kernel-enforced shell resource caps, and the
+window-control service merged into the single overlay extension. Verified: configs load; safety gate + the
+autonomy hard-floor; catastrophic denylist (42 blocked / 19 benign); and a **live tool-calling test against
+`qwen3:4b` — 22/22**, the model both describing its abilities correctly and picking the right tool every time.
+Runtime is fully provisioned locally (Ollama + `qwen3:4b`, all ONNX weights). Remaining user steps: the first
+live **voice run** (mic + GPU) and **one logout/login** to load the extension. See [PLAN.md](PLAN.md) for the
+roadmap (delegated executor, richer memory/RAG, per-action voice confirmation).
 
 ## 🙏 Credits & licenses
 - Engine: **[dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS)** (MIT) — vendored; see [`LICENSE.GLaDOS`](LICENSE.GLaDOS).
 - Desktop control: **[agent-sh/computer-use-linux](https://github.com/agent-sh/computer-use-linux)** (MIT).
 - Default TTS: **[supertone-inc/supertonic](https://github.com/supertone-inc/supertonic)** (code MIT; weights OpenRAIL-M) — ONNX, fetched once on first use.
-- Speech: Parakeet (ASR), SuperTonic + Kokoro (TTS), Silero (VAD). Brain: Ollama + Qwen3 / Llama 3.2 (local) or [Groq](https://groq.com) (API).
+- Speech: Parakeet (ASR), SuperTonic + Kokoro (TTS), Silero (VAD). Brain: Ollama + `qwen3:4b` / `qwen3:1.7b` (local) or [Groq](https://groq.com) (API).
+- Window-control D-Bus service vendored (MIT) from **[computer-use-linux](https://github.com/avifenesh/computer-use-linux)**; see [`LICENSE.computer-use-linux`](LICENSE.computer-use-linux).
 - Pattern references: Newelle, RealtimeVoiceChat, Fabric, AIChat.
 
 Vendored components retain their original licenses.

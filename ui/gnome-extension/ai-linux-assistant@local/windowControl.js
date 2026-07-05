@@ -166,7 +166,15 @@ function clientTypeName(value) {
 // user has turned window control on; disable() releases it. Idempotent.
 export class WindowControl {
     enable() {
-        if (!this._dbus) this._dbus = new WindowControlDBus();
+        // Never let a D-Bus export/own failure propagate into the extension's enable() — that would
+        // leave GNOME with a half-enabled extension it won't disable(), leaking the overlay chrome.
+        if (this._dbus) return;
+        try {
+            this._dbus = new WindowControlDBus();
+        } catch (e) {
+            logError(e, 'ai-linux: window control failed to start');
+            this._dbus = null;
+        }
     }
 
     disable() {

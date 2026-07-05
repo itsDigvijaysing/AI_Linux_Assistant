@@ -112,7 +112,7 @@ apply_settings(){
   # Settings panel (extension) writes model/thinking here; apply as env before launch.
   local f="${XDG_CONFIG_HOME:-$HOME/.config}/ai-linux/settings.json"
   [ -f "$f" ] || return 0
-  local m t w
+  local m t w v a b
   m="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('model',''))" "$f" 2>/dev/null)"
   t="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'think' not in d else str(d['think']).lower())" "$f" 2>/dev/null)"
   w="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('wake_word',''))" "$f" 2>/dev/null)"
@@ -533,10 +533,11 @@ for a in "$@"; do
     --purge)         PURGE=1 ;;
     --keep-packages) KEEP_PKGS=1 ;;
     -h|--help|help)  usage; exit 0 ;;
-    setup)           SUB="setup" ;;
-    doctor)          SUB="doctor" ;;
-    uninstall|revert) SUB="uninstall" ;;
-    start|tui|download|say) SUB="$a" ;;
+    # Once a subcommand is locked (esp. `say`), later words are its arguments — a second
+    # command-looking token must NOT overwrite it (so `./ai-linux say start the show` works).
+    setup|doctor|uninstall|revert|start|tui|download|say)
+                     if [ "${SUB_LOCKED:-0}" = 1 ]; then ARGS+=("$a")
+                     else case "$a" in revert) SUB="uninstall" ;; *) SUB="$a" ;; esac; SUB_LOCKED=1; fi ;;
     *)               # pass flags and `say` text through; a bare unknown word is a typo'd command —
                      # fail fast instead of forwarding it to `glados start` (confusing error)
                      if [ "$SUB" = "say" ] || [[ "$a" == -* ]]; then ARGS+=("$a")

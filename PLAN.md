@@ -6,6 +6,21 @@
 >
 > **Status:** Planning locked · **Date:** 2026-06-15 · **Owner:** king
 
+> ⚠️ **CURRENT STATE (v2.4.0, 2026-07-05) — read this before the phase history below.** The phased sections
+> record each phase's *point-in-time* state and are kept for rationale; several have since been superseded.
+> Authoritative facts today (source of truth = repo `CLAUDE.md`/`SECURITY.md`, kept in sync with code):
+> - **Skills are NATIVE typed function-calling tools** (`mcp.skills_actions.*`, 13 tools) — the keyword/hybrid
+>   RAG + per-turn command-injection design in Phases 3/6 was REVERSED (commit `305a97c`); reasoning is **ON**.
+> - **Default brain = `qwen3:4b`, lighter = `qwen3:1.7b`** (NOT `llama3.2` — that's the upstream GLaDOS default
+>   still referenced in the phase notes).
+> - **5 active MCP servers:** `system_info`, `time_info`, `skills_actions`, `shell`, `voice`
+>   (memory/skills/skills_writer/computer_use are shipped but commented out by default).
+> - **Gated families are THREE:** `mcp.shell.*`, `mcp.skills_actions.*`, `mcp.computer_use.*` (all autonomy-hard-denied).
+> - **Denylist lives in `mcp/shell_exec.py::_destructive_reason`** (the shared `run_shell` chokepoint, now also
+>   `systemd-run`-scoped), NOT `shell_server.py`. Verified 42 blocked / 19 benign.
+> - **One GNOME extension** (`ai-linux-assistant@local`): overlay + shared-core Settings/prefs + the vendored
+>   (dormant) window-control service. Repo `VERSION` = extension `version-name`. See §9 for the build-vs-reuse audit.
+
 ---
 
 ## 0. Hard constraints (do not violate)

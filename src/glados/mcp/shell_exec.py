@@ -101,7 +101,12 @@ def _destructive_reason(command: str) -> str | None:
     return None
 
 
-_SD_RUN_OK: bool | None = None  # lazily-probed: can we open systemd --user transient scopes here?
+# Resource-cap properties. Kept in ONE place so the availability probe validates exactly the props
+# run_shell later uses — otherwise a systemd build that accepts scopes but rejects a property would
+# pass the probe yet fail every capped command at spawn. RuntimeMaxSec is added per-call (dynamic).
+_SCOPE_CAP_PROPS: tuple[str, ...] = ("-p", "MemoryMax=2G", "-p", "TasksMax=512")
+
+_SD_RUN_OK: bool | None = None  # lazily-probed: can we open systemd --user transient scopes with our caps?
 
 
 def _systemd_run_available() -> bool:
@@ -109,7 +114,8 @@ def _systemd_run_available() -> bool:
     if _SD_RUN_OK is None:
         try:
             probe = subprocess.run(
-                ["systemd-run", "--user", "--scope", "-q", "--collect", "true"],
+                ["systemd-run", "--user", "--scope", "-q", "--collect",
+                 *_SCOPE_CAP_PROPS, "-p", "RuntimeMaxSec=10", "true"],
                 capture_output=True, timeout=5,
             )
             _SD_RUN_OK = probe.returncode == 0
@@ -143,8 +149,7 @@ def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT, resource_caps: bo
             # systemd-run, the scope's survivors still die a moment later.
             argv = [
                 "systemd-run", "--user", "--scope", "-q", "--collect",
-                "-p", "MemoryMax=2G", "-p", "TasksMax=512",
-                "-p", f"RuntimeMaxSec={int(timeout) + 2}",
+                *_SCOPE_CAP_PROPS, "-p", f"RuntimeMaxSec={int(timeout) + 2}",
                 "/bin/sh", "-c", command,
             ]
             proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=_HOME)
