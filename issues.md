@@ -29,16 +29,14 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 
 | File | Purpose | Touched by |
 |---|---|---|
-| `CLAUDE.md` | Onboarding / context for future sessions. Architecture, status, conventions, gotchas, decision log. **Read first.** | DOC-1, SEC-*, LLM-* |
 | `PLAN.md` | Master plan & single source of truth: decisions, phases, rationale, history. | DOC-1 |
 | `README.md` | User-facing intro: features, install (`./ai-linux`), usage, safety summary, barge-in. | DOC-1, SEC-1/2 |
 | `SECURITY.md` | Threat model, guarantees, action gate + autonomy hard-floor + **destructive denylist** description, residual risk. | SEC-1, SEC-2, SEC-3 |
 | `TOP10.md` | Landscape research used to pick the base project (GLaDOS) and references. | — |
-| `MD/` (`Res_Clau.md`, `Res_Perplex.md`, `Res_Gemi.md`, `CANDIDATES.md`) | Raw landscape-research notes (project selection). | — |
 | `skills/README.md` | Explains the SKILL-*.md procedure format + the skills MCP retriever. | LLM-2 (skill/few-shot consistency) |
 | `skills/SKILL-*.md` (16) | The executable skill library; the matched skill's command is injected per turn. | LLM-1/2, LOW-4 |
-| `docs/superpowers/specs/2026-06-15-overlay-extension-design.md` | Design doc: GNOME overlay extension (orb + transcript). | AUD/UI context |
-| `docs/superpowers/specs/2026-06-23-overlay-redesign-design.md` | Design doc: overlay redesign. | UI-1 context |
+| `docs/specs/2026-06-15-overlay-extension-design.md` | Design doc: GNOME overlay extension (orb + transcript). | AUD/UI context |
+| `docs/specs/2026-06-23-overlay-redesign-design.md` | Design doc: overlay redesign. | UI-1 context |
 | `src/glados/glados_ui/images/README.md` | Asset/license note for vendored UI images (upstream GLaDOS). | — |
 
 **Key doc claims that the issues below contradict (must be reconciled):**
@@ -88,7 +86,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Recommended fix:** before flag analysis, normalize long options to short (`--recursive`→`r`, `--force`→`f`,
   also handle `--recursive=...` and GNU `--` end-of-options); then keep the existing top-level-target / glob logic.
 - **Acceptance criteria:** all SEC-1 forms blocked; the benign allow-set (§5) still passes; no new false positives.
-- **Docs to update:** none (this makes reality match `SECURITY.md`); optionally note coverage in `CLAUDE.md` §8.
+- **Docs to update:** none (this makes reality match `SECURITY.md`); optionally note the coverage in the internal notes.
 
 #### SEC-2 — Denylist only inspects the first `rm` in a chained command  [HIGH · Fixed]
 - **Location:** `src/glados/mcp/shell_server.py`, `_destructive_reason()` lines ~63-65
@@ -101,7 +99,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Recommended fix:** split the whole command on `;`, `&&`, `||`, `|`, newline; run the destructive check on
   **each** segment; block if **any** segment matches.
 - **Acceptance criteria:** both SEC-2 examples blocked; `cd ~/p && rm -rf *` and `rm -rf ~/Downloads/old` still allowed.
-- **Docs to update:** none required; align `CLAUDE.md` §8 wording if behavior notes change.
+- **Docs to update:** none required; align the internal notes if behavior notes change.
 
 #### SEC-3 — Other mass-delete forms not covered  [LOW · Fixed]
 - **Location:** `src/glados/mcp/shell_server.py`, `_DENY` list + `_destructive_reason()`.
@@ -129,7 +127,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
   the system prompt into short, ordered bullet directives; keep total length tight. Verify behavior unchanged on 4b.
 - **Acceptance criteria:** identical task-execution behavior on `qwen3:4b` (skills still fire 1-shot); destructive
   refusal observed on a manual injection probe with `qwen3:1.7b`.
-- **Docs to update:** `CLAUDE.md` §6 (note prompt ordering rationale) if the structure changes.
+- **Docs to update:** the internal notes (prompt ordering rationale) if the structure changes.
 
 #### LLM-2 — Few-shot depicts tool calls as prose, not real tool calls  [MEDIUM · Fixed (uncommitted — pending live gate)]
 - **Location:** both configs `personality_preprompt`, the assistant example:
@@ -142,7 +140,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
   current `wpctl`/`brightnessctl` commands already match the skills — preserve that).
 - **Acceptance criteria:** on both `qwen3:4b` and `qwen3:1.7b`, "turn the volume down" / "set brightness to 30%" /
   "lock the screen" each produce a single real `mcp.shell.run_command` call (no narration).
-- **Docs to update:** `CLAUDE.md` decision log (skills-execute-via-injection note) if the few-shot format changes.
+- **Docs to update:** the internal decision notes if the few-shot format changes.
 
 ---
 
@@ -211,7 +209,7 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 - **Recommended fix:** if resampling is required but soxr is missing, fail clearly (disable voice with a message)
   rather than feeding VAD a bad frame.
 - **Acceptance criteria:** missing soxr produces a clear log + graceful degrade, not a callback crash.
-- **Docs to update:** `CLAUDE.md` gotchas (audio) if behavior changes.
+- **Docs to update:** the internal notes (audio) if behavior changes.
 
 #### UI-1 — Voice switch marked applied before apply; never retried on failure  [MEDIUM · Fixed]
 - **Location:** `src/glados/overlay/bridge.py` lines ~245-251 (sets `_last_voice_applied` before calling
@@ -230,14 +228,14 @@ Top-level and in-tree markdown docs, what each is for, and which issues touch th
 ### Documentation
 
 #### DOC-1 — `llama3.2` "lighter fallback" vs implemented `qwen3:1.7b`  [LOW · Fixed]
-- **Location:** `README.md` lines 17 & 119; `PLAN.md` line 38. (Decision/runtime reality: `CLAUDE.md` §2/§6 +
-  Settings panel write `GLADOS_LLM_MODEL=qwen3:1.7b`.)
+- **Location:** `README.md` lines 17 & 119; `PLAN.md` line 38. (Runtime reality: the
+  Settings panel writes `GLADOS_LLM_MODEL=qwen3:1.7b`.)
 - **Symptom:** docs name `llama3.2` (3B) as the lighter fallback, but the implemented lighter model is `qwen3:1.7b`;
   nothing in setup pulls `llama3.2`.
 - **Recommended fix:** pick one and make docs consistent (recommend standardizing on `qwen3:1.7b` to match the
   Settings panel and `ensure_model`); update `README.md` + `PLAN.md`.
 - **Acceptance criteria:** all docs agree on the lighter model; `./ai-linux doctor`/setup references match.
-- **Docs to update:** `README.md`, `PLAN.md` (and `CLAUDE.md` if wording needs alignment).
+- **Docs to update:** `README.md`, `PLAN.md`.
 
 ---
 

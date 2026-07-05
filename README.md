@@ -7,7 +7,7 @@ Everything in the runtime path runs **locally and open-source**. No cloud, no AP
 Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and speech on the CPU.
 
 > Built by vendoring & evolving the excellent [dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS) engine.
-> Design notes & decisions: [PLAN.md](PLAN.md). (An agent-onboarding `CLAUDE.md` is kept locally.)
+> Design notes & decisions: [PLAN.md](PLAN.md).
 
 ---
 
@@ -242,7 +242,7 @@ ui/gnome-extension/…/          # overlay: extension.js + settingsLib.js (share
 src/glados/                    # vendored GLaDOS engine (core/ mcp/ overlay/ tools/ ASR/ TTS/ audio_io/ …)
 models/                        # model configs + ONNX speech weights (weights gitignored)
 data/                          # ASR warm-up sample + demo assets
-PLAN.md                        # design notes & decisions  (CLAUDE.md = local agent guide)
+PLAN.md                        # design notes & decisions
 ```
 
 ---

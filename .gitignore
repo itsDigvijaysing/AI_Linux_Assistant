@@ -23,5 +23,8 @@ data/skills_vectors.json
 *.gguf
 *.pt
 *.safetensors
+
+# Local development docs & tooling (kept out of the published repo)
 *CLAUDE.md
-*PLAN.md
+MD/
+.claude/

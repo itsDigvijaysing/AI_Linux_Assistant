@@ -1,8 +1,7 @@
 # TOP 10 — Projects to Focus On for the AI Linux Assistant (Wayland "Siri")
 
-> Derived from four sources: my verified [CANDIDATES.md](CANDIDATES.md) (27 projects) + three external reports
-> ([Res_Clau.md](Res_Clau.md), [Res_Gemi.md](Res_Gemi.md), [Res_Perplex.md](Res_Perplex.md)).
-> The three reports **disagreed** on the foundation/executor. I ran a 6-agent adversarial verification of the
+> Derived from a landscape review of 27 candidate projects plus three independent research passes.
+> The three passes **disagreed** on the foundation/executor. I independently verified the
 > contested claims against live primary sources (repos, source files, GitHub API) on **2026-06-13** and ranked by
 > what survived — not by majority vote. Crux corrections are flagged inline as **[VERIFIED]**.
 >
@@ -102,13 +101,13 @@ delegate hard tasks to **gptme** (or OpenCode), feed it **Agent Skills** procedu
 
 ### 10 · OpenClaw — Skills ecosystem reference only
 - Largest SKILL.md ecosystem (ClawHub) — directly the format you're adopting, so it's a goldmine of example procedures.
-- **Do not run it as the foundation:** no first-party Linux voice, official guidance wants ≥8–11 GB-VRAM local models, 138+ CVEs, Anthropic banned its subscription OAuth (2026-04-04). Harvest skills, leave the runtime.
+- **Do not run it as the foundation:** no first-party Linux voice, official guidance wants ≥8–11 GB-VRAM local models, 138+ CVEs, its upstream provider revoked subscription OAuth access (2026-04-04). Harvest skills, leave the runtime.
 
 ---
 
 ## How the three reports reconciled (what was right vs wrong)
 
-| Question | Claude (Res_Clau) | Gemini (Res_Gemi) | Perplexity (Res_Perplex) | **Verified verdict** |
+| Question | Source A | Source B | Source C | **Verified verdict** |
 |---|---|---|---|---|
 | Frontend foundation | Newelle | GLaDOS | GLaDOS | **GLaDOS** — Newelle has no daemon/voice-headless mode |
 | Executor | gptme | Open Interpreter | Goose | **gptme or OpenCode** for local; Goose if stronger model |
@@ -130,7 +129,7 @@ bridge Wayland — that consensus is correct and is the backbone of the stack ab
 - **AgenticSeek / QwenPaw / LocalAGI / Moltis** — strong agents but over-engineered or chat-channel/web-UI shaped; AgenticSeek recommends ≥14B (busts 6 GB).
 - **Cline / Codex CLI / Aider** — IDE/coding-tuned; Aider is coding-only. Composable components at most.
 - **ShellGPT / AI Shell / Seeva / azibom / Local-Voice / NyarchAssistant** — utilities, toys, dead, or redundant forks.
-- Full reasoning for all 27 is in [CANDIDATES.md](CANDIDATES.md).
+- Full reasoning for all 27 candidates was tracked during selection.
 
 ---
 
@@ -146,7 +145,7 @@ open source.
 - **Hands (Wayland):** **computer-use-linux** as an MCP server (AT-SPI + portals + ydotool).
 - **Hands (heavy):** **gptme** (local, Ollama) as the delegated executor — invoked via a thin `Executor` interface.
 - **Knowledge:** **Agent Skills** (SKILL.md), seeded from **Fabric** patterns, retrieved via **AIChat** hybrid RAG.
-- **Future:** the `Executor` interface gets a second implementation (Claude Code via `claude-agent-sdk`, or OpenCode/Goose with a strong model) for complex tasks — swap-in, not rewrite.
+- **Future:** the `Executor` interface gets a second implementation (OpenCode/Goose with a strong model, or a hosted agent SDK) for complex tasks — swap-in, not rewrite.
 
 **First milestone:** fork GLaDOS, replace its STT/TTS with RealtimeSTT + Supertonic behind adapter modules, point its
 LLM at local Qwen3.5-4B/Ollama, and prove the round-trip voice loop works on your hardware — before adding tools.

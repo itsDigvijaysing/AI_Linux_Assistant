@@ -4,7 +4,7 @@ Glados:
   llm_model: "qwen3:4b"                                  # default brain (Settings can switch to qwen3:1.7b)
   completion_url: "http://localhost:11434/api/chat"      # Ollama endpoint
   api_key: null
-  llm_think: true                                        # reasoning ON. Verified on qwen3:4b: OFF leaks the model's reasoning into spoken content AND drops tool calls; ON keeps reasoning in Ollama's separate `thinking` field (engine ignores it) so speech is clean and tool-calls are reliable (9/9). Small first-reply latency cost. Set false only if you accept spoken-reasoning leakage.
+  llm_think: true                                        # reasoning ON. Verified on qwen3:4b: OFF leaks the model's reasoning into spoken content AND drops tool calls; ON keeps reasoning in Ollama's separate `thinking` field (engine ignores it) so speech is clean and tool-calls are reliable (9/9 on the ON/OFF check; a later 22-prompt capability test passed 22/22). Small first-reply latency cost. Set false only if you accept spoken-reasoning leakage.
   # Stronger brain (Phase 7, optional) — local by default. For harder tasks, point
   # these at a cloud / OpenAI-compatible endpoint; no code or dependency change:
   #   llm_model: "gpt-4o-mini"
@@ -79,6 +79,6 @@ Glados:
     #   args: ["-m", "glados.mcp.skills_writer_server"]
     # - name: "computer_use"
     #   transport: "stdio"
-    #   command: "/home/king/.local/bin/computer-use-linux"
+    #   command: "computer-use-linux"   # resolved on PATH (the launcher adds ~/.local/bin)
     #   args: ["mcp"]
     #   allowed_tools: ["*"]

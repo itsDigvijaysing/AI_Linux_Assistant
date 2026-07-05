@@ -62,6 +62,6 @@ Glados:
     #   command: "python"
     #   args: ["-m", "glados.mcp.memory_server"]
     # - name: "computer_use"
-    #   command: "/home/king/.local/bin/computer-use-linux"
+    #   command: "computer-use-linux"   # resolved on PATH (the launcher adds ~/.local/bin)
     #   args: ["mcp"]
     #   allowed_tools: ["*"]

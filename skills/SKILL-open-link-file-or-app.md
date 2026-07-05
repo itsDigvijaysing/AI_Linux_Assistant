@@ -9,7 +9,7 @@ Open things by running ONE command with `mcp.shell.run_command`:
 
 - Open a website:        `xdg-open https://example.com`   (prepend `https://` if the user omits it)
 - Web search:            `xdg-open "https://www.google.com/search?q=SEARCH+TERMS"`
-- Open a file or folder:  `xdg-open "/home/king/Downloads"`   (quote paths; `$HOME` works)
+- Open a file or folder:  `xdg-open "$HOME/Downloads"`   (quote paths; `$HOME`/`~` work)
 - Launch an application:  `gtk-launch firefox`   (use the .desktop id; e.g. `org.gnome.Nautilus` = Files,
                           `org.gnome.Console` = Terminal). If unsure of the id, `xdg-open` a URL/file instead.
 

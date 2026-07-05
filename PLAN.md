@@ -2,13 +2,13 @@
 
 > Single source of truth for this project. Supersedes the old README / FILE_INDEX /
 > IMPLEMENTATION_SUMMARY / MIGRATION_GUIDE / QUICKSTART / CHECKLIST (removed).
-> Research rationale is preserved in [TOP10.md](TOP10.md) and [MD/](MD/).
+> Research rationale is preserved in [TOP10.md](TOP10.md).
 >
 > **Status:** Planning locked · **Date:** 2026-06-15 · **Owner:** king
 
 > ⚠️ **CURRENT STATE (v2.4.0, 2026-07-05) — read this before the phase history below.** The phased sections
 > record each phase's *point-in-time* state and are kept for rationale; several have since been superseded.
-> Authoritative facts today (source of truth = repo `CLAUDE.md`/`SECURITY.md`, kept in sync with code):
+> Authoritative facts today (source of truth = the code + `SECURITY.md`, kept in sync):
 > - **Skills are NATIVE typed function-calling tools** (`mcp.skills_actions.*`, 13 tools) — the keyword/hybrid
 >   RAG + per-turn command-injection design in Phases 3/6 was REVERSED (commit `305a97c`); reasoning is **ON**.
 > - **Default brain = `qwen3:4b`, lighter = `qwen3:1.7b`** (NOT `llama3.2` — that's the upstream GLaDOS default
@@ -180,9 +180,8 @@ remote. The Groq key comes from `GROQ_API_KEY` (engine env fallback generalized 
 ## 2i. v1 COMPLETE + committed + security-hardened (2026-06-27)
 
 Everything below is implemented, verified, and **committed** — HEAD `4574bf2` on `main`, working tree clean.
-Earlier "Never commit" was lifted: the user gave explicit per-change permission (short, plain messages, **no
-AI/Claude attribution**). Session commits on top of `a07bc24`: `2d398c3` (v1 features), `934699d` (desktop
-tools by default), `6b8374b` (skill-cmd extraction fix), `4574bf2` (security hardening).
+Commits use short, plain messages. Session commits on top of `a07bc24`: `2d398c3` (v1 features), `934699d`
+(desktop tools by default), `6b8374b` (skill-cmd extraction fix), `4574bf2` (security hardening).
 
 What shipped beyond the Phase 1–7 baseline:
 - **Skills now EXECUTE, not just retrieve.** Per turn the engine retrieves the best `SKILL-*.md`, narrows the

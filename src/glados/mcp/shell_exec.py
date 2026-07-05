@@ -143,6 +143,8 @@ def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT, resource_caps: bo
     reason = _destructive_reason(command)
     if reason is not None:
         return {"error": f"refused: destructive command blocked by the safety denylist ({reason})", "refused": reason}
+    # errors="replace": a command with BINARY stdout (e.g. wl-paste when the clipboard holds an
+    # image) must not raise UnicodeDecodeError and surface as a cryptic "failed to run command".
     try:
         if resource_caps and _systemd_run_available():
             # RuntimeMaxSec backstops the scope itself: if our timeout kill only reaches
@@ -152,10 +154,10 @@ def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT, resource_caps: bo
                 *_SCOPE_CAP_PROPS, "-p", f"RuntimeMaxSec={int(timeout) + 2}",
                 "/bin/sh", "-c", command,
             ]
-            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=_HOME)
+            proc = subprocess.run(argv, capture_output=True, text=True, errors="replace", timeout=timeout, cwd=_HOME)
         else:
             proc = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=timeout, cwd=_HOME
+                command, shell=True, capture_output=True, text=True, errors="replace", timeout=timeout, cwd=_HOME
             )
     except subprocess.TimeoutExpired:
         return {"error": f"command timed out after {timeout}s"}
