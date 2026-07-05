@@ -361,7 +361,16 @@ alternative added dependency surface or broke a constraint). Watch items so this
   parakeet-unified ONNX streaming (live partials). AVOID Piper (now GPL-3.0, quality downgrade).
 - **Desktop tools:** revisit mbeps/linux-gnome-mcp (MIT) yearly as an IDEA source only; adopt `dbus-fast`
   only if a feature ever needs D-Bus *signals* (reacting to state changes) rather than issuing commands.
-- **Engine:** no rebase (pipecat/LiveKit cloud-first; Wyoming/OVOS appliance stacks). For issues.md INT-2,
-  study pipecat's smart-turn detection as a PATTERN (BSD-2). Re-pull upstream GLaDOS fixes selectively —
-  verified 2026-07-05: the vendor point (c0648ca) ALREADY includes upstream's sounddevice-race fix (PR #195)
-  and VAD onnxruntime thread cap (PR #198), and upstream main has not advanced past it.
+- **Engine:** no rebase (pipecat/LiveKit cloud-first; Wyoming/OVOS appliance stacks). Re-pull upstream GLaDOS
+  fixes selectively — verified 2026-07-05: the vendor point (c0648ca) ALREADY includes upstream's
+  sounddevice-race fix (PR #195) and VAD onnxruntime thread cap (PR #198), and upstream main has not advanced past it.
+
+### Known minor limitation (needs live-audio verification to change safely)
+- **Barge-in tail:** on interrupt the conversation history is already correct — the spoken sentence is clipped
+  to what was actually heard and stored atomically with a `[SYSTEM: User interrupted…]` marker
+  (`speech_player.py`), and the per-turn reply accumulator is cleared (`llm_processor.py`). The only residual is
+  that a sentence already synthesized and queued may finish playing after the stop. Tightening this means
+  dropping queued audio when `processing_active_event` is clear — a change to the headline barge-in path that
+  should be validated with a live mic/GPU run (not landed blind). Study pipecat's smart-turn detection as a
+  reference (BSD-2). Dangling tool_calls on interrupt and voice-id validation were resolved 2026-07-06
+  (`_ensure_tool_calls_answered`, `voice_server` Kokoro-format check).

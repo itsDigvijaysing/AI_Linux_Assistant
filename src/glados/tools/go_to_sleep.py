@@ -51,7 +51,8 @@ class GoToSleep:
             # No wake word (always-listening): release the mic so it stops responding.
             try:
                 self._audio_io.stop_listening()
-                result = "The assistant has stopped listening."
+                # No wake word to re-arm, so tell the user the one recovery path (the overlay orb).
+                result = "I've stopped listening — click the assistant orb when you want me again."
             except Exception as exc:  # noqa: BLE001
                 logger.warning("go_to_sleep: could not stop listening: {}", exc)
         self.llm_queue.put(

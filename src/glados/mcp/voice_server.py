@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
@@ -36,6 +37,11 @@ _VOICES: dict[str, str] = {
     "F4": "female",
     "F5": "female",
 }
+
+# Kokoro (fallback engine) voice ids look like ``am_michael`` / ``bf_emma`` — a 2-letter lang+gender
+# prefix, an underscore, then a name. Accept that SHAPE so a real Kokoro id passes while garbage is
+# rejected up front (the engine bridge is the final validator, but this stops obvious typos).
+_KOKORO_RE = re.compile(r"[a-z]{2}_[a-z]+")
 
 
 def _runtime_dir() -> Path:
@@ -72,8 +78,12 @@ def set_voice(voice: str) -> str:
     canon = voice.upper()
     if canon in _VOICES:
         voice = canon
-    elif "_" not in voice:  # not a Kokoro-style name -> must be a known SuperTonic id
-        return json.dumps({"error": f"unknown voice '{voice}'", "available": _VOICES})
+    elif _KOKORO_RE.fullmatch(voice.lower()):  # a well-formed Kokoro id (e.g. am_michael) -> pass through
+        voice = voice.lower()
+    else:  # neither a known SuperTonic id nor a valid Kokoro name
+        return json.dumps(
+            {"error": f"unknown voice '{voice}' (use M1/F3, or a Kokoro id like am_michael)", "available": _VOICES}
+        )
     try:
         directory = _runtime_dir()
         tmp = directory / "voice.json.tmp"

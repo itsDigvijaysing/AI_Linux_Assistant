@@ -108,7 +108,38 @@ class LanguageModelProcessor:
         return path.endswith("/api/chat")
 
     @staticmethod
+    def _ensure_tool_calls_answered(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Insert a synthetic tool result for any assistant tool_call left unanswered.
+
+        A barge-in can abort a turn after the assistant's ``tool_calls`` message is stored but before the
+        tool runs, leaving a dangling call with no matching ``tool`` reply — which strict OpenAI-compatible
+        endpoints reject and which can confuse the next turn. This is a PURE message-list transform run right
+        before the request: it never writes the conversation store and never triggers generation.
+        """
+        out: list[dict[str, Any]] = []
+        for i, message in enumerate(messages):
+            out.append(message)
+            calls = message.get("tool_calls") if message.get("role") == "assistant" else None
+            if not isinstance(calls, list) or not calls:
+                continue
+            answered: set[str] = set()  # ids replied to before the next assistant/user turn
+            for later in messages[i + 1:]:
+                role = later.get("role")
+                if role == "tool":
+                    tid = later.get("tool_call_id")
+                    if tid:
+                        answered.add(tid)
+                elif role in ("assistant", "user"):
+                    break
+            for call in calls:
+                cid = call.get("id") if isinstance(call, dict) else None
+                if cid and cid not in answered:
+                    out.append({"role": "tool", "tool_call_id": cid, "content": "(interrupted before completion)"})
+        return out
+
+    @staticmethod
     def _sanitize_messages_for_ollama(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        messages = LanguageModelProcessor._ensure_tool_calls_answered(messages)
         allowed_keys = {"role", "content", "name", "tool_calls", "tool_call_id", "images", "function_call"}
         sanitized: list[dict[str, Any]] = []
         for message in messages:
@@ -134,6 +165,7 @@ class LanguageModelProcessor:
 
     @staticmethod
     def _sanitize_messages_for_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        messages = LanguageModelProcessor._ensure_tool_calls_answered(messages)
         allowed_keys = {"role", "content", "name", "tool_calls", "tool_call_id"}
         sanitized: list[dict[str, Any]] = []
         for message in messages:
