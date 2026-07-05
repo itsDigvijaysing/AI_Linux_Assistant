@@ -227,7 +227,7 @@ without it via `./ai-linux --no-overlay`, or pick the starting mode with `--over
 **Settings** live in two places sharing one store (`~/.config/ai-linux/settings.json`): the top-bar menu holds
 the quick live controls (Voice, Listening), and **Extension Manager → Settings** (a full preferences window)
 adds Model, Deep-thinking, Allow-actions, Barge-in, and Window-control. A change in one reflects in the other
-instantly. The menu header shows the running build (**"AI Linux v2.4.0 — …"**); `./ai-linux doctor` warns if
+instantly. The menu header shows the running build (**"AI Linux v\<version\> — …"**, matching `./ai-linux --version`); `./ai-linux doctor` warns if
 the installed copy differs from the repo (Wayland loads extension code only at login, so re-copy + re-login
 after edits).
 
@@ -248,7 +248,7 @@ PLAN.md                        # design notes & decisions
 ---
 
 ## 📌 Status
-**v2.4.0.** v1 plus the native-tools pivot (skills are typed function-calling tools, reasoning on), a
+**v2.4.2.** v1 plus the native-tools pivot (skills are typed function-calling tools, reasoning on), a
 shared-core Settings/preferences system with versioning, kernel-enforced shell resource caps, and the
 window-control service merged into the single overlay extension. Verified: configs load; safety gate + the
 autonomy hard-floor; catastrophic denylist (42 blocked / 19 benign); and a **live tool-calling test against
