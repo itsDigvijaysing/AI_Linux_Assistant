@@ -170,6 +170,9 @@ class GladosConfig(BaseModel):
         backend = os.environ.get("GLADOS_AUDIO_BACKEND", "").strip()  # --barge-in -> "pipewire" (WebRTC AEC)
         if backend:
             self.audio_io = backend
+        voice = os.environ.get("GLADOS_VOICE", "").strip()  # Settings panel voice pick (e.g. supertonic:F3)
+        if voice:
+            self.voice = voice
         return self
 
     @classmethod

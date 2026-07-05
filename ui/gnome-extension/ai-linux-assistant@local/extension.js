@@ -17,11 +17,17 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+// Shared settings core (same module the prefs window uses — one source of truth).
+import {
+    RUNTIME_DIR, STATE_PATH, SETTINGS_PATH, SETTINGS_DEFAULTS, VOICES, WAKE_WORDS,
+    readSettings, saveKey, writeControl, writeVoice, wakeControl,
+} from './settingsLib.js';
+// Vendored (MIT) window-control D-Bus service — dormant unless the window_control setting is on.
+import {WindowControl} from './windowControl.js';
+
 const DESKTOP_ID = 'ai-linux-assistant.desktop';
 
-const DIR = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'ai-linux']);
-const STATE_PATH = GLib.build_filenamev([DIR, 'state.json']);
-const CONTROL_PATH = GLib.build_filenamev([DIR, 'control.json']);
+const DIR = RUNTIME_DIR;
 
 const STATES = ['loading', 'idle', 'listening', 'thinking', 'speaking', 'muted', 'off'];
 const ACTIVE_STATES = ['loading', 'thinking', 'speaking']; // force the overlay open during a turn
@@ -30,54 +36,6 @@ const IDLE_HIDE_MS = 10000;       // fade out + hide after 10s with no conversat
 const TRANSCRIPT_FRESH_MS = 1500; // a just-changed transcript still counts as activity this tick
 const PIN_TIMEOUT_MS = 30000;
 const LOG_MAX = 24;
-
-function writeControl(obj) {
-    try {
-        GLib.file_set_contents(CONTROL_PATH, JSON.stringify(obj));
-    } catch (e) {
-        logError(e, 'ai-linux: failed to write control.json');
-    }
-}
-
-// Settings (model + deep-thinking) — the launcher reads this on Start.
-const SETTINGS_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'ai-linux']);
-const SETTINGS_PATH = GLib.build_filenamev([SETTINGS_DIR, 'settings.json']);
-const MODELS = [
-    {id: 'qwen3:4b', label: 'Smart — qwen3:4b'},
-    {id: 'qwen3:1.7b', label: 'Fast — qwen3:1.7b'},
-];
-// Listening modes the user can pick from: STT-robust wake words, plus 'always' (continuous, no wake
-// word) and 'click' (mic stays off until you click the orb to talk).
-const WAKE_WORDS = [
-    {id: 'computer', label: 'Computer'},
-    {id: 'jarvis', label: 'Jarvis'},
-    {id: 'assistant', label: 'Assistant'},
-    {id: 'hey linux', label: 'Hey Linux'},
-    {id: 'always', label: 'Always listening (no wake word)'},
-    {id: 'click', label: 'Click to talk (mic off until clicked)'},
-];
-
-// Defaults are applied at DISPLAY time only and never written back: persisting a merged
-// think:false would look like an explicit user choice to the launcher, which honors only
-// explicit settings.json values, and would force reasoning off (breaking tool-calling).
-const SETTINGS_DEFAULTS = {model: 'qwen3:4b', think: false, wake_word: 'computer'};
-
-function readSettings() {
-    try {
-        const [ok, c] = GLib.file_get_contents(SETTINGS_PATH);
-        if (ok) return JSON.parse(new TextDecoder().decode(c));
-    } catch (e) {}
-    return {};
-}
-
-function writeSettings(s) {
-    try {
-        GLib.mkdir_with_parents(SETTINGS_DIR, 0o755);
-        GLib.file_set_contents(SETTINGS_PATH, JSON.stringify(s));
-    } catch (e) {
-        logError(e, 'ai-linux: failed to write settings.json');
-    }
-}
 
 // ---------------------------------------------------------------- animated orb
 // A flowing multi-colour "plasma" orb drawn with Cairo on an St.DrawingArea at ~30fps. Cairo (not a GPU
@@ -327,6 +285,7 @@ class Indicator extends PanelMenu.Button {
     _init(cb) {
         super._init(0.0, 'AI Linux Assistant'); // click opens its menu
         this._cb = cb;
+        this._ver = cb.version ? ` v${cb.version}` : '';  // live-build marker: header shows the LOADED code's version
         this._dotState = '';
 
         const box = new St.BoxLayout({style_class: 'ai-indicator-box'});
@@ -334,7 +293,7 @@ class Indicator extends PanelMenu.Button {
         box.add_child(this._dot);
         this.add_child(box);
 
-        this._header = new PopupMenu.PopupMenuItem('AI Linux Assistant', {reactive: false});
+        this._header = new PopupMenu.PopupMenuItem('AI Linux Assistant' + this._ver, {reactive: false});
         this.menu.addMenuItem(this._header);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -346,32 +305,24 @@ class Indicator extends PanelMenu.Button {
         this._showItem.connect('activate', () => this._cb.toggleOverlay());
         this.menu.addMenuItem(this._showItem);
 
-        // settings: model + deep-thinking (apply on next Start)
+        // Minimal daily controls only — the LIVE ones (voice + listening). Everything else
+        // (model, deep thinking, actions, barge-in) lives in the prefs window ("All settings…").
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._settings = readSettings();  // stored keys only; defaults applied for display
-        const model = this._settings.model ?? SETTINGS_DEFAULTS.model;
-        this._modelSub = new PopupMenu.PopupSubMenuMenuItem('Model: ' + model);
-        this._modelItems = {};
-        for (const m of MODELS) {
-            const it = new PopupMenu.PopupMenuItem(m.label);
-            it.setOrnament(model === m.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-            it.connect('activate', () => this._pickModel(m.id));
-            this._modelItems[m.id] = it;
-            this._modelSub.menu.addMenuItem(it);
-        }
-        this.menu.addMenuItem(this._modelSub);
-        this._thinkSwitch = new PopupMenu.PopupSwitchMenuItem(
-            'Deep thinking (slower)', !!(this._settings.think ?? SETTINGS_DEFAULTS.think));
-        this._thinkSwitch.connect('toggled', (_i, state) => { this._settings.think = state; this._saveSettings(); });
-        this.menu.addMenuItem(this._thinkSwitch);
 
-        // wake word: pick from options; applies live to a running engine and persists for next Start
-        this._wakeSub = new PopupMenu.PopupSubMenuMenuItem(this._wakeLabel());
+        this._voiceSub = new PopupMenu.PopupSubMenuMenuItem('Voice');
+        this._voiceItems = {};
+        for (const v of VOICES) {
+            const it = new PopupMenu.PopupMenuItem(v.label);
+            it.connect('activate', () => this._pickVoice(v.id));
+            this._voiceItems[v.id] = it;
+            this._voiceSub.menu.addMenuItem(it);
+        }
+        this.menu.addMenuItem(this._voiceSub);
+
+        this._wakeSub = new PopupMenu.PopupSubMenuMenuItem('Listening');
         this._wakeItems = {};
-        const wake = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
         for (const w of WAKE_WORDS) {
             const it = new PopupMenu.PopupMenuItem(w.label);
-            it.setOrnament(wake === w.id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
             it.connect('activate', () => this._pickWake(w.id));
             this._wakeItems[w.id] = it;
             this._wakeSub.menu.addMenuItem(it);
@@ -380,15 +331,36 @@ class Indicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        const prefs = new PopupMenu.PopupMenuItem('All settings…');
+        prefs.connect('activate', () => this._cb.openPrefs());
+        this.menu.addMenuItem(prefs);
+
         const logs = new PopupMenu.PopupMenuItem('Open logs');
         logs.connect('activate', () => this._cb.logs());
         this.menu.addMenuItem(logs);
+
+        this.refreshSettings();  // labels/ornaments from the shared store (also re-run by the file monitor)
+    }
+
+    refreshSettings() {
+        // Re-read the shared store so a change made ANYWHERE (prefs window, this menu, even a
+        // hand edit) is reflected here — the settings.json file monitor calls this on every write.
+        this._settings = readSettings();
+        const voice = this._settings.voice ?? SETTINGS_DEFAULTS.voice;
+        this._voiceSub.label.text = 'Voice: ' + voice;
+        for (const k in this._voiceItems)
+            this._voiceItems[k].setOrnament(k === voice ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
+        const wake = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
+        this._wakeSub.label.text = this._wakeLabel();
+        for (const k in this._wakeItems)
+            this._wakeItems[k].setOrnament(k === wake ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
     }
 
     setState(state, running) {
+        this._running = !!running;  // used by _pickVoice's live-vs-next-start notification
         const s = running ? (STATES.includes(state) ? state : 'idle') : 'off';
         this._dot.style_class = `ai-indicator state-${s}`;
-        this._header.label.text = running ? `AI Linux — ${s}` : 'AI Linux — not running';
+        this._header.label.text = running ? `AI Linux${this._ver} — ${s}` : `AI Linux${this._ver} — not running`;
         this._startStop.label.text = running ? 'Shutdown assistant' : 'Start assistant';
         this._showItem.setSensitive(running);
 
@@ -408,12 +380,12 @@ class Indicator extends PanelMenu.Button {
         }
     }
 
-    _pickModel(id) {
-        this._settings.model = id;
-        this._modelSub.label.text = 'Model: ' + id;
-        for (const k in this._modelItems)
-            this._modelItems[k].setOrnament(k === id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-        this._saveSettings();
+    _pickVoice(id) {
+        saveKey('voice', id);   // persists for next Start (launcher -> GLADOS_VOICE)
+        writeVoice(id);         // applies LIVE via the bridge's voice.json channel
+        this.refreshSettings();
+        Main.notify('AI Linux Assistant',
+            this._running ? 'Voice switched to ' + id + '.' : 'Voice ' + id + ' — applies on Start.');
     }
 
     _wakeLabel() {
@@ -423,22 +395,12 @@ class Indicator extends PanelMenu.Button {
     }
 
     _pickWake(id) {
-        this._settings.wake_word = id;
-        this._wakeSub.label.text = this._wakeLabel();
-        for (const k in this._wakeItems)
-            this._wakeItems[k].setOrnament(k === id ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-        writeSettings(this._settings);                              // persists for next Start
-        let ctl, msg;                                              // live to a running engine
-        if (id === 'always') { ctl = {mode: 'always'}; msg = 'Always listening.'; }
-        else if (id === 'click') { ctl = {mode: 'click'}; msg = 'Click the orb to talk.'; }
-        else { ctl = {mode: 'wake', wake_word: id}; msg = 'Wake word: ' + id; }
-        writeControl(ctl);
+        saveKey('wake_word', id);        // persists for next Start
+        writeControl(wakeControl(id));   // live to a running engine
+        this.refreshSettings();
+        const msg = id === 'always' ? 'Always listening.'
+            : id === 'click' ? 'Click the orb to talk.' : 'Wake word: ' + id;
         Main.notify('AI Linux Assistant', msg);
-    }
-
-    _saveSettings() {
-        writeSettings(this._settings);
-        Main.notify('AI Linux Assistant', 'Saved — applies on next Start.');
     }
 
     destroy() {
@@ -477,8 +439,14 @@ export default class AiLinuxOverlayExtension extends Extension {
             startStop: () => this._startStop(),
             toggleOverlay: () => this._toggleOverlay(),
             logs: () => this._openLogs(),
+            openPrefs: () => this.openPreferences(),
+            version: this.metadata['version-name'] ?? '',
         });
         Main.panel.addToStatusArea('ai-linux-assistant', this._indicator, 0, 'right');
+
+        // Window-control D-Bus service (vendored, MIT): registered only when the setting is on.
+        this._windowControl = new WindowControl();
+        this._syncWindowControl();
 
         try {
             const dir = Gio.File.new_for_path(DIR);
@@ -489,6 +457,18 @@ export default class AiLinuxOverlayExtension extends Extension {
             });
         } catch (e) {
             logError(e, 'ai-linux: dir monitor failed');
+        }
+        try {
+            // Keep the panel in ALWAYS-SYNC with the shared store: any settings.json write —
+            // from the prefs window, this menu, or by hand — refreshes the menu AND the
+            // window-control service immediately (no relogin needed to start/stop it).
+            this._settingsMon = Gio.File.new_for_path(SETTINGS_PATH).monitor_file(Gio.FileMonitorFlags.NONE, null);
+            this._settingsMonId = this._settingsMon.connect('changed', () => {
+                this._indicator?.refreshSettings();
+                this._syncWindowControl();
+            });
+        } catch (e) {
+            logError(e, 'ai-linux: settings monitor failed');
         }
         this._pollId = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, 1000, () => {
             this._readState();
@@ -671,13 +651,27 @@ export default class AiLinuxOverlayExtension extends Extension {
         this._overlay.set_position(x, mon.y + 44);
     }
 
+    _syncWindowControl() {
+        // Register the D-Bus service iff the user turned window control on; release it otherwise.
+        const want = !!(readSettings().window_control ?? SETTINGS_DEFAULTS.window_control);
+        if (!this._windowControl) return;
+        if (want && !this._windowControl.active) this._windowControl.enable();
+        else if (!want && this._windowControl.active) this._windowControl.disable();
+    }
+
     disable() {
+        if (this._windowControl) { this._windowControl.disable(); this._windowControl = null; }
         if (this._pollId) { GLib.source_remove(this._pollId); this._pollId = null; }
         this._clearPinTimeout();
         if (this._dirMon) {
             if (this._dirMonId) this._dirMon.disconnect(this._dirMonId);
             this._dirMon.cancel();
             this._dirMon = null;
+        }
+        if (this._settingsMon) {
+            if (this._settingsMonId) this._settingsMon.disconnect(this._settingsMonId);
+            this._settingsMon.cancel();
+            this._settingsMon = null;
         }
         if (this._monitorsId) { Main.layoutManager.disconnect(this._monitorsId); this._monitorsId = null; }
         if (this._indicator) { this._indicator.destroy(); this._indicator = null; }

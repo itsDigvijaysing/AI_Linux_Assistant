@@ -105,6 +105,14 @@ class ToolExecutor:
                         f"{tool_call['function']['arguments']}"
                     )
                     args = {}
+                # qwen3 sometimes nests the real args one level down: {"arguments": {...}, "function": name}.
+                # Unwrap only that exact shape (observed live 2026-07-05) so the tool isn't called with bogus params.
+                if (
+                    isinstance(args, dict)
+                    and isinstance(args.get("arguments"), dict)
+                    and set(args) <= {"arguments", "function", "name"}
+                ):
+                    args = args["arguments"]
 
                 # --- AI_Linux: confirm-before-execute safety gate ---
                 # Always consult confirm_tool_call: it self-checks requires_confirmation and

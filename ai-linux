@@ -37,6 +37,7 @@ ENV_NAME="AI_Linux"
 MODEL="qwen3:4b"   # default brain; Settings panel can switch to qwen3:1.7b (writes settings.json)
 CONFIG="$HERE/configs/ai_linux_config.yaml"
 ICON="$HERE/ui/icon/ai-linux.svg"
+AI_LINUX_VERSION="$(tr -d '[:space:]' < "$HERE/VERSION" 2>/dev/null || echo dev)"
 EXT_UUID="ai-linux-assistant@local"
 CU_EXT_UUID="computer-use-linux@avifenesh.dev"   # window-control bridge that `computer-use-linux setup` installs
 OVERLAY=1          # drive the on-screen GNOME overlay (engine writes state.json)
@@ -115,10 +116,22 @@ apply_settings(){
   m="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('model',''))" "$f" 2>/dev/null)"
   t="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'think' not in d else str(d['think']).lower())" "$f" 2>/dev/null)"
   w="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('wake_word',''))" "$f" 2>/dev/null)"
+  v="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('voice',''))" "$f" 2>/dev/null)"
+  a="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'actions' not in d else str(d['actions']).lower())" "$f" 2>/dev/null)"
+  b="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'barge_in' not in d else str(d['barge_in']).lower())" "$f" 2>/dev/null)"
   [ -n "$m" ] && { MODEL="$m"; export GLADOS_LLM_MODEL="$m"; }
   # Only override reasoning when the Settings panel sets it EXPLICITLY; otherwise keep the config default
   # (llm_think: true). Verified: reasoning OFF leaks the model's thinking into spoken content on qwen3.
   case "$t" in true) export GLADOS_LLM_THINK=1 ;; false) export GLADOS_LLM_THINK=0 ;; esac
+  # Voice pick from Settings: bare SuperTonic id (M1/F3) -> supertonic:<id>; anything else passes through.
+  case "$v" in [MF][0-9]) export GLADOS_VOICE="supertonic:$v" ;; "") : ;; *) export GLADOS_VOICE="$v" ;; esac
+  # Actions/barge-in from Settings — explicit CLI flags always win (they set ACTIONS/BARGE_FROM_CLI).
+  if [ "$ACTIONS" = "auto" ]; then
+    case "$a" in false) unset GLADOS_ALLOW_ACTIONS ;; true) export GLADOS_ALLOW_ACTIONS=1 ;; esac
+  fi
+  if [ "${BARGE_FROM_CLI:-0}" != 1 ]; then
+    case "$b" in false) BARGE=0 ;; true) BARGE=1 ;; esac
+  fi
   if [ -n "$w" ]; then                              # listening mode/word chosen in the overlay settings
     [ "$w" != "always" ] && [ "$w" != "click" ] && export GLADOS_OVERLAY_WAKE="$w"  # carry a custom wake word
     if [ "${OMODE_FROM_CLI:-0}" != 1 ]; then        # explicit --overlay-mode wins; only steer if it was absent
@@ -180,24 +193,26 @@ ensure_binary(){  # optional desktop-control server
       && cp "$HERE/refs/computer-use-linux/target/release/computer-use-linux" "$HOME/.local/bin/" \
       && { manifest_add file "$HOME/.local/bin/computer-use-linux"; c_ok "built + installed"; }
   else c_warn "desktop control skipped (optional) — 'npm i -g @agent-sh/computer-use-linux' to add it"; fi
-  # Enable AT-SPI + window targeting (gsettings, NO sudo) so the assistant can see/focus windows (re-login to apply).
-  # `setup-window-targeting` installs + enables the computer-use GNOME Shell extension — record it so uninstall removes it.
+  # Enable AT-SPI (gsettings, NO sudo) so the assistant can read UI elements (re-login to apply). Window
+  # TARGETING no longer uses a separate extension: the window-control D-Bus service is merged into our overlay
+  # extension (ui/gnome-extension, gated behind the Settings "Window control" toggle — dormant by default), so
+  # we do NOT run `setup-window-targeting` and we remove any previously-installed separate copy (below).
   if [ -x "$HOME/.local/bin/computer-use-linux" ]; then
     # `computer-use-linux setup` flips org.gnome.desktop.interface toolkit-accessibility=true. Capture the prior
     # value first and record it (only if it actually changed) so uninstall restores exactly our delta.
     local a11y_before=""
     command -v gsettings >/dev/null 2>&1 && a11y_before="$(gsettings get org.gnome.desktop.interface toolkit-accessibility 2>/dev/null)"
     "$HOME/.local/bin/computer-use-linux" setup >/dev/null 2>&1 && c_ok "desktop control accessibility enabled (re-login to apply)" || true
-    "$HOME/.local/bin/computer-use-linux" setup-window-targeting >/dev/null 2>&1 || true
     if [ -n "$a11y_before" ] && command -v gsettings >/dev/null 2>&1; then
       local a11y_after; a11y_after="$(gsettings get org.gnome.desktop.interface toolkit-accessibility 2>/dev/null)"
       [ "$a11y_after" != "$a11y_before" ] && manifest_add gsetting "$(printf 'org.gnome.desktop.interface\ttoolkit-accessibility\t%s' "$a11y_before")"
     fi
-    if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
-      manifest_add gext "$CU_EXT_UUID"
-      gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$CU_EXT_UUID" && manifest_add gext_enabled "$CU_EXT_UUID"
-      c_ok "window-targeting bridge extension installed ($CU_EXT_UUID)"
-    fi
+  fi
+  # Migration: drop the old standalone window-control extension if a prior setup installed it — its D-Bus
+  # service now lives in our overlay extension, and two owners of the same bus name would conflict.
+  if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
+    gext_remove "$CU_EXT_UUID"
+    c_ok "removed the standalone window-control extension (merged into the AI Linux overlay)"
   fi
 }
 ensure_screenshot(){  # install the portal-based screenshot helper to ~/.local/bin — UNCONDITIONAL (works without computer-use).
@@ -449,8 +464,19 @@ cmd_uninstall(){
   [ -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ] || c_ok "AI Linux Assistant removed."
 }
 
+ext_version(){ grep -o '"version-name": *"[^"]*"' "$1/metadata.json" 2>/dev/null | cut -d'"' -f4; }
+
 cmd_doctor(){
   banner; resolve_conda; apply_settings   # reflect the model/wake word the next Start will actually use
+  c_ok "ai-linux version $AI_LINUX_VERSION"
+  local rv iv
+  rv="$(ext_version "$HERE/ui/gnome-extension/$EXT_UUID")"
+  iv="$(ext_version "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID")"
+  if [ -n "$iv" ] && [ "$iv" != "$rv" ]; then
+    c_warn "installed extension v${iv:-?} != repo v${rv:-?} — re-copy it, then log out/in (Wayland loads extension code at login)"
+  elif [ -n "$iv" ]; then
+    c_ok "extension v$iv (installed matches repo; the RUNNING copy is whatever was loaded at login — check the menu header)"
+  fi
   env_exists && c_ok "conda env '$ENV_NAME'" || c_warn "conda env missing — run ./ai-linux setup"
   if env_exists && "$CONDA" run -n "$ENV_NAME" python -c "import glados" >/dev/null 2>&1; then c_ok "engine importable"; else c_warn "engine not installed — run ./ai-linux setup"; fi
   local ob; ob="$(ollama_bin)"; [ -n "$ob" ] && c_ok "ollama: $ob" || c_warn "ollama not installed"
@@ -468,6 +494,9 @@ cmd_doctor(){
       else c_ok "overlay extension installed + enabled (loads at next login)"; fi
     else c_warn "overlay extension installed, not enabled — run ./ai-linux setup"; fi
   else c_warn "overlay extension not installed — run ./ai-linux setup"; fi
+  if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
+    c_warn "old standalone window-control extension still present — run ./ai-linux setup to remove it (merged into the overlay)"
+  else c_ok "window control merged into the overlay extension (dormant unless enabled in Settings)"; fi
   echo
 }
 
@@ -493,11 +522,12 @@ for a in "$@"; do
     --allow-actions) ACTIONS=on ;;
     --no-actions)    ACTIONS=off ;;
     --extras)        ;;  # deprecated no-op: desktop tools are installed by default in setup now
-    --barge-in)      BARGE=1 ;;
-    --half-duplex|--no-barge-in) BARGE=0 ;;
+    --barge-in)      BARGE=1; BARGE_FROM_CLI=1 ;;
+    --half-duplex|--no-barge-in) BARGE=0; BARGE_FROM_CLI=1 ;;
     --no-overlay)    OVERLAY=0 ;;
     --overlay)       OVERLAY=1 ;;
     --overlay-mode=*) OMODE="${a#*=}"; OMODE_FROM_CLI=1 ;;
+    --version|-V)    echo "ai-linux $AI_LINUX_VERSION"; exit 0 ;;
     --dry-run)       DRYRUN=1 ;;
     --yes|-y)        ASSUME_YES=1 ;;
     --purge)         PURGE=1 ;;
@@ -507,7 +537,10 @@ for a in "$@"; do
     doctor)          SUB="doctor" ;;
     uninstall|revert) SUB="uninstall" ;;
     start|tui|download|say) SUB="$a" ;;
-    *)               ARGS+=("$a") ;;
+    *)               # pass flags and `say` text through; a bare unknown word is a typo'd command —
+                     # fail fast instead of forwarding it to `glados start` (confusing error)
+                     if [ "$SUB" = "say" ] || [[ "$a" == -* ]]; then ARGS+=("$a")
+                     else c_err "unknown command '$a' — commands: setup · doctor · download · say · tui · uninstall · start (default). See --help"; exit 1; fi ;;
   esac
 done
 
