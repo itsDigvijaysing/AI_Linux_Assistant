@@ -12,14 +12,15 @@ import time
 
 import gi
 
+gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Gdk, GLib, Graphene, Gsk, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk  # noqa: E402
 
 from ai_linux.state import STATE_LABELS, AssistantState  # noqa: E402
-from ai_linux.ui.bar_model import COLORS, GEOMETRY, QUIET, BarAnimator, Frame, hex_to_rgb  # noqa: E402
+from ai_linux.ui.bar_model import COLORS, GEOMETRY, QUIET, BarAnimator, Frame, fire_colors, hex_to_rgb  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ class WaveBars(Gtk.Widget):
         self._next_due = 0.0
         self._settings = None
         self._settings_handler = 0
+        self._style = None
+        self._style_handler = 0
         self._followup_span = FOLLOWUP_WINDOW_S
         self._followup_deadline: float | None = None
         self._live_followup = False
@@ -260,6 +263,10 @@ class WaveBars(Gtk.Widget):
             self._settings_handler = settings.connect("notify::gtk-enable-animations", self._on_animations_changed)
             self._system_reduced = not settings.props.gtk_enable_animations
             self._apply_reduced_motion()
+        if self._style is None:
+            # per display: the pill lives on its own (X11) display
+            self._style = Adw.StyleManager.get_for_display(self.get_display())
+            self._style_handler = self._style.connect("notify::dark", lambda *_: self.queue_draw())
         self._wake()
 
     def do_unmap(self) -> None:
@@ -268,6 +275,9 @@ class WaveBars(Gtk.Widget):
         if self._settings is not None:
             self._settings.disconnect(self._settings_handler)
             self._settings, self._settings_handler = None, 0
+        if self._style is not None:
+            self._style.disconnect(self._style_handler)
+            self._style, self._style_handler = None, 0
         Gtk.Widget.do_unmap(self)
 
     def do_measure(self, orientation, _for_size):
@@ -312,17 +322,19 @@ class WaveBars(Gtk.Widget):
         x0 = round((width - g.width) / 2 + frame.x_offset)
         cy = height / 2
         radius = g.bar_w / 2
-        groups: dict[float, list[tuple[float, float, float]]] = {}
-        for i, (h, op) in enumerate(zip(frame.heights, frame.opacities)):
+        dark = self._style is not None and self._style.get_dark()
+        per_bar = fire_colors(dark) if frame.fire else (color,) * len(frame.heights)
+        groups: dict[tuple[float, str], list[tuple[float, float, float]]] = {}
+        for i, (h, op, c) in enumerate(zip(frame.heights, frame.opacities, per_bar)):
             bar_h = g.min_h + (g.max_h - g.min_h) * h
-            groups.setdefault(round(op * 20) / 20, []).append((x0 + i * (g.bar_w + g.gap), cy - bar_h / 2, bar_h))
-        for op, bars in groups.items():
+            groups.setdefault((round(op * 20) / 20, c), []).append((x0 + i * (g.bar_w + g.gap), cy - bar_h / 2, bar_h))
+        for (op, c), bars in groups.items():
             if op <= 0:
                 continue
             builder = Gsk.PathBuilder.new()
             for x, y, bar_h in bars:
                 builder.add_rounded_rect(_rounded(x, y, g.bar_w, bar_h, radius))
-            snapshot.append_fill(builder.to_path(), Gsk.FillRule.WINDING, self._rgba(color, op))
+            snapshot.append_fill(builder.to_path(), Gsk.FillRule.WINDING, self._rgba(c, op))
         if frame.progress is not None:
             self._draw_progress(snapshot, frame.progress, color, x0, cy, height)
 

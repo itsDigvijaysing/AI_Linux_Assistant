@@ -19,3 +19,14 @@
 .ail-state-label.error {
   color: var(--error-color);
 }
+
+/* The assistant's own turn in the phoenix's fire, like its bars. */
+.ail-state-label.thinking,
+.ail-state-label.speaking {
+  color: #d0400a;
+}
+
+.ail-state-label.ail-dark.thinking,
+.ail-state-label.ail-dark.speaking {
+  color: #ffa348;
+}

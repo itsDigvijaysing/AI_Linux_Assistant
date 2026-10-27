@@ -56,6 +56,9 @@ python3 -m venv ~/.local/share/ai-linux/venv
 ~/.local/share/ai-linux/venv/bin/pip install -r requirements-engine.txt
 
 bin/ai-linux-app
+
+# optional: add it to the app grid (user-level, no sudo; "uninstall" removes it)
+PYTHONPATH=src python3 -m ai_linux.desktop_entry install
 ```
 
 The first start walks through the microphone, the models and the listening mode. Models download from the Models page
@@ -88,7 +91,7 @@ GTK4 app (system Python)                    engine child process (venv)
 ## Status
 
 v3 is a full rewrite as one desktop app. Working and tested: the app, engine, profiles, models, safety gate, MCP
-tools, history and health checks. Still to do: a long live voice run on the real desktop, and the final icons.
+tools, history and health checks. Still to do: a long live voice run on the real desktop, and an installer.
 
 ## License
 

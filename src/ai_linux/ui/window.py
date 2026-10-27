@@ -37,7 +37,7 @@ _ACCELS_SET: set[int] = set()  # accels live on the app, so register them once p
 
 
 class _BarsMark(Gtk.DrawingArea):
-    """The brand's 11-bar taper, drawn once in the accent blue."""
+    """The brand's 11-bar taper in the phoenix's fire colours."""
 
     BAR_W, GAP, MIN_H, MAX_H = 2.0, 1.6, 4.0, 16.0
 
@@ -46,9 +46,20 @@ class _BarsMark(Gtk.DrawingArea):
         super().__init__(content_width=width, content_height=int(self.MAX_H), valign=Gtk.Align.CENTER)
         self.set_draw_func(self._draw)
         self.update_property([Gtk.AccessibleProperty.LABEL], [APP_NAME])
+        self._style, self._handler = Adw.StyleManager.get_default(), 0
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
+
+    def _on_map(self, *_):
+        self._handler = self._style.connect("notify::dark", lambda *_: self.queue_draw())
+
+    def _on_unmap(self, *_):
+        if self._handler:
+            self._style.disconnect(self._handler)
+            self._handler = 0
 
     def _draw(self, _area, cr, _width, height):
-        cr.set_source_rgb(*bar_model.hex_to_rgb("#1c71d8"))
+        colors = bar_model.fire_colors(self._style.get_dark())
         r = self.BAR_W / 2
         for i, taper in enumerate(bar_model.TAPER):
             h = self.MIN_H + (self.MAX_H - self.MIN_H) * (taper - 0.3) / 0.7
@@ -57,7 +68,8 @@ class _BarsMark(Gtk.DrawingArea):
             cr.arc(x + r, y + r, r, 3.14159, 0)
             cr.arc(x + r, y + h - r, r, 0, 3.14159)
             cr.close_path()
-        cr.fill()
+            cr.set_source_rgb(*bar_model.hex_to_rgb(colors[i]))
+            cr.fill()
 
 
 def _nav_row(title: str, icon: str) -> Gtk.ListBoxRow:

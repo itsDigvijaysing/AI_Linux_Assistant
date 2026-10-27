@@ -99,6 +99,19 @@ class HeightsPerState(unittest.TestCase):
         self.assertLess(max(f.heights[bm.CENTER] for f in quiet), max(f.heights[bm.CENTER] for f in frames))
         self.assertEqual(frames[0].color, COLORS["speaking"])
 
+    def test_fire_only_on_the_assistants_turn(self):
+        for dark, centre, edge in ((False, "#f7a600", "#e2440a"), (True, "#fecc1a", "#fa4801")):
+            colors = bm.fire_colors(dark)
+            self.assertEqual(len(colors), N_BARS)
+            self.assertEqual(colors, colors[::-1])
+            self.assertEqual((colors[bm.CENTER], colors[0]), (centre, edge))
+        for state in ("thinking", "speaking"):
+            anim, t = settled_anim(state)
+            self.assertTrue(anim.step(t).fire, state)
+        for state in ("idle", "listening", "followup", "muted", "error", "off"):
+            anim, t = settled_anim(state)
+            self.assertFalse(anim.step(t).fire, state)
+
     def test_muted_flat_dots(self):
         anim, t = settled_anim("muted")
         f = anim.step(t + 0.1)

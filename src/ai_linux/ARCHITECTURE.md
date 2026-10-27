@@ -19,7 +19,7 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `controller.py` | `Controller`: `start/stop/enable_demo/set_listen_mode/mute/toggle_listening/push_to_talk/cancel/submit_text`, `engine_available`; `DemoDriver` |
 | `wake.py` | `strip_wake`, `heard`, `phrases`, `NameTest`, `rate`, `warnings` (gi- and numpy-free) |
 | `models_catalog.py` | `ModelSpec`, `CATALOG` (small: jiwo-0.8b, laya (optional) · big: qwen3.5:4b, gemma4:e4b), `get`, `for_slot` |
-| `ui/bar_model.py` | Pure bar animation: `BarAnimator.set_state/step/fps/is_settled`, `Frame`, `GEOMETRY`, `COLORS`, `level_from_rms`, `hex_to_rgb` |
+| `ui/bar_model.py` | Pure bar animation: `BarAnimator.set_state/step/fps/is_settled`, `Frame`, `GEOMETRY`, `COLORS`, `fire_colors(dark)` (thinking and speaking, one colour per bar, sampled from the app icon; the rest stays blue), `level_from_rms`, `hex_to_rgb` |
 | `ui/theme.py` | `install(display)` loads every `ui/css/*.css` + icon path; `apply_color_scheme(settings, display)` |
 | `app.py` | `App(Adw.Application)`; builds optional parts by exact name (below); a missing part is logged, never fatal |
 | `devtools.py` | `render_to_png(widget, path)`, `screenshot(...)` |
@@ -37,6 +37,7 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `ui/preferences.py` | `show_preferences(parent, ctx)` | |
 | `ui/onboarding.py` | `maybe_show(parent, ctx)`, `show(parent, ctx)` | shown once (`onboarding_done`); the dialog has `go_to(index, animate=True)` and `.closed` |
 | `autostart.py` | `is_enabled()`, `set_enabled(bool)` | XDG autostart entry with `--background` |
+| `desktop_entry.py` | `install()`, `uninstall()`; `python3 -m ai_linux.desktop_entry install` | app-grid launcher and icons under `~/.local/share`, no sudo |
 
 ## Rules
 - Each builder owns its files and its own `ui/css/<area>.css`; shared files change only via the lead.
@@ -70,4 +71,7 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - Laya: uploaded to `itsDigvijaysing/laya-typed-decisions-openvino` (commit `c1014fc`, pinned); one full download
   check through the Models page is still to do (it was cut off by a weak connection).
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package.
-- User-only: a live voice run on the real desktop (including the name test); the new icons.
+- User-only: a live voice run on the real desktop (including the name test).
+- Not yet compared with GLaDOS upstream since our 2026-06-15 copy (upstream `ea018f5`, 2026-10-10): ASR, VAD,
+  routing. Upstream's routing tree (area, server, tool) isn't ported; v3 routes over one flat menu.
+- `FUTURE_DIRECTION.md` predates v3 (it still says "keep the vendored GLaDOS").

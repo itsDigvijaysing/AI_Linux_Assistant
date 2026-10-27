@@ -113,6 +113,10 @@ class Page(Adw.NavigationPage):
         self._connect(bus, "turn-updated", lambda _b, t: self._upsert(t))
         for key in ("listen_mode", "wake_word", "hotkey"):
             self._connect(settings, f"changed::{key}", lambda *_: self._on_listen_settings())
+        # the app's own light/dark, which a CSS media query doesn't follow when the theme is forced
+        style = Adw.StyleManager.get_default()
+        self._connect(style, "notify::dark", lambda *_: self._on_dark(style))
+        self._on_dark(style)
         if ctx.history is not None and hasattr(ctx.history, "add_listener"):
             ctx.history.add_listener(self._on_history_event)
         self._timers.append(GLib.timeout_add_seconds(60, self._check_day))
@@ -287,6 +291,9 @@ class Page(Adw.NavigationPage):
             self.ctx.history.remove_listener(self._on_history_event)
 
     # state and listening mode
+
+    def _on_dark(self, style) -> None:
+        (self._state_lbl.add_css_class if style.get_dark() else self._state_lbl.remove_css_class)("ail-dark")
 
     def _on_state(self, state: str, detail: str) -> None:
         try:

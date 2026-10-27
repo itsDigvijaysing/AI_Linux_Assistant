@@ -18,7 +18,7 @@ from gi.repository import Gio, GLib, GObject
 
 from ai_linux.config import APP_NAME, ASSETS_DIR
 from ai_linux.state import ACTIVE_STATES, STATE_LABELS, AssistantState
-from ai_linux.ui.bar_model import GEOMETRY, N_BARS, TAPER, BarAnimator, Frame, hex_to_rgb
+from ai_linux.ui.bar_model import GEOMETRY, N_BARS, TAPER, BarAnimator, Frame, fire_colors, hex_to_rgb
 
 log = logging.getLogger(__name__)
 
@@ -168,14 +168,14 @@ def render_frame(frame: Frame, size: int) -> bytes:
     if bar_w.is_integer():
         x0 = float(int(x0))  # keep whole-pixel bars on the pixel grid
     min_h, max_h = geo.min_h * scale, geo.max_h * scale
-    r, g, b = hex_to_rgb(frame.color)
-    for i, (height, alpha) in enumerate(zip(frame.heights, frame.opacities)):
+    per_bar = fire_colors(dark=True) if frame.fire else (frame.color,) * len(frame.heights)  # the top bar is dark
+    for i, (height, alpha, color) in enumerate(zip(frame.heights, frame.opacities, per_bar)):
         h = min_h + (max_h - min_h) * min(1.0, max(0.0, height))
         # Same parity as the icon so the bar centres on whole pixels and stays crisp.
         h = max(2.0, 2 * round((h - size % 2) / 2) + size % 2)
         x, y = x0 + i * (bar_w + gap), (size - h) / 2
         _rounded_bar(cr, x, y, bar_w, h)
-        cr.set_source_rgba(r, g, b, max(0.0, min(1.0, alpha)))
+        cr.set_source_rgba(*hex_to_rgb(color), max(0.0, min(1.0, alpha)))
         cr.fill()
     surface.flush()
     return cairo_to_sni(surface.get_data(), size, size, surface.get_stride())

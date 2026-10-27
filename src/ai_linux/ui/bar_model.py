@@ -15,18 +15,49 @@ CENTER = N_BARS // 2
 # Fixed taper from the user's reference icon: tallest in the centre.
 TAPER = (0.30, 0.42, 0.56, 0.72, 0.88, 1.00, 0.88, 0.72, 0.56, 0.42, 0.30)
 
+
+def hex_to_rgb(color: str) -> tuple[float, float, float]:
+    c = color.lstrip("#")
+    return tuple(int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
 COLORS = {
     "off": "#c0bfbc",
     "idle": "#62a0ea",
     "followup": "#3584e4",
     "listening": "#3584e4",
-    "thinking": "#3584e4",
+    "thinking": "#fe7104",
     "loading": "#9a9996",
-    "speaking": "#1a5fb4",
+    "speaking": "#fe7104",
     "muted": "#77767b",
     "error": "#e01b24",
     "resting": "#99c1f1",
 }
+
+# The assistant's own turn glows like the icon's phoenix: amber centre, orange, red-orange edges.
+FIRE_STATES = ("thinking", "speaking")
+_FIRE_DARK = ("#fecc1a", "#fe7104", "#fa4801")  # sampled from the app icon
+_FIRE_LIGHT = ("#f7a600", "#fe7104", "#e2440a")  # a shade deeper so the edges stay visible on white
+
+
+def _mix(a: str, b: str, u: float) -> str:
+    ca, cb = hex_to_rgb(a), hex_to_rgb(b)
+    return "#" + "".join(f"{round((x + (y - x) * u) * 255):02x}" for x, y in zip(ca, cb))
+
+
+def _gradient(stops: tuple[str, str, str]) -> tuple[str, ...]:
+    out = []
+    for i in range(N_BARS):
+        d = abs(i - CENTER) / CENTER * 2  # 0 centre, 1 middle stop, 2 edge
+        out.append(_mix(stops[0], stops[1], d) if d <= 1 else _mix(stops[1], stops[2], d - 1))
+    return tuple(out)
+
+
+FIRE_LIGHT, FIRE_DARK = _gradient(_FIRE_LIGHT), _gradient(_FIRE_DARK)
+
+
+def fire_colors(dark: bool) -> tuple[str, ...]:
+    return FIRE_DARK if dark else FIRE_LIGHT
 
 # Frame rates per state; 0 means draw once and stop ticking.
 FPS = {
@@ -67,6 +98,7 @@ class Frame:
     opacities: list[float] = field(default_factory=lambda: [1.0] * N_BARS)
     x_offset: float = 0.0  # pixels, error shake
     progress: float | None = None  # follow-up window time left, 0..1
+    fire: bool = False  # draw with fire_colors() instead of color
 
 
 def ease_out_cubic(u: float) -> float:
@@ -158,7 +190,7 @@ class BarAnimator:
                 k = ease_out_cubic(u)
                 heights = [f + (h - f) * k for f, h in zip(self._blend_from, heights)]
         self._last = heights
-        return Frame(heights, color, opac, xoff, progress if st == "followup" else None)
+        return Frame(heights, color, opac, xoff, progress if st == "followup" else None, st in FIRE_STATES)
 
     def _target(self, st, now, t, level, dt):
         ones = [1.0] * N_BARS
@@ -204,8 +236,3 @@ class BarAnimator:
             if ts <= when:
                 return v
         return self._ring[0][1] if self._ring else 0.0
-
-
-def hex_to_rgb(color: str) -> tuple[float, float, float]:
-    c = color.lstrip("#")
-    return tuple(int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
