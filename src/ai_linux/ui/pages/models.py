@@ -207,7 +207,7 @@ class Page(Adw.NavigationPage):
         self._rows: dict[str, _ModelRow] = {}
         self._jobs: dict[str, _Job] = {}
         self._errors: dict[str, str] = {}
-        self._jiwo_installed = False
+        self._ov_installed: dict[str, bool] = {}
         self._speech_installed: dict[str, bool] = {}
         self._install_handle = None
         self._install_progress: tuple[int, int, str] = (0, 0, "Starting")
@@ -243,7 +243,7 @@ class Page(Adw.NavigationPage):
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
         self.connect("destroy", self._on_destroy)
-        self._check_jiwo()
+        self._check_files()
         self._sync()
 
     # helpers
@@ -590,18 +590,18 @@ class Page(Adw.NavigationPage):
                 log.exception("has_model %s", spec.source)
                 return False
         if spec.runtime == "openvino":
-            return self._jiwo_installed
+            return self._ov_installed.get(spec.id, False)
         if spec.runtime == "onnx":
             return self._speech_installed.get(spec.id, False)
         return False
 
-    def _check_jiwo(self) -> None:
+    def _check_files(self) -> None:
         try:
-            self._jiwo_installed = downloads.jiwo_installed()  # a few stat calls, cheap enough here
+            self._ov_installed = {i: downloads.openvino_installed(i) for i in downloads.OPENVINO_MODELS}
             self._speech_installed = {e: downloads.speech_installed(e) for e in downloads.SPEECH_FILES}
         except Exception:
             log.exception("checking the downloaded model files")
-            self._jiwo_installed = False
+            self._ov_installed = {}
 
     def _sync_models(self) -> None:
         st = self._status
@@ -623,7 +623,7 @@ class Page(Adw.NavigationPage):
                     row.show_download(False, why)
                 else:
                     row.show_download(True, None)
-            elif spec.runtime == "openvino" and not downloads.JIWO_PUBLISHED:
+            elif spec.runtime == "openvino" and not downloads.openvino_published(spec.id):
                 row.show_download(False, "Not published for download yet")
             else:
                 row.show_download(True, None)
@@ -661,7 +661,7 @@ class Page(Adw.NavigationPage):
         def finished(ok, err):
             self._jobs.pop(model_id, None)
             if spec.runtime in ("openvino", "onnx"):
-                self._check_jiwo()
+                self._check_files()
             if ok:
                 self._toast(f"{spec.name} is ready")
             elif err == downloads.CANCELLED:
@@ -679,8 +679,8 @@ class Page(Adw.NavigationPage):
                 job = _Job(cancel=handle.cancel)
             elif spec.runtime == "openvino":
                 event = threading.Event()
-                downloads.jiwo_download(lambda d, t: progress(d, t), finished, event)
-                job = _Job(cancel=event.set, total=downloads.total_size(downloads.JIWO_FILES))
+                downloads.openvino_download(spec.id, lambda d, t: progress(d, t), finished, event)
+                job = _Job(cancel=event.set, total=downloads.total_size(downloads.OPENVINO_MODELS[spec.id].files))
             elif spec.runtime == "onnx":
                 event = threading.Event()
                 downloads.speech_download(spec.id, lambda d, t: progress(d, t), finished, event)
@@ -862,14 +862,14 @@ class Page(Adw.NavigationPage):
             log.exception("updating the models page")
 
     def _refresh(self) -> None:
-        self._check_jiwo()
+        self._check_files()
         mgr = self.ctx.ollama
         if mgr is not None:
             mgr.refresh()
         self._sync()
 
     def _on_map(self, *_):
-        self._check_jiwo()
+        self._check_files()
         mgr = self.ctx.ollama
         if mgr is not None and not self._polling and hasattr(mgr, "start_polling"):
             self._polling = True

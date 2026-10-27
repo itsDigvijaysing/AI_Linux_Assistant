@@ -126,15 +126,19 @@ class OllamaTest(unittest.TestCase):
         def fake(url, timeout=1.0):
             if url.endswith("/api/version"):
                 return {"version": "0.30.8"}
-            return {"models": [{"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"}]}
+            return {"models": [{"name": "qwen3.5:4b", "model": "qwen3.5:4b"}]}
 
         p = _probe()
-        with mock.patch.object(doctor, "_http_json", side_effect=fake):
+        with mock.patch.object(doctor, "_http_json", side_effect=fake), \
+                mock.patch("ai_linux.downloads.openvino_installed", return_value=False):  # not this machine's files
             self.assertEqual(doctor.check_ollama(p).status, "ok")
             small, big = doctor.check_model_small(p), doctor.check_model_big(p)
-        self.assertEqual(small.status, "ok")
-        self.assertEqual((big.status, big.fix_id), ("warn", "open_models"))
-        self.assertIn("3.3 GB", big.detail)
+        self.assertEqual(big.status, "ok")
+        self.assertEqual((small.status, small.fix_id), ("warn", "open_models"))
+        self.assertIn("0.8 GB", small.detail)
+
+    def test_no_small_model_is_fine(self):
+        self.assertEqual(doctor.check_model_small(_probe(small_model="none")).status, "ok")
 
     def test_stopped_server_offers_start(self):
         mgr = SimpleNamespace(status="stopped", start=lambda: None, binary=None)
@@ -172,9 +176,9 @@ class OllamaTest(unittest.TestCase):
             (Path(tmp) / "jiwo-0.8b-openvino-int8" / "openvino_model.bin").write_bytes(b"x")
             self.assertEqual(doctor.check_model_small(_probe(small_model="jiwo-0.8b")).status, "warn")  # partial
             from ai_linux import downloads
-            with mock.patch.object(downloads, "jiwo_installed", return_value=True) as done:
+            with mock.patch.object(downloads, "openvino_installed", return_value=True) as done:
                 self.assertEqual(doctor.check_model_small(_probe(small_model="jiwo-0.8b")).status, "ok")
-            done.assert_called_with(Path(tmp) / "jiwo-0.8b-openvino-int8")
+            done.assert_called_with("jiwo-0.8b", Path(tmp) / "jiwo-0.8b-openvino-int8")
 
 
 class GpuTest(unittest.TestCase):

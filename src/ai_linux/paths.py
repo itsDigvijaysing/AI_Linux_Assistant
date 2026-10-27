@@ -1,9 +1,14 @@
-"""XDG paths, gi-free so the engine process can import them too."""
+"""XDG paths and the app's names, gi-free so the engine process and tests without GTK can import them."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
+# Tests and headless screenshots override the id so they never talk to a running instance.
+APP_ID = os.environ.get("AI_LINUX_APP_ID", "io.github.itsdigvijaysing.AILinux")
+APP_NAME = "AI Linux"
+ICON_NAME = "io.github.itsdigvijaysing.AILinux"  # fixed even when tests override APP_ID
 
 
 def _xdg(var: str, default: str) -> Path:

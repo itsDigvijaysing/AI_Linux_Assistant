@@ -7,10 +7,8 @@ line: commands in, events out (see PROTOCOL in __main__). Logs go to stderr.
 from __future__ import annotations
 
 import collections
-import difflib
 import logging
 import queue
-import re
 import threading
 import time
 import uuid
@@ -22,6 +20,7 @@ from ai_linux.engine import sounds
 from ai_linux.safety import ActionGate, Executor
 from ai_linux.safety.gate import ConfirmRequest
 from ai_linux.schema import DEFAULTS, on_ac_power  # noqa: F401  on_ac_power re-exported for tests
+from ai_linux.wake import strip_wake, words as _words  # noqa: F401  strip_wake re-exported for tests
 
 log = logging.getLogger(__name__)
 
@@ -34,26 +33,8 @@ BARGE_FRAMES = 6  # voiced frames that interrupt the assistant (~0.2 s)
 FOLLOWUP_S = 10.0  # after a reply, follow-ups need no wake word
 CONFIRM_S = 55.0  # a confirmation not answered by then is a no (the app's dialog gives up at the same time)
 LISTEN_NOW_S = 8.0  # hotkey: how long to wait for speech to start
+NAME_TEST_S = 20.0  # a name-test sentence must be heard within this
 JUNK = {"", "yeah", "yes", "mm", "hmm", "uh", "um", "ah", "oh", "okay", "ok", "you", "bye", "the", "a", "and", "so"}
-
-
-def _words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9']+", text.lower())
-
-
-def strip_wake(text: str, wake: str) -> str | None:
-    """The command after the wake word, "" if only the wake word was said, None if it wasn't said."""
-    wake_w = _words(wake)
-    if not wake_w:
-        return text
-    tokens = list(re.finditer(r"[A-Za-z0-9']+", text))
-    words = [t.group().lower() for t in tokens]
-    n = len(wake_w)
-    for i in range(min(len(words) - n + 1, 4)):
-        cand = " ".join(words[i:i + n])
-        if difflib.SequenceMatcher(None, cand, " ".join(wake_w)).ratio() >= 0.75:
-            return text[tokens[i + n - 1].end():].lstrip(" ,.!?;:-")
-    return None
 
 
 class Engine:
@@ -69,6 +50,7 @@ class Engine:
         self.capturing = False
         self.speaking = False
         self.armed_until = 0.0  # hotkey / listen_now: next utterance needs no wake word
+        self.name_test_until = 0.0  # until then, the next utterance is only transcribed and sent back
         self.ptt = False
         self.followup_until = 0.0
         self.quiet_until = 0.0  # half-duplex: ignore the mic until our own voice has died away
@@ -207,6 +189,22 @@ class Engine:
         self._capture(True)
         self._ping()
         self.set_state("listening")
+
+    def name_test_listen(self) -> None:
+        """Settings' name test: hear one sentence and send back what was heard."""
+        self.name_test_until = time.monotonic() + NAME_TEST_S
+        self.listen_now()
+
+    def name_test_stop(self) -> None:
+        if self.name_test_until:
+            self.name_test_until = 0.0
+            self.armed_until = 0.0
+            self._mic_after_turn()
+            self.set_state("idle")
+
+    def _mic_after_turn(self) -> None:
+        if self.s.get("listen_mode") not in ("wake", "always"):
+            self._capture(False)
 
     def push_to_talk(self, pressed: bool) -> None:
         if pressed:
@@ -349,6 +347,12 @@ class Engine:
             log.info("heard %r (%.2fs)", text, asr_s)
             if self.armed_until:
                 self.armed_until = 0.0
+            if time.monotonic() < self.name_test_until:
+                self.name_test_until = 0.0
+                self.emit({"ev": "heard", "text": text})
+                self._mic_after_turn()
+                self.set_state("idle")
+                return
             if not wake_free:
                 cmd = strip_wake(text, str(self.s.get("wake_word") or "phoenix"))
                 if cmd is None:

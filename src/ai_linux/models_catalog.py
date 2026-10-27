@@ -35,6 +35,13 @@ CATALOG: tuple[ModelSpec, ...] = (
         note="8-bit OpenVINO build of eljiwo/jiwo-0.8b. Handled 74 % of commands alone in our tests.",
     ),
     ModelSpec(
+        id="laya", slot="small", name="Laya", family="ModernBERT decision model",
+        licence="Apache-2.0", download_gb=0.85, runtime="openvino",
+        source="itsDigvijaysing/laya-typed-decisions-openvino",
+        summary="Optional: answers in about a tenth of a second, but picks the right command less often than jiwo.",
+        note="OpenVINO build of convaiinnovations/laya (typed-decisions). Right on 61 % of commands in our tests.",
+    ),
+    ModelSpec(
         id="parakeet-tdt", slot="speech", name="Parakeet TDT 0.6B", family="NVIDIA Parakeet",
         licence="CC-BY-4.0", download_gb=1.28, runtime="onnx", source="nvidia/parakeet-tdt-0.6b-v3",
         summary="Turns your speech into text on the CPU. The most accurate choice.", recommended=True,

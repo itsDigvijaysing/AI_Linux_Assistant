@@ -12,6 +12,9 @@ import tempfile
 import threading
 import time
 import unittest
+import importlib.util  # noqa: E402
+if importlib.util.find_spec("gi") is None:
+    raise unittest.SkipTest("needs PyGObject (python3-gi)")
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace

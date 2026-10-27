@@ -109,6 +109,13 @@ class Controller(GObject.Object):
         if self.demo is not None:
             self.demo.cancel()
 
+    def name_test(self, on_heard=None) -> bool:
+        """Hear one sentence for the name test (on_heard gets the text); None stops. False without the engine."""
+        if self.engine is None:
+            return False
+        self.engine.name_test(on_heard)
+        return True
+
     def submit_text(self, text: str) -> None:
         text = text.strip()
         if not text:

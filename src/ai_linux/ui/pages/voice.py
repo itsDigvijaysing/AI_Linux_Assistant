@@ -42,7 +42,8 @@ VOICES = (
     ("supertonic:F1", "Female 1", "SuperTonic F1"),
     ("supertonic:F3", "Female 2", "SuperTonic F3"),
 )
-WAKE_SUGGESTIONS = ("Phoenix", "Computer", "Jarvis")
+# each heard 20/20 with no false wakes in bench/README.md "Assistant name"
+WAKE_SUGGESTIONS = ("Phoenix", "Pegasus", "Griffin", "Dragon", "Jarvis")
 _LEVEL_HINT = "Speak to test. The microphone is used only while this page is open."
 _WAKE_RE = re.compile(r"^[^\W\d_]+(?: [^\W\d_]+){0,2}$")  # one to three words, letters only
 
@@ -373,6 +374,21 @@ class Page(Adw.NavigationPage):
         button = Gtk.MenuButton(icon_name="pan-down-symbolic", menu_model=menu, valign=Gtk.Align.CENTER,
                                 tooltip_text="Suggestions", css_classes=["flat"])
         row.add_suffix(button)
+        test = Gtk.Button(label="Test", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                          tooltip_text="Read a few sentences to see how well this name is heard")
+
+        def open_test(*_):
+            word = " ".join(row.get_text().split())
+            if not _WAKE_RE.match(word):
+                row.add_css_class("error")
+                self._toast("Use one to three words, letters only")
+                return
+            from ai_linux.ui.name_test import NameTestDialog
+
+            NameTestDialog(self.ctx, word, on_use=lambda: (row.set_text(word.title()), apply())).present(self)
+
+        test.connect("clicked", open_test)
+        row.add_suffix(test)
         self._watch("wake_word", lambda: row.set_text(self.settings.get("wake_word").title()))
         return row
 

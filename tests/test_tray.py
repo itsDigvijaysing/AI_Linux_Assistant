@@ -14,6 +14,9 @@ import sys
 import tempfile
 import time
 import unittest
+import importlib.util  # noqa: E402
+if importlib.util.find_spec("gi") is None:
+    raise unittest.SkipTest("needs PyGObject (python3-gi)")
 from pathlib import Path
 
 from gi.repository import Gio, GLib

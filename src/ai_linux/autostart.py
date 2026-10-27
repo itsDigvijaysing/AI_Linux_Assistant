@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from ai_linux.config import APP_NAME, ICON_NAME, REPO_ROOT
+from ai_linux.paths import APP_NAME, ICON_NAME, REPO_ROOT
 
 log = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from ai_linux.config import MODELS_DIR, REPO_ROOT
+from ai_linux.paths import MODELS_DIR, REPO_ROOT
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ class HFFile:
 
 
 JIWO_REPO = "itsDigvijaysing/jiwo-0.8b-openvino-int8"
-JIWO_PUBLISHED = True
 JIWO_REVISION = "801c88f19bf56072c7030b30406e463716dcd389"  # the upload the hashes below are of
 JIWO_DIR = MODELS_DIR / "jiwo-0.8b-openvino-int8"
 JIWO_FILES: tuple[HFFile, ...] = (
@@ -60,6 +59,32 @@ JIWO_FILES: tuple[HFFile, ...] = (
     HFFile("decision_config.json", 5572, "f4743db5cf4d1afb2e7886c362b6fd53af20d4f1f712265d2a81bd0298f6ed35"),
     HFFile("LICENSE", 11343, "50cbab8a892c5f2993b8c7351a99182507472def3b1374558308605d99b86b32"),
 )
+
+LAYA_REPO = "itsDigvijaysing/laya-typed-decisions-openvino"
+LAYA_REVISION: str | None = "c1014fc5fc361d58fe8d57d11a3c94970838c129"  # the upload the hashes below are of
+LAYA_DIR = MODELS_DIR / "laya-typed-decisions-openvino"
+LAYA_FILES: tuple[HFFile, ...] = (  # from bench/router/laya_export.py
+    HFFile("openvino_model.xml", 1296189, "eb9258c42af61e100640d169acb467d23457957035972d84fef66d38af7c06e3"),
+    HFFile("openvino_model.bin", 842588099, "fbd279e4da9bbfe6824ab7c1bc2b4e8eec469d69625a2cf8ae0c9a11e041458d"),
+    HFFile("tokenizer.json", 3583228, "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30"),
+    HFFile("decision_config.json", 598, "8a8671b678bbc25bf15264cd1feeb757630168d3873631ee1f4b34566876dec7"),
+    HFFile("LICENSE", 10173, "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"),
+)
+
+
+@dataclass(frozen=True)
+class HFModel:
+    repo: str
+    revision: str | None  # None = not published yet
+    files: tuple[HFFile, ...]
+    dir: Path
+
+
+# Downloadable OpenVINO small models, by catalog id
+OPENVINO_MODELS: dict[str, HFModel] = {
+    "jiwo-0.8b": HFModel(JIWO_REPO, JIWO_REVISION, JIWO_FILES, JIWO_DIR),
+    "laya": HFModel(LAYA_REPO, LAYA_REVISION, LAYA_FILES, LAYA_DIR),
+}
 
 
 def _idle_dispatch(fn: Callable, *args) -> None:
@@ -382,13 +407,31 @@ def speech_download(engine: str, on_progress=None, on_done=None, cancel_event=No
                     dispatch=dispatch, url_for=lambda path: SPEECH_BASE + path)
 
 
+def openvino_published(model_id: str) -> bool:
+    m = OPENVINO_MODELS.get(model_id)
+    return bool(m and m.revision and m.files)
+
+
+def openvino_installed(model_id: str, dest_dir: Path | None = None) -> bool:
+    m = OPENVINO_MODELS.get(model_id)
+    return bool(m and m.files) and is_complete(dest_dir or m.dir, m.files)
+
+
+def openvino_download(model_id: str, on_progress=None, on_done=None, cancel_event=None, *, dest_dir=None,
+                      dispatch=None):
+    m = OPENVINO_MODELS[model_id]
+    if not openvino_published(model_id):
+        raise DownloadError(f"{model_id} isn't published for download yet")
+    return hf_files(m.repo, m.files, dest_dir or m.dir, on_progress, on_done, cancel_event,
+                    revision=m.revision, dispatch=dispatch)
+
+
 def jiwo_installed(dest_dir: Path | None = None) -> bool:
-    return is_complete(dest_dir or JIWO_DIR, JIWO_FILES)
+    return openvino_installed("jiwo-0.8b", dest_dir)
 
 
 def jiwo_download(on_progress=None, on_done=None, cancel_event=None, *, dest_dir=None, dispatch=None):
-    return hf_files(JIWO_REPO, JIWO_FILES, dest_dir or JIWO_DIR, on_progress, on_done, cancel_event,
-                    revision=JIWO_REVISION, dispatch=dispatch)
+    return openvino_download("jiwo-0.8b", on_progress, on_done, cancel_event, dest_dir=dest_dir, dispatch=dispatch)
 
 
 def remove_dir(path: str | os.PathLike, on_done=None, *, dispatch=None) -> threading.Thread:

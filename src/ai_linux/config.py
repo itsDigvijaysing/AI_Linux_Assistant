@@ -13,14 +13,8 @@ from gi.repository import GObject
 
 log = logging.getLogger(__name__)
 
-# Tests and headless screenshots override the id so they never talk to a running instance.
-APP_ID = os.environ.get("AI_LINUX_APP_ID", "io.github.itsdigvijaysing.AILinux")
-APP_NAME = "AI Linux"
-ICON_NAME = "io.github.itsdigvijaysing.AILinux"  # fixed even when tests override APP_ID
-
-
 from ai_linux.paths import (  # noqa: E402,F401  re-exported for existing imports
-    ASSETS_DIR, CACHE_DIR, CONFIG_DIR, DATA_DIR, HISTORY_DB, LOG_DIR, MODELS_DIR, PACKAGE_DIR, REPO_ROOT,
+    APP_ID, APP_NAME, ICON_NAME, ASSETS_DIR, CACHE_DIR, CONFIG_DIR, DATA_DIR, HISTORY_DB, LOG_DIR, MODELS_DIR, PACKAGE_DIR, REPO_ROOT,
     SETTINGS_FILE, STATE_DIR,
 )
 

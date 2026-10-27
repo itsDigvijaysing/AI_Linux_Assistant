@@ -150,6 +150,11 @@ class EngineClient:
     def submit_text(self, text: str) -> None:
         self._send({"cmd": "text", "text": text})
 
+    def name_test(self, on_heard=None) -> None:
+        """Hear one sentence for the name test; on_heard(text) runs on the main thread. None stops it."""
+        self.on_heard = on_heard
+        self._send({"cmd": "name_test", "on": on_heard is not None})
+
     def _on_setting(self, _settings, key: str) -> None:
         if key in ("listen_mode", "muted"):
             self._send({"cmd": "settings", "values": {"listen_mode": self.listen_mode()}})
@@ -206,6 +211,10 @@ class EngineClient:
             GLib.idle_add(lambda: self._confirm(e) and False)
         elif ev == "voice":
             GLib.idle_add(lambda: self.settings.set("voice", e["voice"]) and False)
+        elif ev == "heard":
+            cb = getattr(self, "on_heard", None)
+            if cb is not None:
+                GLib.idle_add(lambda: cb(str(e.get("text") or "")) and False)
         elif ev == "confirm_done":
             GLib.idle_add(lambda: self._close_dialog(e.get("id")) and False)
         elif ev == "model":

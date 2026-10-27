@@ -6,6 +6,9 @@ import sys
 import tempfile
 import threading
 import unittest
+import importlib.util  # noqa: E402
+if importlib.util.find_spec("numpy") is None:
+    raise unittest.SkipTest("needs numpy (the engine's requirements)")
 from pathlib import Path
 from unittest import mock
 
@@ -330,6 +333,41 @@ class EngineSettingsTests(unittest.TestCase):
         e = Engine(lambda ev: None, {"voice": "supertonic:F1"})
         self.assertEqual(e.s["escalate_threshold"], DEFAULTS["escalate_threshold"])
         self.assertEqual((e.s["voice"], e.s["wake_word"]), ("supertonic:F1", "phoenix"))
+
+
+class NameTestEngineTests(unittest.TestCase):
+    def make(self):
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {"listen_mode": "hotkey"})
+        e.asr = mock.Mock(transcribe=mock.Mock(return_value="Hello Phoenix."))
+        e.brain = mock.Mock()
+        e._capture = mock.Mock()
+        e._ping = mock.Mock()
+        return e, events
+
+    def test_sentence_is_sent_back_not_acted_on(self):
+        e, events = self.make()
+        e.name_test_listen()
+        e._one("audio", object(), 0.0)
+        self.assertIn({"ev": "heard", "text": "Hello Phoenix."}, events)
+        e.brain.handle.assert_not_called()
+        self.assertEqual(e.name_test_until, 0.0)
+        e._capture.assert_called_with(False)  # hotkey mode: the mic closes again
+
+    def test_expired_test_listens_normally(self):
+        e, events = self.make()
+        e.name_test_listen()
+        e.name_test_until = e.armed_until = 1.0  # both long past: back to needing the wake word
+        e.asr.transcribe.return_value = "open my files"
+        e._one("audio", object(), 0.0)
+        self.assertFalse(any(ev.get("ev") == "heard" for ev in events))
+
+    def test_stop(self):
+        e, _ = self.make()
+        e.name_test_listen()
+        e.name_test_stop()
+        self.assertEqual((e.name_test_until, e.armed_until), (0.0, 0.0))
 
 
 if __name__ == "__main__":

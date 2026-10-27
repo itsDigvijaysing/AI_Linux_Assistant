@@ -10,6 +10,9 @@ import tempfile
 import threading
 import time
 import unittest
+import importlib.util  # noqa: E402
+if importlib.util.find_spec("gi") is None:
+    raise unittest.SkipTest("needs PyGObject (python3-gi)")
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))

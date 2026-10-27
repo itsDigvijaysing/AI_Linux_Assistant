@@ -10,7 +10,8 @@ Everything here re-runs from this folder (`router/`), using the project env `AI_
 | Main brain (chat, tools, vision) | **Qwen3.5-4B** (Ollama `qwen3.5:4b`) | NVIDIA | best tool routing (87 %), usable confidence, sees images |
 | Battery-mode router | **jiwo-0.8b** (`eljiwo/jiwo-0.8b`, Apache-2.0) as an 8-bit OpenVINO export | Intel iGPU | matches the 4B models on decisions, knows when it is unsure, NVIDIA stays asleep |
 | Alternative brain | **Gemma 4 E4B** (Ollama `gemma4:e4b`) | NVIDIA | best on short decisions (97 %), fastest (cache reuse), vision 4/5; slightly weaker routing |
-| Dropped | Laya, Qwen3.5-0.8B, nomic-embed, gte-reranker, qwen3:4b-instruct | | see results below |
+| Optional small model | **Laya** typed-decisions, OpenVINO fp16 (torch-free port) | Intel iGPU | 88 ms, but routes 60.8 % vs jiwo 84.5 %; never the default |
+| Dropped | Qwen3.5-0.8B, nomic-embed, gte-reranker, qwen3:4b-instruct; Gemma 4 E2B not recommended | | see results below |
 
 Modes: **performance** (charger or desktop) runs everything on NVIDIA, no small model loaded.
 **Battery** runs jiwo on the Intel iGPU; chat and anything jiwo is unsure of wakes NVIDIA for the 4B.
@@ -38,6 +39,7 @@ Modes: **performance** (charger or desktop) runs everything on NVIDIA, no small 
 |---|---|---|---|---|---|---|
 | Qwen3.5-4B | NVIDIA | 86.7 % | 73.3 % | 3.6 % | 83.7 % | 514 ms (230 ms on Ollama 0.40.11) |
 | Gemma 4 E4B | NVIDIA | 81.4 % | 71.4 % | 3.6 % | 91.5 % | 61 ms |
+| Gemma 4 E2B (2026-10-28) | NVIDIA | 71.8 % | 6 % (note 2) | 0 % | 91.5 % | 35 ms |
 | Qwen3.5-4B | Intel iGPU | same model | | | | ~4 s (see note 1) |
 | **jiwo-0.8b, OpenVINO 8-bit, any length (final)** | **Intel iGPU** | **84.5 %** | **74.1 %** | **2.3 %** | **90.1 %** | **502 ms** |
 | jiwo-0.8b, OpenVINO fp16, padded to 640 | Intel iGPU | 85.2 % | 74.1 % | 2.7 % | 90.1 % | 743 ms |
@@ -57,7 +59,7 @@ Modes: **performance** (charger or desktop) runs everything on NVIDIA, no small 
    **Ollama 0.40.11:** still re-reads ~510 tokens (it restores a checkpoint only at token 63), but prompt reading is
    faster: 230 ms per routing request on NVIDIA (was 514 ms). Not re-measured on the iGPU (battery mode uses jiwo).
    Gemma 4 E4B reuses the cache fully, hence 61 ms.
-2. qwen3:4b-instruct reports ~100 % confidence on wrong answers too, so no threshold can filter its mistakes.
+2. qwen3:4b-instruct and Gemma 4 E2B report ~100 % confidence on wrong answers too, so no threshold can filter their mistakes.
    It also has no vision. (`qwen3:4b` with thinking off answered letter "I" for everything: unusable this way.)
 
 ## Results: other decisions, all on the Intel iGPU (`router/tasks.py`, 177 hand-written requests)
@@ -65,6 +67,7 @@ Modes: **performance** (charger or desktop) runs everything on NVIDIA, no small 
 | Model | Confirm yes/no | Pick app | Settings page | Meant for me? | Feedback mood | Risky shell cmd | Overall | Median |
 |---|---|---|---|---|---|---|---|---|
 | Gemma 4 E4B (on NVIDIA) | 97 % | 100 % | 100 % | 87 % | 100 % | 100 % | **97 %** | 76 ms |
+| Gemma 4 E2B (on NVIDIA, 2026-10-28) | 97 % | 97 % | 100 % | 70 % | 96 % | 100 % | 93 % | 44 ms |
 | **jiwo-0.8b, 8-bit any length (final)** | 97 % | 100 % | 100 % | 77 % | 79 % | 90 % | **91 %** | 158 ms |
 | jiwo-0.8b, fp16 padded to 448 | 97 % | 100 % | 100 % | 77 % | 79 % | 86 % | 90 % | 501 ms |
 | qwen3:4b-instruct | 94 % | 100 % | 92 % | 73 % | 92 % | 93 % | 91 % | 497 ms |
@@ -73,12 +76,14 @@ Modes: **performance** (charger or desktop) runs everything on NVIDIA, no small 
 | Qwen3.5-0.8B (jiwo's untrained base) | 78 % | 72 % | 31 % | 53 % | 62 % | 93 % | 66 % | 495 ms |
 
 Small sets (24-36 per task): a few points of difference is noise. Calibration error (ECE) 0.06-0.09 for all but Laya (0.16)
-and Gemma (0.02, the best). Gemma ran on NVIDIA, the others on the Intel iGPU, so its latency isn't comparable.
+and Gemma (E4B 0.02, the best; E2B 0.06). Gemma ran on NVIDIA, the others on the Intel iGPU, so its latency isn't comparable.
 
 ## Results: vision (`router/vision_check.py`, NVIDIA)
 
 Five questions about a screenshot of the app's Models page, scored by keywords. Qwen3.5-4B 5/5 (0.7 s per answer),
 Gemma 4 E4B 4/5 (0.5 s). One screenshot only: enough to confirm both read screen text, not a ranking.
+2026-10-28, a new Models-page screenshot (no Laya row, so question 5 is void): Qwen3.5-4B 4/4 (2.6 s, taller image),
+Gemma 4 E2B 2/4 (0.2 s). E2B called the app "an AI application" and the loaded model "Ollama" (it was gemma4:e2b).
 
 ## Results: argument filling (`router/args_eval.py`, 44 cases, Ollama structured output)
 
@@ -86,6 +91,95 @@ Qwen3.5-4B 31/44 at 649 ms (NVIDIA); some misses are the strict string match (e.
 Qwen3.5-0.8B 35/44 at 1.6 s (Intel iGPU) but with risky errors ("volume to thirty" became 100 + mute).
 Needs a dedicated pass before shipping. Note: Ollama `/api/chat` ignored `format` for qwen3.5 with think off
 (0.30.8); `/api/generate` with a `system` field enforced it.
+
+## Results: argument filling through the engine (`router/fill_eval.py`, 53 cases, 2026-10-27/28)
+
+Runs `Brain.fill` on the shipped tools. `engine` = as shipped (the tool's code parser, then jiwo for a choice, then
+the big model); `big` = the big model alone. Results land in `results/fill_*.json`.
+
+| Path | Correct | Median |
+|---|---|---|
+| Shipped (`engine qwen3.5:4b`) | 52/53 (code parsers 43/44, instant) | |
+| `big qwen3.5:4b` (run at 51 cases) | 50/51 | 515 ms |
+| `big gemma4:e4b` (run at 51 cases) | 51/51 | 186 ms |
+| `big gemma4:e2b` (2026-10-28) | 50/53 | 111 ms |
+
+- The one shipped miss: "a third of the way up" read as "turn it up" (ambiguous, harmless).
+- Fixes from this run: "half"/"quarter" now parse; jiwo can pick "exact" so a spoken exact level goes to the big model.
+- E2B's 3 misses returned no arguments rather than wrong ones (maps search, uptime command, screen question).
+- **E2B as the battery big model: not recommended (2026-10-28).** Fast and small, but it routes worse (71.8 %) than
+  jiwo (84.5 %), the model it would back up, its confidence is unusable, and it misread 2 of 4 screenshot questions.
+  Decisions 93 % and fill 50/53 are fine. Not adopted; the default is unchanged.
+
+## Results: context window (2026-10-27)
+
+- A full turn (21 tools, 8 history turns, 1500-char "about you") is ~2.5K tokens (qwen 2474, gemma 2065); a turn with a
+  1080p screenshot: qwen 2519, gemma 1398. **8K context is plenty.**
+- GPU memory from the driver: qwen3.5:4b 4.0 GB at 8K, 4.2 GB at 16K; gemma4:e4b 4.75 / 4.9 GB of 6; gemma4:e2b 3.26 GB at 8K (3.11 at 4K).
+  Ollama `/api/ps` misreports Gemma's GPU memory (0.35 GB for e4b, 476 MB for e2b): don't trust it for Gemma.
+
+## Results: speech on the CPU (2026-10-27)
+
+STT (Parakeet), TTS (SuperTonic) and VAD run on the CPU (onnxruntime CPU provider); jiwo on the Intel iGPU; the big
+model on NVIDIA. ONNX Runtime's default (all 20 threads, busy-wait spinning) burned ~14 s of CPU per utterance. Fix in
+`src/ai_linux/engine/onnx_opts.py`: `session.intra_op.allow_spinning=0`, 4 threads for STT, 2 for TTS
+(`AI_LINUX_CPU_THREADS` overrides).
+
+| | Before | After |
+|---|---|---|
+| Parakeet TDT, 4.5 s sentence | 0.79 s, 14.5 s CPU | 0.26 s, 0.94 s CPU |
+| Idle CPU | ~14 s per utterance | 0 |
+| TTS, short reply | 0.81 s, 15 s CPU | 0.40 s, 0.8 s CPU |
+
+Parakeet CTC: 51 ms. Wake word "Phoenix" (the default name): 36/36 with both STT engines. "commuter" and "compute"
+falsely woke "computer"; nothing tested falsely woke "Phoenix".
+
+## Laya, EmbeddingGemma 2 (2026-10-28)
+
+- **Laya** routed 60.8 % vs jiwo 84.5 %, so it is only an optional small model (catalog id `laya`, never the
+  default). Its pip package (0.4.15) imports torch and transformers even in `onnx_agent`, so `engine/laya.py` is a
+  torch-free port of the choice path of Laya's `common.py` (sequence layout, temperature buckets and clamp; Apache-2.0,
+  attributed). `router/laya_export.py` exports the whole `DecisionModel` to OpenVINO fp16 (traced at batch 2 so the
+  batch axis stays dynamic; inputs `input_ids`, `attention_mask`, `marker_pos`, `marker_mask`, `qtype`), fills
+  `~/.local/share/ai-linux/models/laya-typed-decisions-openvino/` (model card + LICENSE included) and checks the port
+  against Laya's own torch `Agent` on 297 requests (2026-10-28):
+
+  | | Port, CPU | Port, Intel iGPU |
+  |---|---|---|
+  | Same token ids and option positions | 297 / 297 | 297 / 297 |
+  | Same top answer | 297 / 297 | 297 / 297 |
+  | Probability difference | median 0.0001, max 0.0018 | median 0.0019, max 0.026 |
+  | Median time | 344 ms | 88 ms |
+
+  25 of those cases are the golden fixture `tests/fixtures/laya_golden.json` (`tests/test_laya.py`, skipped without
+  OpenVINO). Source pinned to `convaiinnovations/laya` revision `7b928d8`, subfolder `typed-decisions`. The export
+  needs about 6 GB: the GPU compile ran out of memory with torch's copy still loaded, so the script frees it first and
+  caches the torch results in `~/.cache/ai-linux/laya_ref_probs.json`. **Not uploaded yet:** the target repo is
+  `itsDigvijaysing/laya-typed-decisions-openvino`; after the upload, set `downloads.LAYA_REVISION` to its commit.
+- **EmbeddingGemma 2** (`google/embeddinggemma-2`, 744M, text/image/audio/video embeddings, Apache-2.0): pulled into
+  Ollama, not tested. No slot today: jiwo routes, and embedding-based routing was dropped earlier for misfiring. Could
+  serve a later history/memory search.
+- jiwo is published at `itsDigvijaysing/jiwo-0.8b-openvino-int8`, pinned to revision `801c88f`. OpenVINO's telemetry
+  is blocked in-process (`sys.modules["openvino_telemetry"] = None`).
+
+## Assistant name (`router/name_check.py`, 2026-10-28)
+
+SuperTonic read the name test's 5 sentences in 4 voices (M1, F1, M3, F3); Parakeet TDT transcribed them; the app's
+wake matcher (`ai_linux.wake`) scored them. False wakes: the 771 ordinary commands in `data/eval.jsonl` (none contains
+the name) that the matcher would still take as the name. A synthetic voice is clearer than a person, so this ranks
+names; the app's own name test (Voice page) checks the user's real voice.
+
+| Name | Heard | False wakes | Notes |
+|---|---|---|---|
+| **Phoenix** (default) | 20/20 | 0 | |
+| Pegasus, Griffin, Sphinx, Zephyr, Dragon, Nova, Jarvis | 20/20 | 0 | Dragon and Nova are common words in talk and TV |
+| Orion, Atlas, Apollo, Odin, Titan | 19/20 | 0 | "Aurea", "at", "Paulo", "Loaden", "Tighten" |
+| Computer | 20/20 | 2 | a word people use in commands |
+| Hermes | 20/20 | 2 | "where's" reads as Hermes |
+| Kraken | 11/20 | 0 | heard as "cracking", "crack and" |
+
+The split-name rule ("Dora Emon" for Doraemon) first used the normal 0.75 similarity and gave Hermes 5 false wakes
+("where is"); joined words now need 0.85.
 
 ## Results: power and devices (`power_test.py`, battery current x voltage, baseline ~14.2 W)
 

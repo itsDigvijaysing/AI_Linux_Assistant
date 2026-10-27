@@ -19,7 +19,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from ai_linux import __version__, models_catalog
-from ai_linux.config import APP_NAME, DATA_DIR, DEFAULTS, MODELS_DIR
+from ai_linux.paths import APP_NAME, DATA_DIR, MODELS_DIR
+from ai_linux.schema import DEFAULTS
 
 log = logging.getLogger(__name__)
 
@@ -346,7 +347,14 @@ def _ollama_manifest(name: str) -> bool:
     path = base if "/" in base else f"library/{base}"
     roots = [Path(os.environ["OLLAMA_MODELS"])] if os.environ.get("OLLAMA_MODELS") else []
     roots += [Path.home() / ".ollama/models", Path("/usr/share/ollama/.ollama/models")]
-    return any((r / "manifests/registry.ollama.ai" / path / (tag or "latest")).is_file() for r in roots)
+    return any(_is_file(r / "manifests/registry.ollama.ai" / path / (tag or "latest")) for r in roots)
+
+
+def _is_file(path: Path) -> bool:
+    try:
+        return path.is_file()
+    except OSError:  # Python < 3.14 raises on an unreadable dir (the system Ollama's store) instead of False
+        return False
 
 
 def _tag_present(tags: set[str], *names: str) -> bool:
@@ -357,7 +365,10 @@ def _tag_present(tags: set[str], *names: str) -> bool:
 def _check_slot(probe: _Probe, slot: str) -> Check:
     check_id = f"model_{slot}"
     title = {"small": "Small model", "big": "Big model", "speech": "Speech recognition"}[slot]
-    spec = models_catalog.get(str(probe.setting(models_catalog.SLOT_KEYS[slot]) or ""))
+    chosen = str(probe.setting(models_catalog.SLOT_KEYS[slot]) or "")
+    if slot == "small" and chosen == "none":
+        return Check(check_id, title, "ok", "None: the big model picks every command", group="models")
+    spec = models_catalog.get(chosen)
     if spec is None:
         spec = next((m for m in models_catalog.for_slot(slot) if m.recommended), None)
     if spec is None:
@@ -373,9 +384,9 @@ def _check_slot(probe: _Probe, slot: str) -> Check:
     elif spec.runtime == "onnx":
         from ai_linux import downloads
         present = downloads.speech_installed(spec.id, MODELS_DIR / "ASR")
-    elif spec.id == "jiwo-0.8b":
+    elif spec.runtime == "openvino":
         from ai_linux import downloads
-        present = downloads.jiwo_installed(models_catalog.local_path(spec, MODELS_DIR))  # every file, full size
+        present = downloads.openvino_installed(spec.id, models_catalog.local_path(spec, MODELS_DIR))  # full size
     else:
         present = _model_on_disk(spec)
     if present:

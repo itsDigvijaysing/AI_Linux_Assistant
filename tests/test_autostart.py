@@ -13,7 +13,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ai_linux import autostart  # noqa: E402
-from ai_linux.config import ICON_NAME, REPO_ROOT  # noqa: E402
+from ai_linux.paths import ICON_NAME, REPO_ROOT  # noqa: E402
 
 
 class AutostartTest(unittest.TestCase):

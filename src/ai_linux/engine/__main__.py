@@ -73,6 +73,8 @@ def main() -> int:
             engine.cancel_turn()
         elif cmd == "text":
             engine.submit_text(str(msg.get("text") or ""))
+        elif cmd == "name_test":
+            engine.name_test_listen() if msg.get("on", True) else engine.name_test_stop()
         elif cmd == "confirm_reply":
             engine.confirm_reply(str(msg.get("id")), bool(msg.get("allowed")))
     if engine is not None:
