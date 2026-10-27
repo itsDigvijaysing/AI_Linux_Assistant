@@ -1,0 +1,538 @@
+[
+ {
+  "tool": "set_screen_brightness",
+  "text": "set brightness to forty percent",
+  "args": {
+   "percent": 40
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "make the screen a bit brighter",
+  "args": {
+   "action": "up"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "it's too bright, dim it",
+  "args": {
+   "action": "down"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "brightness seventy five",
+  "args": {
+   "percent": 75
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "put the screen at half brightness",
+  "args": {
+   "percent": 50
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "set the screen to a medium level",
+  "args": {
+   "percent": 50
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 6.452
+ },
+ {
+  "tool": "set_volume",
+  "text": "make the sound about a third of the way up",
+  "args": {
+   "action": "up"
+  },
+  "who": "code",
+  "ok": false,
+  "s": 0.0
+ },
+ {
+  "tool": "set_volume",
+  "text": "set the volume to thirty",
+  "args": {
+   "percent": 30
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_volume",
+  "text": "it's way too loud",
+  "args": {
+   "action": "down"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.87
+ },
+ {
+  "tool": "set_volume",
+  "text": "mute the sound",
+  "args": {
+   "action": "mute"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_volume",
+  "text": "I can't hear anything, turn it up",
+  "args": {
+   "action": "up"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_volume",
+  "text": "put the volume at 15 percent",
+  "args": {
+   "percent": 15
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_volume",
+  "text": "unmute please",
+  "args": {
+   "action": "unmute"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "open firefox",
+  "args": {
+   "target": "firefox"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.882
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "can you start visual studio code",
+  "args": {
+   "target": "com.microsoft.VSCode"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.046
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "open youtube dot com",
+  "args": {
+   "target": "youtube dot com"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "launch the files app",
+  "args": {
+   "target": "org.gnome.Nautilus"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.023
+ },
+ {
+  "tool": "search_web",
+  "text": "search youtube for lofi music",
+  "args": {
+   "query": "lofi music",
+   "site": "youtube"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "search_web",
+  "text": "google how to center a div",
+  "args": {
+   "query": "how to center a div",
+   "site": "web"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "search_web",
+  "text": "look up albert einstein on wikipedia",
+  "args": {
+   "query": "albert einstein",
+   "site": "wikipedia"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "search_web",
+  "text": "find the nearest petrol pump on maps",
+  "args": {
+   "query": "the nearest petrol pump",
+   "site": "maps"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "search_web",
+  "text": "search github for whisper cpp",
+  "args": {
+   "query": "whisper cpp",
+   "site": "github"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "control_media",
+  "text": "pause the music",
+  "args": {
+   "action": "pause"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "control_media",
+  "text": "skip this track",
+  "args": {
+   "action": "next"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "control_media",
+  "text": "go back to the previous song",
+  "args": {
+   "action": "previous"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "control_media",
+  "text": "resume playback",
+  "args": {
+   "action": "play"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "control_media",
+  "text": "stop the video",
+  "args": {
+   "action": "stop"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "toggle_night_light",
+  "text": "turn on night light",
+  "args": {
+   "on": true
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "toggle_night_light",
+  "text": "switch off the warm screen colours",
+  "args": {
+   "on": false
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_do_not_disturb",
+  "text": "don't let notifications bother me for a while",
+  "args": {
+   "on": true
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.722
+ },
+ {
+  "tool": "set_do_not_disturb",
+  "text": "show my notifications again",
+  "args": {
+   "on": false
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_settings",
+  "text": "open wifi settings",
+  "args": {
+   "panel": "wifi"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_settings",
+  "text": "go to display settings",
+  "args": {
+   "panel": "display"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_settings",
+  "text": "I want to change my bluetooth settings",
+  "args": {
+   "panel": "bluetooth"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_settings",
+  "text": "the settings page where my speakers are",
+  "args": {
+   "panel": "sound"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.779
+ },
+ {
+  "tool": "open_settings",
+  "text": "open the battery settings",
+  "args": {
+   "panel": "power"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "open my downloads folder",
+  "args": {
+   "folder": "downloads"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "show me my documents",
+  "args": {
+   "folder": "documents"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "where are my photos",
+  "args": {
+   "folder": "pictures"
+  },
+  "who": "jiwo-0.8b",
+  "ok": true,
+  "s": 0.178
+ },
+ {
+  "tool": "clipboard",
+  "text": "copy hello world to the clipboard",
+  "args": {
+   "action": "copy",
+   "text": "hello world"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "clipboard",
+  "text": "what's on my clipboard",
+  "args": {
+   "action": "read"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_voice",
+  "text": "use a female voice",
+  "args": {
+   "voice": "supertonic:F1"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "set_voice",
+  "text": "switch to a male voice",
+  "args": {
+   "voice": "supertonic:M1"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "system_status",
+  "text": "how much battery is left",
+  "args": {
+   "aspect": "battery"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "system_status",
+  "text": "am I running out of disk space",
+  "args": {
+   "aspect": "disk"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "system_status",
+  "text": "how much ram is free",
+  "args": {
+   "aspect": "memory"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "system_status",
+  "text": "is the processor busy",
+  "args": {
+   "aspect": "cpu"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "system_status",
+  "text": "am I connected to the internet",
+  "args": {
+   "aspect": "network"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "run_command",
+  "text": "show the kernel version",
+  "args": {
+   "command": "uname -r"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.575
+ },
+ {
+  "tool": "run_command",
+  "text": "how long has this computer been on",
+  "args": {
+   "command": "uptime"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.488
+ },
+ {
+  "tool": "run_command",
+  "text": "list the files in my home folder",
+  "args": {
+   "command": "ls -la ~"
+  },
+  "who": "qwen3.5:4b",
+  "ok": true,
+  "s": 0.524
+ },
+ {
+  "tool": "describe_screen",
+  "text": "what does this error on my screen mean",
+  "args": {
+   "question": "what does this error on my screen mean"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ },
+ {
+  "tool": "write_text",
+  "text": "reply that I'll be there at five",
+  "args": {
+   "request": "reply that I'll be there at five"
+  },
+  "who": "code",
+  "ok": true,
+  "s": 0.0
+ }
+]

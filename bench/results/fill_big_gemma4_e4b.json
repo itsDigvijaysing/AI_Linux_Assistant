@@ -1,0 +1,518 @@
+[
+ {
+  "tool": "set_screen_brightness",
+  "text": "set brightness to forty percent",
+  "args": {
+   "percent": 40
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 10.981
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "make the screen a bit brighter",
+  "args": {
+   "action": "up"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.188
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "it's too bright, dim it",
+  "args": {
+   "action": "down"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.175
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "brightness seventy five",
+  "args": {
+   "percent": 75
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.173
+ },
+ {
+  "tool": "set_screen_brightness",
+  "text": "put the screen at half brightness",
+  "args": {
+   "percent": 50
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.173
+ },
+ {
+  "tool": "set_volume",
+  "text": "set the volume to thirty",
+  "args": {
+   "percent": 30
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.204
+ },
+ {
+  "tool": "set_volume",
+  "text": "it's way too loud",
+  "args": {
+   "action": "down"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.192
+ },
+ {
+  "tool": "set_volume",
+  "text": "mute the sound",
+  "args": {
+   "action": "mute"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.172
+ },
+ {
+  "tool": "set_volume",
+  "text": "I can't hear anything, turn it up",
+  "args": {
+   "action": "up"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.181
+ },
+ {
+  "tool": "set_volume",
+  "text": "put the volume at 15 percent",
+  "args": {
+   "percent": 15
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.171
+ },
+ {
+  "tool": "set_volume",
+  "text": "unmute please",
+  "args": {
+   "action": "unmute"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.173
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "open firefox",
+  "args": {
+   "target": "firefox"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.217
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "can you start visual studio code",
+  "args": {
+   "target": "Visual Studio Code"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.215
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "open youtube dot com",
+  "args": {
+   "target": "https://www.youtube.com"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.236
+ },
+ {
+  "tool": "open_app_or_link",
+  "text": "launch the files app",
+  "args": {
+   "target": "files"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.195
+ },
+ {
+  "tool": "search_web",
+  "text": "search youtube for lofi music",
+  "args": {
+   "query": "lofi music",
+   "site": "youtube"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.259
+ },
+ {
+  "tool": "search_web",
+  "text": "google how to center a div",
+  "args": {
+   "query": "google how to center a div",
+   "site": "google"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.239
+ },
+ {
+  "tool": "search_web",
+  "text": "look up albert einstein on wikipedia",
+  "args": {
+   "query": "Albert Einstein wikipedia",
+   "site": "wikipedia"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.224
+ },
+ {
+  "tool": "search_web",
+  "text": "find the nearest petrol pump on maps",
+  "args": {
+   "query": "nearest petrol pump",
+   "site": "maps"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.243
+ },
+ {
+  "tool": "search_web",
+  "text": "search github for whisper cpp",
+  "args": {
+   "query": "whisper cpp github",
+   "site": "github"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.244
+ },
+ {
+  "tool": "control_media",
+  "text": "pause the music",
+  "args": {
+   "action": "pause"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.191
+ },
+ {
+  "tool": "control_media",
+  "text": "skip this track",
+  "args": {
+   "action": "next"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.167
+ },
+ {
+  "tool": "control_media",
+  "text": "go back to the previous song",
+  "args": {
+   "action": "previous"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.168
+ },
+ {
+  "tool": "control_media",
+  "text": "resume playback",
+  "args": {
+   "action": "play"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.165
+ },
+ {
+  "tool": "control_media",
+  "text": "stop the video",
+  "args": {
+   "action": "stop"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.163
+ },
+ {
+  "tool": "toggle_night_light",
+  "text": "turn on night light",
+  "args": {
+   "on": true
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.183
+ },
+ {
+  "tool": "toggle_night_light",
+  "text": "switch off the warm screen colours",
+  "args": {
+   "on": false
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.164
+ },
+ {
+  "tool": "set_do_not_disturb",
+  "text": "don't let notifications bother me for a while",
+  "args": {
+   "on": true
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.205
+ },
+ {
+  "tool": "set_do_not_disturb",
+  "text": "show my notifications again",
+  "args": {
+   "on": false
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.182
+ },
+ {
+  "tool": "open_settings",
+  "text": "open wifi settings",
+  "args": {
+   "panel": "wifi"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.233
+ },
+ {
+  "tool": "open_settings",
+  "text": "go to display settings",
+  "args": {
+   "panel": "display"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.182
+ },
+ {
+  "tool": "open_settings",
+  "text": "I want to change my bluetooth settings",
+  "args": {
+   "panel": "bluetooth"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.187
+ },
+ {
+  "tool": "open_settings",
+  "text": "the settings page where my speakers are",
+  "args": {
+   "panel": "sound"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.191
+ },
+ {
+  "tool": "open_settings",
+  "text": "open the battery settings",
+  "args": {
+   "panel": "power"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.186
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "open my downloads folder",
+  "args": {
+   "folder": "downloads"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.193
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "show me my documents",
+  "args": {
+   "folder": "documents"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.165
+ },
+ {
+  "tool": "open_file_manager",
+  "text": "where are my photos",
+  "args": {
+   "folder": "pictures"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.168
+ },
+ {
+  "tool": "clipboard",
+  "text": "copy hello world to the clipboard",
+  "args": {
+   "action": "copy",
+   "text": "hello world"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.199
+ },
+ {
+  "tool": "clipboard",
+  "text": "what's on my clipboard",
+  "args": {
+   "action": "read"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.141
+ },
+ {
+  "tool": "set_voice",
+  "text": "use a female voice",
+  "args": {
+   "voice": "supertonic:F1"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.245
+ },
+ {
+  "tool": "set_voice",
+  "text": "switch to a male voice",
+  "args": {
+   "voice": "supertonic:M1"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.208
+ },
+ {
+  "tool": "system_status",
+  "text": "how much battery is left",
+  "args": {
+   "aspect": "battery"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.194
+ },
+ {
+  "tool": "system_status",
+  "text": "am I running out of disk space",
+  "args": {
+   "aspect": "disk"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.169
+ },
+ {
+  "tool": "system_status",
+  "text": "how much ram is free",
+  "args": {
+   "aspect": "memory"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.169
+ },
+ {
+  "tool": "system_status",
+  "text": "is the processor busy",
+  "args": {
+   "aspect": "cpu"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.169
+ },
+ {
+  "tool": "system_status",
+  "text": "am I connected to the internet",
+  "args": {
+   "aspect": "network"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.168
+ },
+ {
+  "tool": "run_command",
+  "text": "show the kernel version",
+  "args": {
+   "command": "uname -r"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.179
+ },
+ {
+  "tool": "run_command",
+  "text": "how long has this computer been on",
+  "args": {
+   "command": "uptime -s"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.165
+ },
+ {
+  "tool": "run_command",
+  "text": "list the files in my home folder",
+  "args": {
+   "command": "ls ~/"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.161
+ },
+ {
+  "tool": "describe_screen",
+  "text": "what does this error on my screen mean",
+  "args": {
+   "question": "What does this error on my screen mean?"
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.222
+ },
+ {
+  "tool": "write_text",
+  "text": "reply that I'll be there at five",
+  "args": {
+   "request": "I'll be there at five."
+  },
+  "who": "gemma4:e4b",
+  "ok": true,
+  "s": 0.235
+ }
+]

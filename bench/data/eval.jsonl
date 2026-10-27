@@ -1,0 +1,771 @@
+{"text": "brightness to 20", "label": "set_screen_brightness", "source": "handwritten", "split": "dev"}
+{"text": "i want to hear something funny about politicsi", "label": "none", "source": "clinc:tell_joke", "split": "dev"}
+{"text": "how much do i have left in my checking account", "label": "none", "source": "clinc:balance", "split": "test"}
+{"text": "lower the speaker volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "dev"}
+{"text": "can you tell me the time zone for la", "label": "none", "source": "clinc:timezone", "split": "test"}
+{"text": "set a 3 minute timer", "label": "set_timer", "source": "clinc:timer", "split": "dev"}
+{"text": "how is the weather where i am", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "where is my package en route", "label": "none", "source": "clinc:order_status", "split": "dev"}
+{"text": "mute the music", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "is it monday today", "label": "get_time", "source": "handwritten", "split": "dev"}
+{"text": "how much time is left on my laundry", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "next song", "label": "control_media", "source": "handwritten", "split": "dev"}
+{"text": "have any emails come in since four hundred today", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "please switch to the girl voice", "label": "set_voice", "source": "clinc:change_accent", "split": "dev"}
+{"text": "start a pot of coffee please", "label": "none", "source": "massive:iot_coffee", "split": "dev"}
+{"text": "where is the file called budget", "label": "find_file", "source": "handwritten", "split": "dev"}
+{"text": "what time is it in new york city", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "how does one go about putting in a vacation request", "label": "none", "source": "clinc:pto_request", "split": "test"}
+{"text": "turn off the speakers", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "nice lyrics", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "remind me about the meeting at three", "label": "set_timer", "source": "handwritten", "split": "test"}
+{"text": "turn on do not disturb", "label": "set_do_not_disturb", "source": "handwritten", "split": "dev"}
+{"text": "simulate rolling a dice and tell me what it lands on", "label": "none", "source": "clinc:roll_dice", "split": "test"}
+{"text": "what is the forecast for the week", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "change to the females voice please", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "how long do i have to wait to get my refund", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "is my car due for it's next oil change", "label": "none", "source": "clinc:oil_change_when", "split": "test"}
+{"text": "please begin a timer", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "what is a file system", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "please book a meeting room for thusday at 4:00", "label": "none", "source": "clinc:schedule_meeting", "split": "dev"}
+{"text": "please reduce the speaker volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "dev"}
+{"text": "get me up in half an hour", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "make a new alarm", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "update my system packages", "label": "run_command", "source": "handwritten", "split": "dev"}
+{"text": "switch on bluetooth", "label": "toggle_wireless", "source": "handwritten", "split": "dev"}
+{"text": "how's the weather in seattle", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "i need a flight from boston to miami for under 300 dollars", "label": "none", "source": "clinc:book_flight", "split": "test"}
+{"text": "make the screen warmer for the night", "label": "toggle_night_light", "source": "handwritten", "split": "dev"}
+{"text": "decrease twenty percent", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "launch a shell window", "label": "open_terminal", "source": "handwritten", "split": "dev"}
+{"text": "show me all biographies on teddy kennedy", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "where are most the servicemen right now", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "note that i owe sam twenty dollars", "label": "remember", "source": "handwritten", "split": "dev"}
+{"text": "what things are you able to help me with", "label": "none", "source": "clinc:what_can_i_ask_you", "split": "test"}
+{"text": "can you tell me what flabbergasted means", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "what's the weather in portland", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "i want an alarm for 6 am", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "how do i get stains out of the carpet", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "can i get a timer set", "label": "set_timer", "source": "clinc:timer", "split": "dev"}
+{"text": "i would like you to remind me to do something", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "how is lasagne made", "label": "none", "source": "massive:cooking_recipe", "split": "dev"}
+{"text": "find me a graphic tutorial on writing longhand", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "use the female voice", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "put that song in my favorite list", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "set an alarm for me", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "set a reminder for when the turkey is finished cooking", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "can i get some more checkbooks mailed to me, please", "label": "none", "source": "clinc:order_checks", "split": "dev"}
+{"text": "turn volume to 4", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "any new email since last time", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "write me a poem about rain", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "what kind of weather should i expect this week", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "i would like to make a call to sal", "label": "none", "source": "clinc:make_call", "split": "dev"}
+{"text": "find directions to the sunshine car wash from my house", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "how big is the empire state building", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "hey what time is it in dallas texas", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "add color to the black and white photos", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "fast", "label": "set_volume", "source": "massive:audio_volume_up", "split": "dev"}
+{"text": "set the alarm now", "label": "set_timer", "source": "clinc:alarm", "split": "dev"}
+{"text": "how much money would my house sell for", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "browse my desktop folder", "label": "open_file_manager", "source": "handwritten", "split": "dev"}
+{"text": "what day are we in", "label": "get_time", "source": "clinc:date", "split": "dev"}
+{"text": "display the local time of london at this moment", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "what is a chair", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "can i just use oil instead of vinegar", "label": "none", "source": "clinc:ingredient_substitution", "split": "test"}
+{"text": "quiet", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "today is which day of the week", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "how are you today", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "set alarm six am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "what is the life expectancy of a polar bear", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "please confirm my reservation at brio for theodore", "label": "none", "source": "clinc:confirm_reservation", "split": "test"}
+{"text": "how can i go about jump starting my car", "label": "none", "source": "clinc:jump_start", "split": "dev"}
+{"text": "open the calculator app", "label": "open_app_or_link", "source": "handwritten", "split": "dev"}
+{"text": "my credit card got torn and i need a new one", "label": "none", "source": "clinc:damaged_card", "split": "test"}
+{"text": "i like the female voice, switch please", "label": "set_voice", "source": "clinc:change_accent", "split": "dev"}
+{"text": "tell me how to perform cpr", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "email karen about the budget meeting", "label": "none", "source": "massive:email_sendemail", "split": "test"}
+{"text": "what is the time is central time zone", "label": "get_time", "source": "clinc:time", "split": "dev"}
+{"text": "quieter please", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "it's dirty here make some noise", "label": "none", "source": "massive:iot_cleaning", "split": "dev"}
+{"text": "start a gossip", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "just let me know next weeks weather in california", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "check how big my downloads folder is with du", "label": "run_command", "source": "handwritten", "split": "test"}
+{"text": "tell me current events between yesterday and this morning", "label": "none", "source": "massive:calendar_query", "split": "dev"}
+{"text": "mute please", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "opinion petabit", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "add my opinion to this song great", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "silence for two hours", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "dev"}
+{"text": "post this video to facebook", "label": "none", "source": "massive:social_post", "split": "dev"}
+{"text": "my friend is very loud", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "i will need warm socks in winter in morning", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "take a screenshot", "label": "take_screenshot", "source": "handwritten", "split": "dev"}
+{"text": "can you make 1234 the pin for my savings account", "label": "none", "source": "clinc:pin_change", "split": "test"}
+{"text": "why can you have the square root of a negative number", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "its way too loud", "label": "set_volume", "source": "handwritten", "split": "test"}
+{"text": "whats the date today", "label": "get_time", "source": "handwritten", "split": "test"}
+{"text": "does my vacation have approval", "label": "none", "source": "clinc:pto_request_status", "split": "dev"}
+{"text": "hey what time is it in london now", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "set alarm at six thirty am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "vacuum out the car", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "change voice to female", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "upload the pictures to the correct album", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "silence speakers", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "let's play you'll be the keeper and never change position", "label": "none", "source": "massive:play_game", "split": "dev"}
+{"text": "can many seashells did sally sell by the seashore", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "add this song to my rock playlist", "label": "none", "source": "clinc:update_playlist", "split": "test"}
+{"text": "type dear john thank you for the update", "label": "type_text", "source": "handwritten", "split": "dev"}
+{"text": "how many people died in yesterday's storm", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "today is what day of the week", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "what do you do if your 4 year old just ate playdoh", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "set a repeating reminder alarm for the facebook event i have to attend on seventh april", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "what kind of weather are they having in orange tx right now", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "coffee make now", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "where do i go to find the interest rate on my savings account", "label": "none", "source": "clinc:interest_rate", "split": "test"}
+{"text": "i cant hear anything turn it up", "label": "set_volume", "source": "handwritten", "split": "dev"}
+{"text": "dim the display please", "label": "set_screen_brightness", "source": "handwritten", "split": "test"}
+{"text": "what's the current time", "label": "get_time", "source": "clinc:time", "split": "dev"}
+{"text": "close this window", "label": "switch_window", "source": "handwritten", "split": "dev"}
+{"text": "please mute for five minutes", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "has there been anything breaking this afternoon", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "explain what im looking at", "label": "describe_screen", "source": "handwritten", "split": "dev"}
+{"text": "yes, that's right", "label": "none", "source": "clinc:yes", "split": "test"}
+{"text": "what's a good way to organize my tools in my garage", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what kinds of sunglasses are considered aviators", "label": "none", "source": "massive:qa_factoid", "split": "dev"}
+{"text": "what is a terminal illness", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "who won the world cup in 2022", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "stop the video", "label": "control_media", "source": "handwritten", "split": "test"}
+{"text": "what day of the week does christmas fall on this year", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "google how to center a div", "label": "search_web", "source": "handwritten", "split": "dev"}
+{"text": "i feel like having soup for lunch order from wangs kitchen restaurant a chicken manchow soup", "label": "none", "source": "massive:takeaway_order", "split": "dev"}
+{"text": "sign me up for the slack employment forum", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "run coffee maker", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "explain quantum computing simply", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "who were the superbowl 23 champions", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "what time is it in dallas", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "can you speak quieter", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "how do i write c++", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is the date for next tuesday", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "show me the bluetooth settings page", "label": "open_settings", "source": "handwritten", "split": "dev"}
+{"text": "what kind of bonds do molecules have", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "in 15 minutes the timer should go off", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "what's your name", "label": "none", "source": "clinc:what_is_your_name", "split": "dev"}
+{"text": "open my downloads folder", "label": "open_file_manager", "source": "handwritten", "split": "test"}
+{"text": "what does my schedule look like today", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "go to the spotify window", "label": "switch_window", "source": "handwritten", "split": "test"}
+{"text": "i'm so happy today i got tickets for the concert", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "can you store a gun in a safe deposit box", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "give me to do list", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "open temperature", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "expired products in recent market", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "set an alarm at six am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "make a list of facts about green book", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "do you like music", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "what reminders do i have", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "save a picture of my screen", "label": "take_screenshot", "source": "handwritten", "split": "test"}
+{"text": "switch off the night light", "label": "toggle_night_light", "source": "handwritten", "split": "test"}
+{"text": "secure the screen i am leaving", "label": "lock_screen", "source": "handwritten", "split": "dev"}
+{"text": "i need to get kalee added to my phone plan", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "turn it up olly", "label": "set_volume", "source": "massive:audio_volume_up", "split": "dev"}
+{"text": "im stepping away lock it", "label": "lock_screen", "source": "handwritten", "split": "test"}
+{"text": "present time in new york", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "what's the date of the winter solstice two years from now", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "add an alarm for tomorrow morning at six am", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "is there a travel alert in spain", "label": "none", "source": "clinc:travel_alert", "split": "dev"}
+{"text": "bring the code editor to the front", "label": "switch_window", "source": "handwritten", "split": "test"}
+{"text": "how is the weather in austin", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "would you change your voice to the male british accent for me", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "silence volume on speakers", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "find the photos from last week", "label": "find_file", "source": "handwritten", "split": "test"}
+{"text": "can you tell me what credit cards i have open", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "which day is it now", "label": "get_time", "source": "clinc:date", "split": "dev"}
+{"text": "who do i need to contact to find out why my card got declined", "label": "none", "source": "clinc:card_declined", "split": "test"}
+{"text": "set an alarm for nine am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "can you please stop speaking", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "what's ten percent off forty dollars", "label": "none", "source": "massive:qa_maths", "split": "dev"}
+{"text": "say a good joke for me right now", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "how long does it take to make vegetable lasagna", "label": "none", "source": "massive:cooking_recipe", "split": "test"}
+{"text": "i need to go downtown with 2 people; can you get me an uber", "label": "none", "source": "clinc:uber", "split": "test"}
+{"text": "speaker volume increase", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "whats using all my memory", "label": "system_status", "source": "handwritten", "split": "dev"}
+{"text": "calculate two multiplied by two", "label": "none", "source": "massive:qa_maths", "split": "dev"}
+{"text": "read the clipboard to me", "label": "clipboard", "source": "handwritten", "split": "dev"}
+{"text": "stop showing me notifications for now", "label": "set_do_not_disturb", "source": "handwritten", "split": "test"}
+{"text": "what kind of glue is used for gluing pipes together", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "can you set an alarm", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "how do i open a stuck jar", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "what is the current time", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "how safe is the city regarding law and order", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "set brightness to forty percent", "label": "set_screen_brightness", "source": "handwritten", "split": "test"}
+{"text": "how long before i can eat at chic fil a", "label": "none", "source": "clinc:how_busy", "split": "dev"}
+{"text": "tell me the time in san francisco, please", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "can you open gmail", "label": "open_app_or_link", "source": "handwritten", "split": "test"}
+{"text": "i would like it to be able to compute answer from search results like wolfram alpha does", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "make a coffee", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "find naty from my contacts and send her an email", "label": "none", "source": "massive:email_sendemail", "split": "dev"}
+{"text": "i want to hear a joke", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "keep volume at 4 all the time", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "how would you describe a ball", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "let me know about the status of my credit card application", "label": "none", "source": "clinc:application_status", "split": "test"}
+{"text": "can you turn up your volume", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "i need to update my address", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "describe rock sand", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "silence notifications", "label": "set_do_not_disturb", "source": "handwritten", "split": "test"}
+{"text": "i need to know the time it takes to get a new credit card sent to someone who lost theirs", "label": "none", "source": "clinc:replacement_card_duration", "split": "test"}
+{"text": "uh can you lower the screen brightness", "label": "set_screen_brightness", "source": "handwritten", "split": "dev"}
+{"text": "google \"odell beckham free agency\"", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "let me know where jim is right now", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i had a weird dream last night", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "please tell me what today is", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "set my alarm for twelve p. m.", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "robot vacuum the living room now", "label": "none", "source": "massive:iot_cleaning", "split": "dev"}
+{"text": "show me recipes", "label": "none", "source": "massive:cooking_recipe", "split": "test"}
+{"text": "how many movies are in the star wars series", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "open a terminal", "label": "open_terminal", "source": "handwritten", "split": "test"}
+{"text": "copy that to the clipboard", "label": "clipboard", "source": "handwritten", "split": "test"}
+{"text": "screenshots are so annoying", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "whats the best laptop for gaming", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "don't talk until i ask you to", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "i need to find a black suit under $100", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what's the funniest joke you know", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "do the romans still use the colosseum for anything today", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "wake me up with an alarm at 6am", "label": "set_timer", "source": "clinc:alarm", "split": "dev"}
+{"text": "open power settings", "label": "open_settings", "source": "handwritten", "split": "test"}
+{"text": "can you tell me what the best places are to look for a job online", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "new alarm for six am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "please show today meeting with clients", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "what time is it in pacific standard time", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "i need a reminder to wash dishes", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "hey siri start an email to coworker", "label": "none", "source": "massive:email_sendemail", "split": "dev"}
+{"text": "what's the name of the day today", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "what is the factorial of ten", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "do you know any jokes", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "how old is mariah carey", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "so far how much pto have i used", "label": "none", "source": "clinc:pto_used", "split": "dev"}
+{"text": "i need to be reminded to do something", "label": "set_timer", "source": "clinc:reminder_update", "split": "dev"}
+{"text": "fun gift ideas to give to grandparents", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "turn the volume down", "label": "set_volume", "source": "handwritten", "split": "dev"}
+{"text": "change your voice", "label": "set_voice", "source": "handwritten", "split": "dev"}
+{"text": "tell me the weather", "label": "get_weather", "source": "clinc:weather", "split": "dev"}
+{"text": "i need to set an alarm", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "my coffee is cold please make more coffee", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "we should play nfs at high speed", "label": "none", "source": "massive:play_game", "split": "dev"}
+{"text": "can you set a reminder alarm for me to workout", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "find out where i can by melamine dinner plates", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is four plus five", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "find route", "label": "none", "source": "massive:qa_factoid", "split": "dev"}
+{"text": "make it quieter", "label": "set_volume", "source": "handwritten", "split": "test"}
+{"text": "don't speak for an hour", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "who invented the light bulb", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "search my computer for pdf invoices", "label": "find_file", "source": "handwritten", "split": "test"}
+{"text": "what is a mango", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "order one pizza from pizza hut", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "what does lock stock and two smoking barrels mean", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "go back to the male voice", "label": "set_voice", "source": "handwritten", "split": "test"}
+{"text": "can you let delta know i'm never using them again", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "how much memory do i have left on this phone", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "how can i make my living room appear to be bigger than it is", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "can you please order some food for me", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "i lost my card and need to report it", "label": "none", "source": "clinc:report_lost_card", "split": "test"}
+{"text": "how do night owls sleep", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "tell me the time in california", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "could you set the alarm", "label": "set_timer", "source": "clinc:alarm", "split": "dev"}
+{"text": "mute all notifications", "label": "set_do_not_disturb", "source": "handwritten", "split": "dev"}
+{"text": "check battery health on this device", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "the music at the party was great", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "i want an alarm set", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "i need to know the gas type for this vehicle", "label": "none", "source": "clinc:gas_type", "split": "test"}
+{"text": "what's the best hand to have in texas hold em", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "change to the female voice", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "how's my credit score", "label": "none", "source": "clinc:credit_score", "split": "test"}
+{"text": "i wanna get my w-2 form", "label": "none", "source": "clinc:w2", "split": "test"}
+{"text": "raise the volume of the current music", "label": "set_volume", "source": "massive:audio_volume_up", "split": "dev"}
+{"text": "tell me a joke", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "thank you", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "recommend a good book", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "adjust the contrast of the black and white photos", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "i want to order chinese take-out", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "lets send a tweet", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "give me a list of the top 5 issues people have in this country", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what are the top rated universities within my state", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "use a deeper voice", "label": "set_voice", "source": "handwritten", "split": "test"}
+{"text": "where did i save the tax document", "label": "find_file", "source": "handwritten", "split": "dev"}
+{"text": "copy hello world to the clipboard", "label": "clipboard", "source": "handwritten", "split": "test"}
+{"text": "find python tutorials on the web", "label": "search_web", "source": "handwritten", "split": "test"}
+{"text": "what is twelve divided by four", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "weather forecast for the weekend", "label": "get_weather", "source": "handwritten", "split": "test"}
+{"text": "i need a timer to be set", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "i need to know the time right now what is it", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "please let's speak in spanish", "label": "none", "source": "clinc:change_language", "split": "test"}
+{"text": "open youtube dot com", "label": "open_app_or_link", "source": "handwritten", "split": "test"}
+{"text": "capture the screen to a file", "label": "take_screenshot", "source": "handwritten", "split": "test"}
+{"text": "lower volume by fifty percent", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "what is the process of setting up direct deposit", "label": "none", "source": "clinc:direct_deposit", "split": "dev"}
+{"text": "not so loud", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "what day is it", "label": "get_time", "source": "handwritten", "split": "test"}
+{"text": "snap the whole screen", "label": "take_screenshot", "source": "handwritten", "split": "dev"}
+{"text": "tell me what the weather is looking like", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "bring up a command line", "label": "open_terminal", "source": "handwritten", "split": "test"}
+{"text": "give weather update now", "label": "get_weather", "source": "clinc:weather", "split": "dev"}
+{"text": "knock knock", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "please lower music volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "thanks for all your help", "label": "none", "source": "clinc:thank_you", "split": "test"}
+{"text": "is there a fee for cancelling a flight i've booked", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "switch to a female voice", "label": "set_voice", "source": "handwritten", "split": "dev"}
+{"text": "what time is it on the east coast of the united states", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "should i wear a jacket", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "write a reply to my mother's email", "label": "none", "source": "massive:email_sendemail", "split": "test"}
+{"text": "remember that my locker code is four two one", "label": "remember", "source": "handwritten", "split": "test"}
+{"text": "compile a list of historical events from the boston marathon", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "how much battery do i have", "label": "system_status", "source": "handwritten", "split": "test"}
+{"text": "that isn't correct", "label": "none", "source": "clinc:no", "split": "test"}
+{"text": "check my battery level", "label": "system_status", "source": "handwritten", "split": "test"}
+{"text": "put the volume to 4", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "i want two burgers and one coke order it fast", "label": "none", "source": "massive:takeaway_order", "split": "dev"}
+{"text": "stop listening", "label": "go_to_sleep", "source": "handwritten", "split": "dev"}
+{"text": "please stop talking", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "bye for now stop listening", "label": "go_to_sleep", "source": "handwritten", "split": "test"}
+{"text": "fire up steam", "label": "open_app_or_link", "source": "handwritten", "split": "dev"}
+{"text": "undecided", "label": "none", "source": "clinc:maybe", "split": "test"}
+{"text": "turn the wifi back on", "label": "toggle_wireless", "source": "handwritten", "split": "test"}
+{"text": "show me what one should do to get ahead in a tech corporation", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what are the nutrition facts for apple sauce", "label": "none", "source": "clinc:nutrition_info", "split": "dev"}
+{"text": "how far is the moon", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "what is two plus two", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "please order some more pepsi", "label": "none", "source": "clinc:order", "split": "dev"}
+{"text": "olly what do i have planned next", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "give me the weather forecast for today", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "turn off the sounds", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "can you tell me a joke", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "how does measurement slugs convert to measurement lb", "label": "none", "source": "clinc:measurement_conversion", "split": "dev"}
+{"text": "open the folder app please", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "why is my laptop so slow", "label": "system_status", "source": "handwritten", "split": "dev"}
+{"text": "summarize the page on my screen", "label": "describe_screen", "source": "handwritten", "split": "test"}
+{"text": "search github for whisper cpp", "label": "search_web", "source": "handwritten", "split": "test"}
+{"text": "i need a laptop with 16gb of ram", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is a good home remedy for a rash", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "please start vacuum cleaner", "label": "none", "source": "massive:iot_cleaning", "split": "test"}
+{"text": "can you sound like a woman", "label": "set_voice", "source": "handwritten", "split": "test"}
+{"text": "order a takeaway", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "open firefox", "label": "open_app_or_link", "source": "handwritten", "split": "test"}
+{"text": "whats the weather like", "label": "get_weather", "source": "handwritten", "split": "test"}
+{"text": "turn down the volume", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "search my contacts for the auto repair place", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "how much is my maximum to spend on credit cards", "label": "none", "source": "clinc:credit_limit", "split": "test"}
+{"text": "what is on my screen", "label": "describe_screen", "source": "handwritten", "split": "test"}
+{"text": "how do i turn up the resolution that i am taking pictures in on my camera phone", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "set a timer for ten minutes", "label": "set_timer", "source": "handwritten", "split": "test"}
+{"text": "ist all carry-on restrictions applicable to my flight", "label": "none", "source": "clinc:carry_on", "split": "test"}
+{"text": "silently adjust", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "please give me a listing of all the bottled water brands in the area", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "how do i make pizza", "label": "none", "source": "massive:cooking_recipe", "split": "test"}
+{"text": "what does adulation mean", "label": "none", "source": "clinc:definition", "split": "test"}
+{"text": "what is the time in the usa", "label": "get_time", "source": "clinc:time", "split": "dev"}
+{"text": "what's the best golf club to use on the lower nine", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "see if you can purchase a spacesuit online", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is the best reviewed laptop available on the market", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "hello, how is it going", "label": "none", "source": "clinc:greeting", "split": "dev"}
+{"text": "what conducts heat better copper bottomed pots or cast iron", "label": "none", "source": "massive:cooking_recipe", "split": "test"}
+{"text": "what time is it in london right now", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "check for new email", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "what kinds of cereal are low sugar", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "sing me a song", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "is it possible to set a timer", "label": "set_timer", "source": "clinc:timer", "split": "dev"}
+{"text": "what day of the week is the twenty third of this month", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "do sets of 25 set-ups each morning til you have completed your goal", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "can you find my car in the parking lot", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "search the web for pizza near me", "label": "search_web", "source": "handwritten", "split": "dev"}
+{"text": "is the movie avatar culturally insensitive", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "disable night light", "label": "toggle_night_light", "source": "handwritten", "split": "test"}
+{"text": "what is the geology of this location", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "change back to the factory set up", "label": "none", "source": "clinc:reset_settings", "split": "test"}
+{"text": "tell me about this week's weather", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "siri open twitter tweet at potus sucks", "label": "none", "source": "massive:social_post", "split": "dev"}
+{"text": "read this error message for me", "label": "describe_screen", "source": "handwritten", "split": "dev"}
+{"text": "tell me what the weather is doing in grand rapids mi right now", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "how can i get a visa card", "label": "none", "source": "clinc:new_card", "split": "test"}
+{"text": "do you remember my wifi password", "label": "remember", "source": "handwritten", "split": "test"}
+{"text": "how tall is mount everest", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "please get the coffee machine to make me some coffee", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "how unhealthy is stress", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "when was the gold rush", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "is my cpu running hot", "label": "system_status", "source": "handwritten", "split": "test"}
+{"text": "start a vacuum cleaner", "label": "none", "source": "massive:iot_cleaning", "split": "test"}
+{"text": "please set the alarm", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "can you lock the laptop", "label": "lock_screen", "source": "handwritten", "split": "test"}
+{"text": "i need an alarm set for five hundred and thirty am tomorrow", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "search maps for the nearest petrol pump", "label": "search_web", "source": "handwritten", "split": "test"}
+{"text": "mute volume", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "i need you to tell me what time it is in new york now", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "when is the egg expired", "label": "none", "source": "clinc:food_last", "split": "dev"}
+{"text": "what is the hobby of ajay devgn", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "what is the date in 5 days", "label": "get_time", "source": "clinc:date", "split": "dev"}
+{"text": "can you speak louder", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "what does priyanka chopra do to look beautiful", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "wake me up in thirty minutes", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "open the file manager", "label": "open_file_manager", "source": "handwritten", "split": "test"}
+{"text": "can you tell me what happened to han solo in episode 4", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "am i connected to the internet", "label": "system_status", "source": "handwritten", "split": "test"}
+{"text": "will i get charged for using my credit card in portland", "label": "none", "source": "clinc:international_fees", "split": "test"}
+{"text": "send email to tim at hotmail dot com", "label": "none", "source": "massive:email_sendemail", "split": "test"}
+{"text": "please make me coffee without sweetener", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "speak loudly", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "do not make any noise until morning alarm", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "turn on vacuum cleaner", "label": "none", "source": "massive:iot_cleaning", "split": "dev"}
+{"text": "increase the volume", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "look up the weather in tokyo on google", "label": "search_web", "source": "handwritten", "split": "test"}
+{"text": "make the screen brighter", "label": "set_screen_brightness", "source": "handwritten", "split": "test"}
+{"text": "can you see if the octopus eggs have hatched yet", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is my current salary", "label": "none", "source": "clinc:income", "split": "test"}
+{"text": "from now on mute", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "dev"}
+{"text": "do i have any new email", "label": "none", "source": "massive:email_query", "split": "dev"}
+{"text": "look up the most requested famous person for quotes", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what's the capital of kazakhstan", "label": "none", "source": "massive:qa_factoid", "split": "test"}
+{"text": "cut down the volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "will you reserve a table at olive garden for 3 people at 7", "label": "none", "source": "clinc:restaurant_reservation", "split": "dev"}
+{"text": "open the sound settings", "label": "open_settings", "source": "handwritten", "split": "test"}
+{"text": "volume up a little", "label": "set_volume", "source": "handwritten", "split": "test"}
+{"text": "ok google tweet what a jerk the owner is at the gas station", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "how hot is it in pune today", "label": "get_weather", "source": "handwritten", "split": "test"}
+{"text": "i can barely hear you", "label": "set_volume", "source": "massive:audio_volume_up", "split": "dev"}
+{"text": "where is the car", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "what is the weather forecast for this week", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "how many push-ups do i need to do to get ripped", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "start a competitive crossword for us", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "take a screenshot and tell me what it says", "label": "describe_screen", "source": "handwritten", "split": "test"}
+{"text": "what do i have coming up", "label": "none", "source": "massive:calendar_query", "split": "dev"}
+{"text": "what is the most famous quote on the internet", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "tell me the time", "label": "get_time", "source": "handwritten", "split": "test"}
+{"text": "how do i set my coffee machine to make coffee", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "any mail from amazon today", "label": "none", "source": "massive:email_query", "split": "dev"}
+{"text": "what is the current temperature outside", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "show me the new york times most popular book list for this week", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "shut down the sound", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "how is the weather", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "open wifi settings", "label": "open_settings", "source": "handwritten", "split": "dev"}
+{"text": "translate good morning to spanish", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "show me the most popular nonfiction book currently on the market", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "i need to find a new babysitter", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "show me a tabulation of reviews for lcd tv's on amazon", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "which airports do southwest service around the greater new york city area", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "would you please switch to the male voice", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "what is the volume of a sphere", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "close chrome", "label": "switch_window", "source": "handwritten", "split": "dev"}
+{"text": "how many legs does a spider have", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "where can i have a black and white photo blown up to poster size", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what films are in the running for best song at this year's oscars", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "please lower the sound", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "play a game of contra as a second player", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "how do clipboards work", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "please turn the volume down", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "put on the vacuum on now and clean the living room", "label": "none", "source": "massive:iot_cleaning", "split": "dev"}
+{"text": "what's two plus two", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "mute the sound", "label": "set_volume", "source": "handwritten", "split": "test"}
+{"text": "how many people are attending my next meeting", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "thats all for now thanks", "label": "go_to_sleep", "source": "handwritten", "split": "test"}
+{"text": "is the time currently correct for where i am located", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "i'll be travelling to russia from april 1 through april 20 and need my financial institute apprised of it", "label": "none", "source": "clinc:travel_notification", "split": "test"}
+{"text": "do you take orders from someone else", "label": "none", "source": "clinc:who_do_you_work_for", "split": "dev"}
+{"text": "my eyes hurt", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "remind me to exercise", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "find my resume", "label": "find_file", "source": "handwritten", "split": "test"}
+{"text": "i like this song please save", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "fix alarm", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "i love this song", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "kill the process using port eight thousand", "label": "run_command", "source": "handwritten", "split": "test"}
+{"text": "how many calories are in a sandwich", "label": "none", "source": "clinc:calories", "split": "test"}
+{"text": "timer five minutes for the pasta", "label": "set_timer", "source": "handwritten", "split": "dev"}
+{"text": "talk in a different voice", "label": "set_voice", "source": "handwritten", "split": "dev"}
+{"text": "set alarm of only monday morning six am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "what is the top 10 best modems", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "reduce volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "turn up the volume on my speakers", "label": "set_volume", "source": "massive:audio_volume_up", "split": "dev"}
+{"text": "how long should i cook a steak to be medium", "label": "none", "source": "massive:cooking_recipe", "split": "dev"}
+{"text": "whats the capital of france", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "play scrabble with me", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "please turn my speakers on google", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "what is todays date", "label": "get_time", "source": "handwritten", "split": "dev"}
+{"text": "tell me the date, please", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "how much in taxes will i owe", "label": "none", "source": "clinc:taxes", "split": "test"}
+{"text": "i would like you to change your accent", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "open chess app and begin game", "label": "none", "source": "massive:play_game", "split": "dev"}
+{"text": "clear data", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "goodnight assistant", "label": "go_to_sleep", "source": "handwritten", "split": "dev"}
+{"text": "search youtube for lofi music", "label": "search_web", "source": "handwritten", "split": "dev"}
+{"text": "are we allowed to wash our cars during the drought", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is the weather in beijing", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "i want to pay my electric bill, can you do it for me", "label": "none", "source": "clinc:pay_bill", "split": "test"}
+{"text": "turn off do not disturb", "label": "set_do_not_disturb", "source": "handwritten", "split": "test"}
+{"text": "what should i cook for dinner", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "do you have a funny joke for me", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "help me change my oil", "label": "none", "source": "clinc:oil_change_how", "split": "test"}
+{"text": "quiet time", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "dev"}
+{"text": "remember i parked on level three", "label": "remember", "source": "handwritten", "split": "dev"}
+{"text": "volume 4 set", "label": "set_volume", "source": "clinc:change_volume", "split": "test"}
+{"text": "will i need sunscreen later", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "how do i become a better programmer", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "switch to firefox", "label": "switch_window", "source": "handwritten", "split": "test"}
+{"text": "will there be a fall in temperature by tonight", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "set a reminder for me to let the plumber in tomorrow", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "what do you do all day while i'm at work", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is one plus one", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "what does it mean to join the occult", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what day of the week does the fifteenth of march fall on", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "my tires are 29 months old should u change them", "label": "none", "source": "clinc:tire_change", "split": "dev"}
+{"text": "hey olly i met one of my old classmates today", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "hey order two wings with french fries from the chinese food store", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "i need to start a timer", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "how bright is the sun", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "can you see this window whats wrong", "label": "describe_screen", "source": "handwritten", "split": "test"}
+{"text": "is it six o clock yet", "label": "get_time", "source": "clinc:time", "split": "dev"}
+{"text": "what is happening in politicsu", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "please tell me what is the time in sanfranscio", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "write hello how are you in this box", "label": "type_text", "source": "handwritten", "split": "test"}
+{"text": "could you use the male voice", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "open gallery post picture name", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "play", "label": "control_media", "source": "handwritten", "split": "test"}
+{"text": "what is on my clipboard", "label": "clipboard", "source": "handwritten", "split": "dev"}
+{"text": "whats your name", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "what are the benefits of having this insurance", "label": "none", "source": "clinc:insurance", "split": "test"}
+{"text": "launch spotify", "label": "open_app_or_link", "source": "handwritten", "split": "test"}
+{"text": "does the nsa listen to me", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is six divided by two", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "what is the meaning of life", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "where's my buddy steve right this second", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what time is it right now in adelaide, australia", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "clean my house", "label": "none", "source": "massive:iot_cleaning", "split": "test"}
+{"text": "tell me when it is five p. m.", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "do not talk", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "what did i tell you about my meeting", "label": "remember", "source": "handwritten", "split": "test"}
+{"text": "what was the latest tremor on the richter scale", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "turn on night light", "label": "toggle_night_light", "source": "handwritten", "split": "dev"}
+{"text": "you can rest now", "label": "go_to_sleep", "source": "handwritten", "split": "test"}
+{"text": "set an alert for two p. m.", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "go back to the previous song", "label": "control_media", "source": "handwritten", "split": "dev"}
+{"text": "turn on an alarm for three thirty p. m. today", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "set my coffee machine", "label": "none", "source": "massive:iot_coffee", "split": "test"}
+{"text": "how much are the clorox detergents", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "show me the best times to book flights for traveling to another country", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "add new email address and send email", "label": "none", "source": "massive:email_sendemail", "split": "test"}
+{"text": "when is my electricity due date", "label": "none", "source": "clinc:bill_due", "split": "test"}
+{"text": "go to display settings", "label": "open_settings", "source": "handwritten", "split": "test"}
+{"text": "divide seventy six in two parts", "label": "none", "source": "massive:qa_maths", "split": "test"}
+{"text": "turn the vibrate off from speaker", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "dev"}
+{"text": "compile a list of articles pertaining to venture capital funding for me", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "what movie is it that says today is a good day to die", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "tell me about the windows operating system", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "remind me to call mom in an hour", "label": "set_timer", "source": "handwritten", "split": "dev"}
+{"text": "show all emails sent to me from my boss", "label": "none", "source": "massive:email_query", "split": "dev"}
+{"text": "find me a joke related to baseball", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "shall i change my car tires to snow tires soon", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "what is the total number of pets that you have", "label": "none", "source": "clinc:do_you_have_pets", "split": "test"}
+{"text": "create a for-while loop that continues 10 times", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "set an alarm for six thirty", "label": "set_timer", "source": "handwritten", "split": "test"}
+{"text": "info on this week weather", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "can you tell me how to get gum out of my rug", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i got promoted today it feels so good", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "i want to eat some spicy thing", "label": "none", "source": "massive:takeaway_order", "split": "test"}
+{"text": "type the word banana", "label": "type_text", "source": "handwritten", "split": "test"}
+{"text": "what is the current time", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "share in friends post", "label": "none", "source": "massive:social_post", "split": "dev"}
+{"text": "play me a game of tic tac toe", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "are you able to remind me about something", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "look up the current auto loan rate at chase bank", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "is it cold outside", "label": "get_weather", "source": "handwritten", "split": "test"}
+{"text": "screenshot please", "label": "take_screenshot", "source": "handwritten", "split": "test"}
+{"text": "what's a good italian meal", "label": "none", "source": "clinc:meal_suggestion", "split": "dev"}
+{"text": "what movies are playing at my local cinemax", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i want to be reminded to pay the electric bill", "label": "set_timer", "source": "clinc:reminder_update", "split": "dev"}
+{"text": "is there an alternate bus stop close to my home i can use", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "describe the heart stone card game", "label": "none", "source": "massive:qa_definition", "split": "dev"}
+{"text": "how much disk space is left", "label": "system_status", "source": "handwritten", "split": "dev"}
+{"text": "i need you to get me up at six am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "need to know the weather now", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "minimize everything", "label": "switch_window", "source": "handwritten", "split": "test"}
+{"text": "what does turbulence mean", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "please ring the wake up alarm at eight am next saturday", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "take a ride on the ferris wheel", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "turn off wifi", "label": "toggle_wireless", "source": "handwritten", "split": "test"}
+{"text": "run git status in my project", "label": "run_command", "source": "handwritten", "split": "dev"}
+{"text": "display the song lyrics for me", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "slow down the speaker volume", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "speak softer please", "label": "set_volume", "source": "massive:audio_volume_down", "split": "test"}
+{"text": "send an email to peter and ask him how is he now can i do something to help him", "label": "none", "source": "massive:email_sendemail", "split": "dev"}
+{"text": "what oil is best for chicken", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "please open and play chess with me", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "give me a fun fact about dolphin", "label": "none", "source": "clinc:fun_fact", "split": "dev"}
+{"text": "what is the account number to the internet service i have", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "add song to running list", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "what's the current time in eastern standard", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "lock my computer", "label": "lock_screen", "source": "handwritten", "split": "dev"}
+{"text": "start the timer now", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "is there a fork in the road sign at main & 1st avenue", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "report weather for thirty three thousand seven hundred and seventy four", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "why is the sky blue", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "change to girl voice", "label": "set_voice", "source": "clinc:change_accent", "split": "dev"}
+{"text": "wake me up at seven am", "label": "set_timer", "source": "handwritten", "split": "dev"}
+{"text": "tell me about the candidates running for local office in my area", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "set a 4 minute timer", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "set a timer to go off in 1 hour", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "what day is new year's eve this year", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "what time is it in the greenwich timezone", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "show me the current time in germany", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "i need my dinner reservation canceled", "label": "none", "source": "clinc:cancel_reservation", "split": "test"}
+{"text": "raise volume", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "go to sleep", "label": "go_to_sleep", "source": "handwritten", "split": "test"}
+{"text": "what do you enjoy doing in your off time", "label": "none", "source": "clinc:what_are_your_hobbies", "split": "dev"}
+{"text": "set alarm for noon", "label": "set_timer", "source": "clinc:alarm", "split": "dev"}
+{"text": "no more popups please im presenting", "label": "set_do_not_disturb", "source": "handwritten", "split": "test"}
+{"text": "can you set the alarm for noon", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "set the volume to thirty", "label": "set_volume", "source": "handwritten", "split": "dev"}
+{"text": "find schematics for ikea desk assembly", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "look up the operating hours of my local park on weekends", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is the minimum payment on my water bill", "label": "none", "source": "clinc:min_payment", "split": "dev"}
+{"text": "mute for one hour", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "will it be rainy tomorrow", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "airplane mode off", "label": "toggle_wireless", "source": "handwritten", "split": "dev"}
+{"text": "would it be legal to have battles to the death in a homemade colosseum", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "show the home folder", "label": "open_file_manager", "source": "handwritten", "split": "dev"}
+{"text": "what am i gonna need for sushi", "label": "none", "source": "clinc:ingredients_list", "split": "test"}
+{"text": "resume playback", "label": "control_media", "source": "handwritten", "split": "test"}
+{"text": "when is easter in the year two thousand and eighteen", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "i need to up by noon", "label": "set_timer", "source": "clinc:alarm", "split": "test"}
+{"text": "open files at pictures", "label": "open_file_manager", "source": "handwritten", "split": "test"}
+{"text": "instructions to make a meal", "label": "none", "source": "massive:cooking_recipe", "split": "dev"}
+{"text": "create a reminder to change my oil", "label": "set_timer", "source": "clinc:reminder_update", "split": "dev"}
+{"text": "remind me that i like that song", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "do not speak today", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "please slow down volume of speaker", "label": "set_volume", "source": "massive:audio_volume_down", "split": "dev"}
+{"text": "quiet mode on until i am home from work", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "turn my morning alarm on", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "show me my documents", "label": "open_file_manager", "source": "handwritten", "split": "test"}
+{"text": "please mute my speaker", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "set a timer", "label": "set_timer", "source": "clinc:timer", "split": "test"}
+{"text": "open settings", "label": "open_settings", "source": "handwritten", "split": "test"}
+{"text": "give me today's date", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "create a folder called test on the desktop", "label": "run_command", "source": "handwritten", "split": "test"}
+{"text": "volume set to 4", "label": "set_volume", "source": "clinc:change_volume", "split": "dev"}
+{"text": "let's take a look at the weather", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "open the terminal", "label": "open_terminal", "source": "handwritten", "split": "dev"}
+{"text": "rate five", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "how do you make pasta", "label": "none", "source": "clinc:recipe", "split": "test"}
+{"text": "text jean and tell him to call work", "label": "none", "source": "clinc:text", "split": "dev"}
+{"text": "i need to set a reminder to call lisa for her birthday", "label": "set_timer", "source": "clinc:reminder_update", "split": "test"}
+{"text": "can i plug in my electronics there like normal", "label": "none", "source": "clinc:plug_type", "split": "test"}
+{"text": "tell me what tomorrow's date is", "label": "get_time", "source": "clinc:date", "split": "dev"}
+{"text": "what is the time signature for the castlevania song bloody tears", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "lock it up please", "label": "lock_screen", "source": "handwritten", "split": "test"}
+{"text": "who wrote green book", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "pause it", "label": "control_media", "source": "handwritten", "split": "test"}
+{"text": "how can i add my signature to the proposed bill legalizing prostitution", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "launch super mario", "label": "none", "source": "massive:play_game", "split": "test"}
+{"text": "i need to know how to make stuffed peppers", "label": "none", "source": "massive:cooking_recipe", "split": "dev"}
+{"text": "what time is it", "label": "get_time", "source": "handwritten", "split": "test"}
+{"text": "give the definition of motivation", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "why did negan return to his jail cell", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "maximize the terminal window", "label": "switch_window", "source": "handwritten", "split": "dev"}
+{"text": "how many points earned do i have with my american express card", "label": "none", "source": "clinc:rewards_balance", "split": "test"}
+{"text": "start vs code", "label": "open_app_or_link", "source": "handwritten", "split": "dev"}
+{"text": "list files in my home directory", "label": "run_command", "source": "handwritten", "split": "test"}
+{"text": "i didn't understand you", "label": "none", "source": "clinc:repeat", "split": "dev"}
+{"text": "can you give me some stress management tips", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "how the bus moves", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "lock the screen", "label": "lock_screen", "source": "handwritten", "split": "test"}
+{"text": "was einstein right to be scared of spooky action at a distance", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "check with my bank to see why my account is frozen", "label": "none", "source": "clinc:account_blocked", "split": "test"}
+{"text": "what date will it be tomorrow", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "type my email address", "label": "type_text", "source": "handwritten", "split": "dev"}
+{"text": "what about the weather in austin", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "turn on the vacuum cleaner", "label": "none", "source": "massive:iot_cleaning", "split": "test"}
+{"text": "what is that crunchy stuff on creme bruleo", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "the time is what", "label": "get_time", "source": "clinc:time", "split": "test"}
+{"text": "pause the music", "label": "control_media", "source": "handwritten", "split": "dev"}
+{"text": "disconnect bluetooth", "label": "toggle_wireless", "source": "handwritten", "split": "test"}
+{"text": "how many miles does my car currently have", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "give me my wallet location", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what day of the week is first april", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "make a note that the plumber comes tuesday", "label": "remember", "source": "handwritten", "split": "test"}
+{"text": "set up a new reminder to alert me when it's time to put the trash out", "label": "set_timer", "source": "clinc:reminder_update", "split": "dev"}
+{"text": "will it rain now", "label": "get_weather", "source": "massive:weather_query", "split": "dev"}
+{"text": "please email my team", "label": "none", "source": "massive:email_sendemail", "split": "test"}
+{"text": "what's the best price on a gray xl ll bean men's parka", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "can you check my voicemail", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "will it rain tomorrow", "label": "get_weather", "source": "handwritten", "split": "test"}
+{"text": "what date is it tomorrow", "label": "get_time", "source": "clinc:date", "split": "test"}
+{"text": "look up a good broker for mutual funds", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i need help spelling \"exquisite", "label": "none", "source": "clinc:spelling", "split": "dev"}
+{"text": "hey siri mute the speakers", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "review my resume for spelling errors", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "tell me the time in this time zone", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "olly what day of the week is halloween", "label": "get_time", "source": "massive:datetime_query", "split": "dev"}
+{"text": "grab a screenshot of this window", "label": "take_screenshot", "source": "handwritten", "split": "test"}
+{"text": "did charlotte responded", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "look up albert einstein on wikipedia", "label": "search_web", "source": "handwritten", "split": "test"}
+{"text": "is there a vaccine for ebola", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "has tom emailed me about ammunition", "label": "none", "source": "massive:email_query", "split": "test"}
+{"text": "enable airplane mode", "label": "toggle_wireless", "source": "handwritten", "split": "test"}
+{"text": "restart the bluetooth service", "label": "run_command", "source": "handwritten", "split": "dev"}
+{"text": "alarm ten am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "show running docker containers", "label": "run_command", "source": "handwritten", "split": "test"}
+{"text": "screen brightness max", "label": "set_screen_brightness", "source": "handwritten", "split": "test"}
+{"text": "how is that weather", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "set the speakers to mute", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "can you keep a secret", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "write the next chapter of my biography and let me know when you have finished it", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "what is the current weather like", "label": "get_weather", "source": "clinc:weather", "split": "dev"}
+{"text": "i want an alarm for three today", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "who set up the numbers for it", "label": "set_timer", "source": "clinc:timer", "split": "dev"}
+{"text": "put this address on the clipboard", "label": "clipboard", "source": "handwritten", "split": "test"}
+{"text": "where did you live before you moved here", "label": "none", "source": "clinc:where_are_you_from", "split": "dev"}
+{"text": "what is the funniest joke ever", "label": "none", "source": "massive:general_joke", "split": "test"}
+{"text": "turn the brightness down a bit", "label": "set_screen_brightness", "source": "handwritten", "split": "dev"}
+{"text": "can you help me plan a trip to goa", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "what's a parsec", "label": "none", "source": "massive:qa_factoid", "split": "dev"}
+{"text": "unmute after", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "show weather", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "open my resume pdf", "label": "open_app_or_link", "source": "handwritten", "split": "test"}
+{"text": "mute for fifteen minutes", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "dev"}
+{"text": "how hot is it in quebec", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "change the accent you're using", "label": "set_voice", "source": "clinc:change_accent", "split": "test"}
+{"text": "tomorrow's temperature is to be hot yes or no", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "what does oscillate mean", "label": "none", "source": "massive:qa_definition", "split": "test"}
+{"text": "set alarm for eight am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "i can barely see the screen its so dark", "label": "set_screen_brightness", "source": "handwritten", "split": "test"}
+{"text": "i need to confirm all meetings for today can the invite person", "label": "none", "source": "massive:calendar_query", "split": "test"}
+{"text": "set wake up thursday seven am", "label": "set_timer", "source": "massive:alarm_set", "split": "test"}
+{"text": "do i need an umbrella today", "label": "get_weather", "source": "handwritten", "split": "dev"}
+{"text": "i am so tired today", "label": "none", "source": "handwritten", "split": "dev"}
+{"text": "i like this song", "label": "none", "source": "massive:music_likeness", "split": "test"}
+{"text": "skip this track", "label": "control_media", "source": "handwritten", "split": "test"}
+{"text": "is it twentieth march today", "label": "get_time", "source": "massive:datetime_query", "split": "test"}
+{"text": "set the ceiling fan to low", "label": "none", "source": "clinc:smart_home", "split": "test"}
+{"text": "turn off sound", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "what is global warming", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i want to set an alarm when i'm driving home tomorrow to remember to stop at the store and get food", "label": "set_timer", "source": "massive:alarm_set", "split": "dev"}
+{"text": "can the nsa crack the encryption on my iphone", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "should i get a travel visa if i want to go to guyana", "label": "none", "source": "clinc:international_visa", "split": "test"}
+{"text": "do you know recipe for risotto", "label": "none", "source": "massive:cooking_recipe", "split": "test"}
+{"text": "did madison really bathe in the potomac naked", "label": "none", "source": "clinc:oos", "split": "dev"}
+{"text": "paste what i copied earlier back to me", "label": "clipboard", "source": "handwritten", "split": "test"}
+{"text": "night mode on for my eyes", "label": "toggle_night_light", "source": "handwritten", "split": "test"}
+{"text": "locate the project folder named robot", "label": "find_file", "source": "handwritten", "split": "test"}
+{"text": "let's suck out the dust", "label": "none", "source": "massive:iot_cleaning", "split": "test"}
+{"text": "don't make any sounds", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "has the market been up or down since the beginning of this year", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "i need a new terminal window", "label": "open_terminal", "source": "handwritten", "split": "test"}
+{"text": "unmute please", "label": "set_volume", "source": "handwritten", "split": "dev"}
+{"text": "look at my screen and describe it", "label": "describe_screen", "source": "handwritten", "split": "dev"}
+{"text": "enable the blue light filter", "label": "toggle_night_light", "source": "handwritten", "split": "test"}
+{"text": "i helped a poor needy today olly", "label": "none", "source": "massive:general_quirky", "split": "dev"}
+{"text": "post my latest entry to twitter at n.s.a.", "label": "none", "source": "massive:social_post", "split": "test"}
+{"text": "dictate this message see you at five", "label": "type_text", "source": "handwritten", "split": "test"}
+{"text": "what time do i need to arrive to make it on time", "label": "none", "source": "clinc:oos", "split": "test"}
+{"text": "do you have any idea if the flying wing does reservations", "label": "none", "source": "clinc:accept_reservations", "split": "test"}
+{"text": "do i need to get any shots before i travel to south africa", "label": "none", "source": "clinc:vaccines", "split": "dev"}
+{"text": "is coffee bad for you", "label": "none", "source": "handwritten", "split": "test"}
+{"text": "how old are you", "label": "none", "source": "massive:general_quirky", "split": "test"}
+{"text": "please be quiet for another hour", "label": "set_volume", "source": "massive:audio_volume_mute", "split": "test"}
+{"text": "i can't hear you", "label": "set_volume", "source": "massive:audio_volume_up", "split": "test"}
+{"text": "how much do i need to pay for my electricity and water bills", "label": "none", "source": "clinc:bill_balance", "split": "dev"}
+{"text": "i want to know today's weather", "label": "get_weather", "source": "massive:weather_query", "split": "test"}
+{"text": "what are the weather conditions like in seattle", "label": "get_weather", "source": "clinc:weather", "split": "test"}
+{"text": "please compose a new email to coworker", "label": "none", "source": "massive:email_sendemail", "split": "test"}

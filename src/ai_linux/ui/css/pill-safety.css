@@ -1,0 +1,39 @@
+/* Floating pill (its own Xwayland window) and the Safety page. */
+
+/* the window is only room for the capsule and its shadow */
+window.ail-pill-window,
+window.ail-pill-window.background {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.ail-pill {
+  background-color: #ffffff;
+  border: 1px solid rgba(0, 0, 6, 0.10);
+  border-radius: 999px;
+  box-shadow: 0 3px 9px -2px rgba(0, 0, 6, 0.16), 0 1px 2px rgba(0, 0, 6, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .ail-pill {
+    background-color: #2e2e32;
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 3px 9px -2px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* Safety: typed command in a monospace face, the row title stays in the UI font */
+.ail-sf-command text {
+  font-family: monospace;
+}
+
+.ail-sf-command-title {
+  font-family: monospace;
+  font-size: 0.95em;
+}
+
+/* the always-on block list reads as a fixed rule, not a setting */
+.ail-sf-floor label.title {
+  font-weight: 600;
+}

@@ -1,0 +1,139 @@
+/* Health page, Preferences dialog and the welcome tour. */
+
+/* Health: status badges, tinted circles so the state reads at a glance */
+.ail-health-badge {
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 999px;
+  -gtk-icon-size: 16px;
+}
+
+.ail-health-badge.ok {
+  background-color: alpha(var(--success-color), 0.14);
+  color: var(--success-color);
+}
+
+.ail-health-badge.warn {
+  background-color: alpha(var(--warning-color), 0.16);
+  color: var(--warning-color);
+}
+
+.ail-health-badge.fail {
+  background-color: alpha(var(--error-color), 0.14);
+  color: var(--error-color);
+}
+
+.ail-health-badge.info {
+  background-color: alpha(var(--accent-bg-color), 0.10);
+  color: var(--accent-color);
+}
+
+.ail-health-summary {
+  padding: 20px 24px;
+}
+
+.ail-health-hero {
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 999px;
+  background-color: alpha(var(--accent-bg-color), 0.10);
+  color: var(--accent-color);
+}
+
+.ail-health-hero.ok {
+  background-color: alpha(var(--success-color), 0.14);
+  color: var(--success-color);
+}
+
+.ail-health-hero.warn {
+  background-color: alpha(var(--warning-color), 0.16);
+  color: var(--warning-color);
+}
+
+.ail-health-hero.fail {
+  background-color: alpha(var(--error-color), 0.14);
+  color: var(--error-color);
+}
+
+/* Preferences */
+.ail-prefs-hero {
+  padding: 12px 0 8px 0;
+}
+
+.ail-prefs-hero .title-1 {
+  margin-top: 8px;
+}
+
+.ail-prefs-version {
+  margin-top: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background-color: alpha(var(--accent-bg-color), 0.10);
+  color: var(--accent-color);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.ail-prefs-note-icon {
+  color: var(--accent-color);
+}
+
+.ail-prefs-licence {
+  font-family: monospace;
+  font-size: 0.92em;
+  padding: 18px;
+  background: none;
+}
+
+/* Welcome tour */
+.ail-tour-step {
+  padding: 8px 32px 0 32px;
+}
+
+.ail-tour-hero {
+  min-height: 150px;
+}
+
+.ail-tour-title {
+  font-size: 1.7em;
+  font-weight: 800;
+}
+
+.ail-tour-body {
+  font-size: 1.05em;
+  color: alpha(currentColor, 0.75);
+}
+
+.ail-tour-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background-color: alpha(var(--accent-bg-color), 0.10);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.ail-tour-icon {
+  color: var(--accent-color);
+  background-color: alpha(var(--accent-bg-color), 0.10);
+  border-radius: 999px;
+  min-width: 96px;
+  min-height: 96px;
+}
+
+.ail-tour-quote {
+  font-size: 1.45em;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.ail-tour-meter {
+  padding: 18px 24px;
+}
+
+.ail-tour-footer {
+  padding: 12px 18px 18px 18px;
+}
+
+.ail-tour-cards row label.title {
+  font-weight: 600;
+}

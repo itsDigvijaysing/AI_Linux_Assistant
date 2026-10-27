@@ -1,0 +1,21 @@
+/* Brand: white surfaces, locked blue accent (Ubuntu's Yaru would otherwise recolour it orange). */
+:root {
+  --accent-bg-color: #1c71d8;
+  --accent-fg-color: #ffffff;
+  --accent-color: #0461be;
+}
+
+/* Bars palette, mirrored in ui/bar_model.py COLORS for drawing code. */
+.ail-state-label {
+  font-weight: 600;
+  color: var(--accent-color);
+}
+
+.ail-state-label.muted,
+.ail-state-label.off {
+  color: alpha(currentColor, 0.55);
+}
+
+.ail-state-label.error {
+  color: var(--error-color);
+}

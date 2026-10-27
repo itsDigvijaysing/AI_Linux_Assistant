@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Dev launcher for the v3 desktop app on system Python + python3-gi; the installer replaces it.
+here="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export PYTHONPATH="$here/src${PYTHONPATH:+:$PYTHONPATH}"
+exec /usr/bin/python3 -m ai_linux "$@"

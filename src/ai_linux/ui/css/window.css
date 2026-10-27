@@ -1,0 +1,334 @@
+/* Main window, Home, History and conversation turns. Colours come from libadwaita variables so dark mode follows. */
+
+/* sidebar */
+.ail-sidebar-title {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.ail-sidebar-footer {
+  margin-bottom: 6px;
+}
+
+.ail-sidebar-footer row {
+  opacity: 0.85;
+}
+
+/* home: hero */
+.ail-hero {
+  margin-top: 28px;
+  margin-bottom: 8px;
+}
+
+.ail-hero .ail-state-label {
+  font-size: 1.35em;
+  margin-top: 14px;
+}
+
+.ail-hero-hint {
+  font-size: 0.95em;
+}
+
+.ail-home-empty {
+  margin: 16px 24px;
+}
+
+.ail-listen-btn {
+  min-height: 36px;
+  padding-left: 20px;
+  padding-right: 22px;
+}
+
+/* engine-off notice */
+.ail-notice {
+  background-color: alpha(var(--accent-bg-color), 0.07);
+  border: 1px solid alpha(var(--accent-bg-color), 0.18);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.ail-notice-icon {
+  color: var(--accent-color);
+}
+
+.ail-notice-title {
+  font-weight: 700;
+}
+
+.ail-code {
+  font-size: 0.9em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background-color: alpha(currentColor, 0.07);
+}
+
+/* home: conversation area */
+.ail-conversation-scroller {
+  border-top: 1px solid alpha(var(--border-color), 0.6);
+}
+
+.ail-section-label {
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+}
+
+/* home: composer and stats */
+.ail-bottom {
+  padding-top: 10px;
+  padding-bottom: 12px;
+  border-top: 1px solid alpha(var(--border-color), 0.6);
+}
+
+entry.ail-composer-entry {
+  min-height: 42px;
+  border-radius: 999px;
+  padding-left: 18px;
+  padding-right: 8px;
+  background-color: var(--view-bg-color);
+  box-shadow: inset 0 0 0 1px alpha(var(--border-color), 0.9);
+}
+
+entry.ail-composer-entry:focus-within {
+  box-shadow: inset 0 0 0 2px alpha(var(--accent-bg-color), 0.6);
+  outline: none;
+}
+
+.ail-send-btn {
+  min-width: 42px;
+  min-height: 42px;
+}
+
+.ail-stats {
+  font-size: 0.85em;
+}
+
+.ail-stat-value {
+  font-weight: 600;
+}
+
+.ail-stat-sep {
+  opacity: 0.3;
+}
+
+.ail-lat-bar {
+  min-height: 6px;
+  border-radius: 3px;
+}
+
+.ail-lat-seg {
+  min-height: 6px;
+}
+
+.ail-lat-seg.asr { background-color: #99c1f1; }
+.ail-lat-seg.route { background-color: #62a0ea; }
+.ail-lat-seg.llm { background-color: #1c71d8; }
+.ail-lat-seg.tts { background-color: #1a5fb4; }
+
+.ail-lat-seg:first-child {
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+}
+
+.ail-lat-seg:last-child {
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+}
+
+.ail-lat-seg.ail-dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 999px;
+}
+
+/* chips shared by turns and stats */
+.ail-chip {
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: alpha(currentColor, 0.08);
+}
+
+.ail-chip.route-small {
+  color: var(--accent-color);
+  background-color: alpha(var(--accent-bg-color), 0.10);
+}
+
+.ail-chip.route-big {
+  color: var(--accent-fg-color);
+  background-color: var(--accent-bg-color);
+}
+
+.ail-chip.status-failed {
+  color: var(--error-color);
+  background-color: alpha(var(--error-bg-color), 0.12);
+}
+
+.ail-chip.status-partial {
+  color: var(--accent-color);
+  background-color: alpha(var(--accent-bg-color), 0.10);
+}
+
+/* turns: bubbles */
+.ail-bubble {
+  padding: 9px 14px;
+  border-radius: 18px;
+}
+
+.ail-bubble.user {
+  background-color: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+  border-bottom-right-radius: 6px;
+}
+
+.ail-bubble.user label selection {
+  background-color: alpha(white, 0.35);
+  color: white;
+}
+
+.ail-bubble.assistant {
+  background-color: var(--card-bg-color);
+  color: var(--card-fg-color);
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 6, 0.04), 0 1px 3px 1px rgba(0, 0, 6, 0.06), 0 2px 6px 2px rgba(0, 0, 6, 0.02);
+}
+
+.ail-turn.failed .ail-bubble.assistant {
+  box-shadow: inset 0 0 0 1px alpha(var(--error-color), 0.6);
+}
+
+.ail-turn.cancelled {
+  opacity: 0.6;
+}
+
+.ail-copy {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.ail-turn.hover .ail-copy,
+.ail-copy:focus-visible {
+  opacity: 0.8;
+}
+
+.ail-meta {
+  margin-left: 4px;
+  min-height: 26px;
+}
+
+/* tool chips */
+.ail-tool {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background-color: alpha(currentColor, 0.04);
+  box-shadow: inset 0 0 0 1px alpha(currentColor, 0.07);
+}
+
+.ail-tool.verdict-error {
+  background-color: alpha(var(--error-bg-color), 0.06);
+  box-shadow: inset 0 0 0 1px alpha(var(--error-color), 0.25);
+}
+
+.ail-tool.verdict-warning {
+  background-color: alpha(var(--warning-bg-color), 0.08);
+  box-shadow: inset 0 0 0 1px alpha(var(--warning-color), 0.3);
+}
+
+.ail-tool-icon {
+  opacity: 0.6;
+}
+
+.ail-tool-name {
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.ail-tool-cmd {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.ail-tool-exit {
+  font-size: 0.8em;
+}
+
+.ail-tool-reason {
+  margin-left: 24px;
+  color: var(--error-color);
+}
+
+.ail-tool.verdict-warning .ail-tool-reason {
+  color: var(--warning-color);
+}
+
+.ail-badge {
+  font-size: 0.75em;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.ail-badge.success {
+  color: var(--success-fg-color);
+  background-color: var(--success-bg-color);
+}
+
+.ail-badge.error {
+  color: var(--error-fg-color);
+  background-color: var(--error-bg-color);
+}
+
+.ail-badge.warning {
+  color: var(--warning-fg-color);
+  background-color: var(--warning-bg-color);
+}
+
+/* turns: compact rows (History) */
+.ail-turn.compact .ail-heard {
+  font-weight: 600;
+}
+
+.ail-turn.compact .ail-reply {
+  opacity: 0.8;
+}
+
+.ail-turn.compact .ail-meta {
+  margin-left: 0;
+  margin-top: 2px;
+}
+
+.ail-turn-time {
+  margin-top: 2px;
+}
+
+/* history */
+.ail-day-header {
+  margin-top: 18px;
+  margin-bottom: 8px;
+  margin-left: 4px;
+}
+
+.ail-history-row {
+  padding: 12px 10px 10px 14px;
+}
+
+.ail-row-actions button {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.ail-row-actions {
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+
+.ail-history-row:hover .ail-row-actions,
+.ail-row-actions:focus-within {
+  opacity: 1;
+}

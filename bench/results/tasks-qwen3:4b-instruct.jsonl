@@ -1,0 +1,177 @@
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: yeah go ahead", "gold": "yes", "top": "yes", "conf": 0.9999999999994384, "ms": 595.1157470008184}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: yes please", "gold": "yes", "top": "yes", "conf": 0.9999999999997258, "ms": 514.2863930013846}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: sure do it", "gold": "yes", "top": "yes", "conf": 0.9999999999986, "ms": 520.8491490011511}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: absolutely", "gold": "yes", "top": "yes", "conf": 0.9999999999994034, "ms": 515.3533190023154}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: yep", "gold": "yes", "top": "yes", "conf": 0.9999999999994456, "ms": 506.8397110007936}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: go for it", "gold": "yes", "top": "yes", "conf": 0.9999999999977083, "ms": 507.29463300012867}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: okay fine do it", "gold": "yes", "top": "yes", "conf": 0.9999999999966342, "ms": 502.1929429967713}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: that's right", "gold": "yes", "top": "yes", "conf": 0.9999999999941216, "ms": 518.6167589999968}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: please proceed", "gold": "yes", "top": "yes", "conf": 0.9999999999948244, "ms": 520.0839930002985}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: yes yes hurry up", "gold": "yes", "top": "yes", "conf": 0.9999999999839349, "ms": 527.8963259988814}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: of course", "gold": "yes", "top": "yes", "conf": 0.9999999999972731, "ms": 518.4561809983279}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: alright", "gold": "yes", "top": "yes", "conf": 0.9999999981223184, "ms": 507.90059300197754}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: no", "gold": "no", "top": "no", "conf": 0.9999999921441388, "ms": 497.52470900057233}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: nope don't", "gold": "no", "top": "no", "conf": 0.9999999581631611, "ms": 514.5174110002699}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: wait stop", "gold": "no", "top": "no", "conf": 0.8523281783552228, "ms": 518.6106500004826}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: cancel that", "gold": "no", "top": "no", "conf": 0.9999999900499003, "ms": 505.7689870009199}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: no leave it as it is", "gold": "no", "top": "no", "conf": 0.999999923639528, "ms": 514.7061349998694}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: don't do that", "gold": "no", "top": "no", "conf": 0.9999999991531967, "ms": 512.4502809994738}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: hold on no", "gold": "no", "top": "no", "conf": 0.9999881833052938, "ms": 513.2099410002411}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: never mind", "gold": "no", "top": "no", "conf": 0.9730552094200908, "ms": 521.2207260010473}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: not now", "gold": "no", "top": "no", "conf": 0.9999973199258678, "ms": 502.4872260000848}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: absolutely not", "gold": "no", "top": "yes", "conf": 0.9999999999082543, "ms": 508.6631349986419}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: no thanks", "gold": "no", "top": "no", "conf": 0.9999999994640048, "ms": 500.1942669987329}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: leave it", "gold": "no", "top": "no", "conf": 0.9978064557358992, "ms": 506.76066400046693}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: which one do you mean", "gold": "unclear", "top": "unclear", "conf": 0.9999999999985443, "ms": 518.1577059993288}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: is that safe", "gold": "unclear", "top": "unclear", "conf": 0.9999999999983211, "ms": 510.5671530000109}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: um let me think", "gold": "unclear", "top": "unclear", "conf": 0.999999999999772, "ms": 517.6158229987777}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: do something else instead", "gold": "unclear", "top": "no", "conf": 0.9916786147469233, "ms": 515.1711299986346}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: why do you want to do that", "gold": "unclear", "top": "unclear", "conf": 0.9999999999976834, "ms": 513.6662920012895}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: what time is it", "gold": "unclear", "top": "unclear", "conf": 0.9999999999976761, "ms": 512.7901579980971}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: tell me more first", "gold": "unclear", "top": "unclear", "conf": 0.9999999999994025, "ms": 512.134871998569}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: what does that do exactly", "gold": "unclear", "top": "unclear", "conf": 0.9999999999977967, "ms": 538.6192299993127}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: hmm", "gold": "unclear", "top": "unclear", "conf": 0.9999999999994869, "ms": 502.6354910005466}
+{"task": "confirm", "text": "Assistant: Should I delete the folder old_photos?\nUser: how long will it take", "gold": "unclear", "top": "unclear", "conf": 0.9999999999989659, "ms": 532.0931120004389}
+{"task": "confirm", "text": "Assistant: Shall I shut down the computer now?\nUser: can you explain", "gold": "unclear", "top": "unclear", "conf": 0.9999999999982772, "ms": 500.9341850018245}
+{"task": "confirm", "text": "Assistant: Do you want me to close all Firefox windows?\nUser: tell me a joke", "gold": "unclear", "top": "unclear", "conf": 0.9999999999941913, "ms": 516.1849829964922}
+{"task": "pick_app", "text": "open firefox", "gold": "firefox", "top": "firefox", "conf": 0.9999999999974132, "ms": 327.3507609992521}
+{"task": "pick_app", "text": "launch chrome", "gold": "chrome", "top": "chrome", "conf": 0.999999999998433, "ms": 321.7393359991547}
+{"task": "pick_app", "text": "open google chrome", "gold": "chrome", "top": "chrome", "conf": 0.9999999999966576, "ms": 342.74383400043007}
+{"task": "pick_app", "text": "start the code editor", "gold": "code", "top": "code", "conf": 0.9999999999993785, "ms": 491.20183699778863}
+{"task": "pick_app", "text": "open vs code", "gold": "code", "top": "code", "conf": 0.999999999998503, "ms": 340.17455499997595}
+{"task": "pick_app", "text": "open visual studio code", "gold": "code", "top": "code", "conf": 0.9999999999989959, "ms": 341.2109849996341}
+{"task": "pick_app", "text": "i need a terminal", "gold": "terminal", "top": "terminal", "conf": 0.9999999999974118, "ms": 501.0264789998473}
+{"task": "pick_app", "text": "open the command line", "gold": "terminal", "top": "terminal", "conf": 0.9999999999931473, "ms": 500.6206389989529}
+{"task": "pick_app", "text": "open my files", "gold": "files", "top": "files", "conf": 0.9999999999978693, "ms": 322.30953000180307}
+{"task": "pick_app", "text": "show the file manager", "gold": "files", "top": "files", "conf": 0.9999999999996363, "ms": 496.12610899930587}
+{"task": "pick_app", "text": "play some music on spotify", "gold": "spotify", "top": "spotify", "conf": 0.9999999999954592, "ms": 504.36572800026624}
+{"task": "pick_app", "text": "open the music streaming app", "gold": "spotify", "top": "spotify", "conf": 0.9999999999973643, "ms": 497.0047160022659}
+{"task": "pick_app", "text": "i want to watch a video file", "gold": "vlc", "top": "vlc", "conf": 0.9999999999967308, "ms": 496.43372200080194}
+{"task": "pick_app", "text": "open vlc", "gold": "vlc", "top": "vlc", "conf": 0.9999999999970981, "ms": 338.72725800029}
+{"task": "pick_app", "text": "open the media player", "gold": "vlc", "top": "vlc", "conf": 0.9999999999987508, "ms": 335.3463349994854}
+{"task": "pick_app", "text": "i need to write a letter", "gold": "writer", "top": "writer", "conf": 0.999999999993304, "ms": 499.295664998499}
+{"task": "pick_app", "text": "open a word processor", "gold": "writer", "top": "writer", "conf": 0.9999999999952451, "ms": 500.50117099817726}
+{"task": "pick_app", "text": "open the spreadsheet app", "gold": "calc", "top": "calc", "conf": 0.9999999999998137, "ms": 341.53319600227405}
+{"task": "pick_app", "text": "i need to make a budget table", "gold": "calc", "top": "calc", "conf": 0.8816279863138761, "ms": 493.26245799966273}
+{"task": "pick_app", "text": "i want to edit a photo", "gold": "gimp", "top": "gimp", "conf": 0.9999999999935092, "ms": 500.54944300063653}
+{"task": "pick_app", "text": "open the image editor", "gold": "gimp", "top": "gimp", "conf": 0.9999999999988805, "ms": 494.5425289988634}
+{"task": "pick_app", "text": "start screen recording", "gold": "obs", "top": "obs", "conf": 0.999999999997004, "ms": 338.2649919985852}
+{"task": "pick_app", "text": "open obs", "gold": "obs", "top": "obs", "conf": 0.9999999999916163, "ms": 328.2023350002419}
+{"task": "pick_app", "text": "i want to play games", "gold": "steam", "top": "steam", "conf": 0.999999999967645, "ms": 501.41227200219873}
+{"task": "pick_app", "text": "open steam", "gold": "steam", "top": "steam", "conf": 0.9999999999690692, "ms": 344.48574199996074}
+{"task": "pick_app", "text": "open system settings", "gold": "settings", "top": "settings", "conf": 0.9999999999960614, "ms": 321.05601399962325}
+{"task": "pick_app", "text": "open the calculator", "gold": "calculator", "top": "calculator", "conf": 0.9999999943146578, "ms": 317.92796200170415}
+{"task": "pick_app", "text": "open a plain text editor", "gold": "text_editor", "top": "text_editor", "conf": 0.9999999999999083, "ms": 497.44053700123914}
+{"task": "pick_app", "text": "open telegram", "gold": "none", "top": "none", "conf": 0.9999999998398373, "ms": 314.5809029992961}
+{"task": "pick_app", "text": "open discord", "gold": "none", "top": "none", "conf": 0.9999999999137025, "ms": 307.0385079990956}
+{"task": "pick_app", "text": "launch zoom", "gold": "none", "top": "none", "conf": 0.999999999586196, "ms": 327.7121850005642}
+{"task": "pick_app", "text": "open blender", "gold": "none", "top": "none", "conf": 0.9999999999560512, "ms": 325.922777003143}
+{"task": "settings_page", "text": "my wifi isn't connecting", "gold": "wifi", "top": "wifi", "conf": 0.9999999999988531, "ms": 498.83871599740814}
+{"task": "settings_page", "text": "connect to a new network", "gold": "wifi", "top": "wifi", "conf": 0.9999999999943099, "ms": 507.2056290009641}
+{"task": "settings_page", "text": "pair my headphones", "gold": "bluetooth", "top": "bluetooth", "conf": 0.999999971612262, "ms": 347.43892199912807}
+{"task": "settings_page", "text": "turn on bluetooth", "gold": "bluetooth", "top": "bluetooth", "conf": 0.9999999999841032, "ms": 339.3031260020507}
+{"task": "settings_page", "text": "change screen resolution", "gold": "display", "top": "display", "conf": 0.999999999985663, "ms": 337.251702996582}
+{"task": "settings_page", "text": "set up my second monitor", "gold": "display", "top": "display", "conf": 0.9999999999878908, "ms": 502.16624600216164}
+{"task": "settings_page", "text": "my microphone isn't working", "gold": "sound", "top": "sound", "conf": 0.9999999999019347, "ms": 499.8144500023045}
+{"task": "settings_page", "text": "switch the output to headphones", "gold": "sound", "top": "sound", "conf": 0.9999999992676785, "ms": 510.86793200011016}
+{"task": "settings_page", "text": "battery saver settings", "gold": "power", "top": "power", "conf": 0.9999999999993812, "ms": 348.2768969988683}
+{"task": "settings_page", "text": "stop the laptop from sleeping so fast", "gold": "power", "top": "power", "conf": 0.9999999999891827, "ms": 500.62887300009606}
+{"task": "settings_page", "text": "add a hindi keyboard layout", "gold": "keyboard", "top": "keyboard", "conf": 0.9999999777729898, "ms": 506.9889209989924}
+{"task": "settings_page", "text": "change keyboard shortcuts", "gold": "keyboard", "top": "keyboard", "conf": 0.99999999999467, "ms": 338.8213990001532}
+{"task": "settings_page", "text": "touchpad scrolling is reversed", "gold": "mouse", "top": "mouse", "conf": 0.9999999990912933, "ms": 502.5607659990783}
+{"task": "settings_page", "text": "make the mouse pointer faster", "gold": "mouse", "top": "mouse", "conf": 0.9999999967162603, "ms": 501.6629199999443}
+{"task": "settings_page", "text": "too many notifications popping up", "gold": "notifications", "top": "notifications", "conf": 0.9999999999942428, "ms": 503.2165900011023}
+{"task": "settings_page", "text": "turn off location access", "gold": "privacy", "top": "privacy", "conf": 0.9999999999984532, "ms": 510.3474509996886}
+{"task": "settings_page", "text": "change my password", "gold": "users", "top": "users", "conf": 0.9999999999520925, "ms": 345.41806199922576}
+{"task": "settings_page", "text": "how much ram does this computer have", "gold": "about", "top": "about", "conf": 0.9999999999404575, "ms": 513.710840998101}
+{"task": "settings_page", "text": "what version of ubuntu is this", "gold": "about", "top": "privacy", "conf": 1.0, "ms": 507.77069000105257}
+{"task": "settings_page", "text": "change the default browser", "gold": "apps", "top": "apps", "conf": 0.9999999271247912, "ms": 495.17992899927776}
+{"task": "settings_page", "text": "wrong time zone", "gold": "datetime", "top": "datetime", "conf": 0.999999999948116, "ms": 344.5555319995037}
+{"task": "settings_page", "text": "the clock is wrong", "gold": "datetime", "top": "datetime", "conf": 0.9999999998442104, "ms": 500.31929000033415}
+{"task": "settings_page", "text": "turn on the screen reader", "gold": "accessibility", "top": "accessibility", "conf": 0.9999979178424657, "ms": 506.8703690012626}
+{"task": "settings_page", "text": "make text bigger for low vision", "gold": "accessibility", "top": "appearance", "conf": 0.9688416632569492, "ms": 493.92934100251296}
+{"task": "settings_page", "text": "change my wallpaper", "gold": "appearance", "top": "appearance", "conf": 0.9999999999999347, "ms": 337.5231320023886}
+{"task": "settings_page", "text": "enable dark mode", "gold": "appearance", "top": "appearance", "conf": 0.9999999999999765, "ms": 337.0337460000883}
+{"task": "addressed", "text": "turn the volume up", "gold": "assistant", "top": "assistant", "conf": 0.9999999999998648, "ms": 480.88450499926694}
+{"task": "addressed", "text": "what's the weather tomorrow", "gold": "assistant", "top": "assistant", "conf": 0.9999999999997591, "ms": 484.9086120011634}
+{"task": "addressed", "text": "open youtube", "gold": "assistant", "top": "assistant", "conf": 0.9999999999999301, "ms": 318.8668110014987}
+{"task": "addressed", "text": "set a timer for five minutes", "gold": "assistant", "top": "assistant", "conf": 0.9999999999999867, "ms": 493.1577270035632}
+{"task": "addressed", "text": "how do i check disk space on linux", "gold": "assistant", "top": "assistant", "conf": 0.9999999999998799, "ms": 502.03544800024247}
+{"task": "addressed", "text": "can you lower the brightness", "gold": "assistant", "top": "assistant", "conf": 0.9999999999988414, "ms": 496.94089599870495}
+{"task": "addressed", "text": "play the next song", "gold": "assistant", "top": "assistant", "conf": 0.9999999999999203, "ms": 491.482683999493}
+{"task": "addressed", "text": "what time is it", "gold": "assistant", "top": "assistant", "conf": 0.9999999999995794, "ms": 483.24378799952683}
+{"task": "addressed", "text": "take a screenshot", "gold": "assistant", "top": "assistant", "conf": 0.9767182928203731, "ms": 335.24706900061574}
+{"task": "addressed", "text": "search for pasta recipes", "gold": "assistant", "top": "assistant", "conf": 0.999999999999927, "ms": 489.3098619977536}
+{"task": "addressed", "text": "lock the screen", "gold": "assistant", "top": "assistant", "conf": 0.9999999999999405, "ms": 334.05089599909843}
+{"task": "addressed", "text": "remind me in ten minutes", "gold": "assistant", "top": "assistant", "conf": 0.9999999999999534, "ms": 485.4620990008698}
+{"task": "addressed", "text": "close firefox", "gold": "assistant", "top": "assistant", "conf": 0.9999999999970954, "ms": 317.9866950013093}
+{"task": "addressed", "text": "what's fifteen percent of two hundred", "gold": "assistant", "top": "assistant", "conf": 0.9999999999958047, "ms": 501.4955779988668}
+{"task": "addressed", "text": "mute", "gold": "assistant", "top": "other", "conf": 0.9999921129622423, "ms": 300.04365900094854}
+{"task": "addressed", "text": "mom i'll be down in five minutes", "gold": "other", "top": "assistant", "conf": 0.988188234441644, "ms": 488.8772899976175}
+{"task": "addressed", "text": "honey did you feed the cat", "gold": "other", "top": "other", "conf": 0.9999990442963019, "ms": 493.20162500225706}
+{"task": "addressed", "text": "hello? yes i can hear you now", "gold": "other", "top": "assistant", "conf": 0.9999999311629482, "ms": 492.38064599921927}
+{"task": "addressed", "text": "okay so where was i", "gold": "other", "top": "assistant", "conf": 0.9999989900211309, "ms": 496.8853910031612}
+{"task": "addressed", "text": "rahul pass me the charger", "gold": "other", "top": "other", "conf": 0.9999950368949669, "ms": 488.5183190017415}
+{"task": "addressed", "text": "breaking news tonight the prime minister announced", "gold": "other", "top": "other", "conf": 0.9993220643843436, "ms": 487.785552002606}
+{"task": "addressed", "text": "ugh this code still doesn't compile", "gold": "other", "top": "assistant", "conf": 0.999977273488606, "ms": 499.82314400040195}
+{"task": "addressed", "text": "yeah i'll call you back later", "gold": "other", "top": "assistant", "conf": 0.9559506817769519, "ms": 496.28037700313143}
+{"task": "addressed", "text": "who left the lights on in the kitchen", "gold": "other", "top": "assistant", "conf": 0.9952743699496686, "ms": 487.51329999868176}
+{"task": "addressed", "text": "and that's why you always read the instructions folks", "gold": "other", "top": "other", "conf": 0.9999999999468845, "ms": 496.5283960009401}
+{"task": "addressed", "text": "come in the door is open", "gold": "other", "top": "other", "conf": 0.9799850131142128, "ms": 513.0189570008952}
+{"task": "addressed", "text": "no beta not now i'm working", "gold": "other", "top": "other", "conf": 0.9999999989910036, "ms": 499.1768170002615}
+{"task": "addressed", "text": "thanks for watching don't forget to subscribe", "gold": "other", "top": "other", "conf": 0.6497696201864167, "ms": 497.64406499889446}
+{"task": "addressed", "text": "hmm where did i put my keys", "gold": "other", "top": "other", "conf": 0.9675518719361456, "ms": 492.1408789996349}
+{"task": "addressed", "text": "did you see the match yesterday", "gold": "other", "top": "assistant", "conf": 0.9999999999757423, "ms": 556.9077930013009}
+{"task": "feedback", "text": "perfect thanks", "gold": "positive", "top": "positive", "conf": 0.9999999999183231, "ms": 318.8394899989362}
+{"task": "feedback", "text": "that worked great", "gold": "positive", "top": "positive", "conf": 0.999999999993292, "ms": 335.6797749984253}
+{"task": "feedback", "text": "nice one", "gold": "positive", "top": "positive", "conf": 0.9999999998679387, "ms": 330.76508899830515}
+{"task": "feedback", "text": "awesome thank you", "gold": "positive", "top": "positive", "conf": 0.9999999999105191, "ms": 332.25915799994254}
+{"task": "feedback", "text": "exactly what i needed", "gold": "positive", "top": "positive", "conf": 0.9999999999147264, "ms": 485.35693300073035}
+{"task": "feedback", "text": "you're the best", "gold": "positive", "top": "positive", "conf": 0.9999999997764832, "ms": 497.0524269992893}
+{"task": "feedback", "text": "good job", "gold": "positive", "top": "positive", "conf": 0.9999999999854576, "ms": 326.59857500038925}
+{"task": "feedback", "text": "thanks that fixed it", "gold": "positive", "top": "positive", "conf": 0.999999999979694, "ms": 495.48311100079445}
+{"task": "feedback", "text": "that's wrong", "gold": "negative", "top": "negative", "conf": 0.9999998689979664, "ms": 336.048565000965}
+{"task": "feedback", "text": "no that's not what i asked", "gold": "negative", "top": "neutral", "conf": 0.9988857747819355, "ms": 500.478928002849}
+{"task": "feedback", "text": "it didn't work", "gold": "negative", "top": "negative", "conf": 0.9999991317112845, "ms": 502.90734699956374}
+{"task": "feedback", "text": "you opened the wrong app", "gold": "negative", "top": "negative", "conf": 0.9749011818559086, "ms": 497.58667399873957}
+{"task": "feedback", "text": "ugh useless", "gold": "negative", "top": "negative", "conf": 0.9999952104329958, "ms": 324.99936999738566}
+{"task": "feedback", "text": "that's not right at all", "gold": "negative", "top": "negative", "conf": 0.9999995492282222, "ms": 484.8517259997607}
+{"task": "feedback", "text": "the volume is still too loud", "gold": "negative", "top": "negative", "conf": 0.9303013434012036, "ms": 494.65243899976485}
+{"task": "feedback", "text": "you misunderstood me", "gold": "negative", "top": "negative", "conf": 0.9966506720078542, "ms": 333.4882169983757}
+{"task": "feedback", "text": "okay now open spotify", "gold": "neutral", "top": "neutral", "conf": 0.9844955007077003, "ms": 500.696056002198}
+{"task": "feedback", "text": "what about tomorrow", "gold": "neutral", "top": "neutral", "conf": 0.9999999997779343, "ms": 333.4237849994679}
+{"task": "feedback", "text": "and the day after", "gold": "neutral", "top": "neutral", "conf": 0.9999999999201121, "ms": 497.3166929994477}
+{"task": "feedback", "text": "now lower the brightness", "gold": "neutral", "top": "neutral", "conf": 0.9999999775908183, "ms": 489.42501499914215}
+{"task": "feedback", "text": "next", "gold": "neutral", "top": "neutral", "conf": 0.999999999844065, "ms": 305.20070800048416}
+{"task": "feedback", "text": "what's the time in london", "gold": "neutral", "top": "positive", "conf": 0.0, "ms": 493.8692479991005}
+{"task": "feedback", "text": "tell me more", "gold": "neutral", "top": "neutral", "conf": 0.999999997561392, "ms": 333.15735799988033}
+{"task": "feedback", "text": "okay", "gold": "neutral", "top": "neutral", "conf": 0.9999999999540199, "ms": 294.86318699855474}
+{"task": "shell_risk", "text": "rm -rf ~/Downloads/old", "gold": "yes", "top": "yes", "conf": 0.9999999999999853, "ms": 500.67797700103256}
+{"task": "shell_risk", "text": "rm notes.txt", "gold": "yes", "top": "yes", "conf": 0.9999999999999216, "ms": 324.3316669977503}
+{"task": "shell_risk", "text": "git reset --hard HEAD~3", "gold": "yes", "top": "yes", "conf": 0.9999999998029443, "ms": 508.8641619986447}
+{"task": "shell_risk", "text": "dd if=/dev/zero of=/dev/sda", "gold": "yes", "top": "yes", "conf": 0.9999999999962186, "ms": 516.9469009997556}
+{"task": "shell_risk", "text": "truncate -s 0 log.txt", "gold": "yes", "top": "yes", "conf": 0.9999999999977325, "ms": 506.7483180027921}
+{"task": "shell_risk", "text": "find . -name '*.tmp' -delete", "gold": "yes", "top": "yes", "conf": 0.9999999999997984, "ms": 502.0969960023649}
+{"task": "shell_risk", "text": "echo hello > important.txt", "gold": "yes", "top": "yes", "conf": 0.9999999999038323, "ms": 485.3931600009673}
+{"task": "shell_risk", "text": "git clean -fdx", "gold": "yes", "top": "yes", "conf": 0.9999999999999116, "ms": 499.6908610009996}
+{"task": "shell_risk", "text": "shred -u secret.pdf", "gold": "yes", "top": "yes", "conf": 0.9999999999999916, "ms": 483.5492169986537}
+{"task": "shell_risk", "text": "sed -i 's/a/b/g' config.yaml", "gold": "yes", "top": "yes", "conf": 0.9999999999991582, "ms": 517.295453002589}
+{"task": "shell_risk", "text": "docker system prune -a", "gold": "yes", "top": "yes", "conf": 0.99999999999865, "ms": 519.7764629992889}
+{"task": "shell_risk", "text": "chmod -R 000 ~/Documents", "gold": "yes", "top": "yes", "conf": 0.999999999999805, "ms": 513.956122998934}
+{"task": "shell_risk", "text": "rsync -a --delete src/ backup/", "gold": "yes", "top": "yes", "conf": 0.999999999999901, "ms": 515.4982639978698}
+{"task": "shell_risk", "text": "mv -f draft.txt final.txt", "gold": "yes", "top": "yes", "conf": 0.9999949731594865, "ms": 490.11047500243876}
+{"task": "shell_risk", "text": "ls -la", "gold": "no", "top": "no", "conf": 0.999999991354006, "ms": 347.9716840010951}
+{"task": "shell_risk", "text": "df -h", "gold": "no", "top": "no", "conf": 0.9999999980808811, "ms": 338.05693600152154}
+{"task": "shell_risk", "text": "cat /etc/os-release", "gold": "no", "top": "no", "conf": 0.9999997352858307, "ms": 506.52514600005816}
+{"task": "shell_risk", "text": "free -m", "gold": "no", "top": "no", "conf": 0.9999999294595204, "ms": 340.9740309980407}
+{"task": "shell_risk", "text": "ps aux", "gold": "no", "top": "no", "conf": 0.9999998384332824, "ms": 331.74806000170065}
+{"task": "shell_risk", "text": "git status", "gold": "no", "top": "no", "conf": 0.9999999992888897, "ms": 329.1038590032258}
+{"task": "shell_risk", "text": "git log --oneline", "gold": "no", "top": "no", "conf": 0.9999967975644047, "ms": 490.4232539993245}
+{"task": "shell_risk", "text": "uptime", "gold": "no", "top": "no", "conf": 0.9997865301490708, "ms": 337.854100002005}
+{"task": "shell_risk", "text": "du -sh ~/Videos", "gold": "no", "top": "no", "conf": 0.9799302433521863, "ms": 511.01780400131247}
+{"task": "shell_risk", "text": "firefox &", "gold": "no", "top": "no", "conf": 0.7764587652858487, "ms": 348.47779299889226}
+{"task": "shell_risk", "text": "grep -r TODO src", "gold": "no", "top": "yes", "conf": 0.9999999999604618, "ms": 500.10408100206405}
+{"task": "shell_risk", "text": "ping -c 3 example.com", "gold": "no", "top": "no", "conf": 0.9999999525864147, "ms": 485.65835200133733}
+{"task": "shell_risk", "text": "head -n 20 log.txt", "gold": "no", "top": "no", "conf": 0.9999998512236121, "ms": 505.94931399973575}
+{"task": "shell_risk", "text": "which python3", "gold": "no", "top": "yes", "conf": 0.9244842213922729, "ms": 350.52517100120895}
+{"task": "shell_risk", "text": "date", "gold": "no", "top": "no", "conf": 0.9999540247635639, "ms": 294.1752910010109}

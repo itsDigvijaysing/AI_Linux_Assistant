@@ -1,0 +1,1633 @@
+{
+  "phases": {
+    "A1 baseline, nothing loaded": {
+      "watts": 14.38,
+      "n": 30,
+      "stdev": 0.65,
+      "dgpu": {
+        "suspended": 30
+      }
+    },
+    "intel: model loaded, idle": {
+      "watts": 14.03,
+      "n": 30,
+      "stdev": 2.51,
+      "dgpu": {
+        "suspended": 30
+      }
+    },
+    "intel: one request every 10 s": {
+      "watts": 14.22,
+      "n": 30,
+      "stdev": 0.8,
+      "dgpu": {
+        "suspended": 30
+      }
+    },
+    "intel: back-to-back requests": {
+      "watts": 24.19,
+      "n": 12,
+      "stdev": 4.85,
+      "dgpu": {
+        "suspended": 12
+      }
+    },
+    "cpu: one request every 10 s": {
+      "watts": 19.97,
+      "n": 30,
+      "stdev": 2.17,
+      "dgpu": {
+        "suspended": 30
+      }
+    },
+    "cpu: back-to-back requests": {
+      "watts": 23.01,
+      "n": 17,
+      "stdev": 2.79,
+      "dgpu": {
+        "suspended": 17
+      }
+    },
+    "nvidia: model loaded, idle": {
+      "watts": 31.06,
+      "n": 30,
+      "stdev": 6.85,
+      "dgpu": {
+        "active": 30
+      }
+    },
+    "nvidia: one request every 10 s": {
+      "watts": 36.87,
+      "n": 30,
+      "stdev": 5.6,
+      "dgpu": {
+        "active": 30
+      }
+    },
+    "nvidia: back-to-back requests": {
+      "watts": 42.07,
+      "n": 5,
+      "stdev": 1.3,
+      "dgpu": {
+        "active": 5
+      }
+    },
+    "A2 baseline, nothing loaded": {
+      "watts": 14.01,
+      "n": 30,
+      "stdev": 2.87,
+      "dgpu": {
+        "suspended": 30
+      }
+    }
+  },
+  "latency": {
+    "intel": {
+      "median_ms": 1151,
+      "p90_ms": 1198,
+      "answers": [
+        "B",
+        "E",
+        "A",
+        "D",
+        "C",
+        "A",
+        "F",
+        "G",
+        "H",
+        "A",
+        "K",
+        "L",
+        "I",
+        "E",
+        "M",
+        "O",
+        "O",
+        "L",
+        "A",
+        "E"
+      ],
+      "seconds_per_request": 1.158
+    },
+    "cpu": {
+      "median_ms": 3337,
+      "p90_ms": 3700,
+      "answers": [
+        "B",
+        "E",
+        "A",
+        "D",
+        "C",
+        "A",
+        "F",
+        "G",
+        "H",
+        "A"
+      ],
+      "seconds_per_request": 3.436
+    },
+    "nvidia": {
+      "median_ms": 460,
+      "p90_ms": 470,
+      "answers": [
+        "B",
+        "E",
+        "A",
+        "D",
+        "C",
+        "A",
+        "F",
+        "G",
+        "H",
+        "A",
+        "K",
+        "L",
+        "I",
+        "E",
+        "M",
+        "O",
+        "O",
+        "L",
+        "A",
+        "E"
+      ],
+      "seconds_per_request": 0.46
+    }
+  },
+  "notes": [
+    "A1 baseline, nothing loaded: dGPU suspended after 0.0s",
+    "intel: load 4.5s, nvidia handles (0, 0), vram MB [391], placement ['llama_prepare_model_devices: using device Vulkan0 (Intel(R) Iris(R) Xe Graphics (ADL GT2)) (0000:00:02.0) - 6027 MiB free', 'load_tensors: offloaded 26/26 layers to GPU', 'load_tensors:   CPU_Mapped model buffer size =   257.66 MiB', 'load_tensors:      Vulkan0 model buffer size =   278.40 MiB', 'llama_kv_cache:    Vulkan0 KV buffer size =     8.00 MiB', 'sched_reserve:    Vulkan0 compute buffer size =    29.02 MiB']",
+    "intel: dGPU suspended after 16.0s",
+    "cpu: load 4.7s, nvidia handles (0, 0), vram MB [0], placement ['0 msg=\"inference compute\" id=cpu library=cpu compute=\"\" name=cpu description=cpu libdirs=ollama driver=\"\" pci_id=\"\" type=\"\" total=\"14.7 GiB\" available=\"7.7 GiB\"', 'load_tensors:          CPU model buffer size =   763.78 MiB', 'load_tensors:          CPU model buffer size =   278.40 MiB']",
+    "cpu: dGPU suspended after 16.0s",
+    "nvidia: load 6.0s, nvidia handles (21, 14), vram MB [391], placement ['llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 3060 Laptop GPU) (0000:01:00.0) - 4746 MiB free', 'load_tensors: offloaded 26/26 layers to GPU', 'load_tensors:        CUDA0 model buffer size =   278.40 MiB', 'load_tensors:    CUDA_Host model buffer size =   257.66 MiB', 'llama_kv_cache:      CUDA0 KV buffer size =     8.00 MiB', 'sched_reserve:      CUDA0 compute buffer size =    29.02 MiB']",
+    "after nvidia: dGPU suspended after 13.0s",
+    "A2 baseline, nothing loaded: dGPU suspended after 0.0s"
+  ],
+  "samples": [
+    [
+      "A1 baseline, nothing loaded",
+      1793085912.6038141,
+      15.466554,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085914.6045675,
+      15.48352,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085916.6061695,
+      15.437819,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085918.6073732,
+      15.430184,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085920.6085854,
+      15.389634,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085922.6100066,
+      15.412185,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085924.6105096,
+      15.427855,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085926.611573,
+      15.128388,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085928.6128166,
+      14.734923,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085930.6142802,
+      14.5015,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085932.6156106,
+      14.364067,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085934.6161623,
+      14.22764,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085936.618579,
+      14.06877,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085938.6195755,
+      13.951135,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085940.620681,
+      14.0389,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085942.621793,
+      13.88397,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085944.6221886,
+      13.917858,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085946.623205,
+      14.06146,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085948.6255195,
+      13.966102,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085950.626733,
+      13.839183,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085952.6281536,
+      13.797927,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085954.628763,
+      13.900645,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085956.6298597,
+      14.167621,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085958.6329608,
+      14.00256,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085960.6339388,
+      13.711248,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085962.6348002,
+      13.68868,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085964.6354747,
+      13.966922,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085966.6369257,
+      13.859577,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085968.6378777,
+      13.707316,
+      "suspended"
+    ],
+    [
+      "A1 baseline, nothing loaded",
+      1793085970.6387691,
+      13.891451,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086002.6441703,
+      21.04848,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086004.6449254,
+      19.56571,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086006.6461685,
+      18.779712,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086008.6477602,
+      17.781495,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086010.6497104,
+      16.951225,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086012.6507852,
+      16.658271,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086014.6513608,
+      15.750774,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086016.652546,
+      15.152454,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086018.653518,
+      14.694648,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086020.6547883,
+      14.188716,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086022.6557734,
+      13.974508,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086024.6563852,
+      13.439468,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086026.65749,
+      13.127813,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086028.6585593,
+      12.8785,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086030.6596534,
+      12.655027,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086032.6607103,
+      12.586406,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086034.6613212,
+      12.425943,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086036.662468,
+      12.6203,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086038.6635132,
+      12.657006,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086040.6645012,
+      12.497364,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086042.6655757,
+      12.542211,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086044.666316,
+      12.402669,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086046.667446,
+      12.233758,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086048.6685126,
+      12.14878,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086050.669598,
+      12.006742,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086052.6707265,
+      12.00416,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086054.6714027,
+      12.243824,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086056.6730535,
+      12.044724,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086058.6742635,
+      11.897296,
+      "suspended"
+    ],
+    [
+      "intel: model loaded, idle",
+      1793086060.675218,
+      11.807928,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086062.67632,
+      11.9064,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086064.6769333,
+      13.737108,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086066.6782513,
+      13.527035,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086068.6793623,
+      13.489917,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086070.680382,
+      13.39221,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086072.6813297,
+      13.403548,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086074.6819854,
+      14.787744,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086076.6830363,
+      14.499324,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086078.6843257,
+      14.52769,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086080.6853032,
+      14.03248,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086082.6873019,
+      13.859442,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086084.6881065,
+      14.758448,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086086.6903062,
+      14.527131,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086088.6913912,
+      14.07976,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086090.692372,
+      13.843368,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086092.6935318,
+      13.5388,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086094.6947799,
+      14.8902,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086096.6962452,
+      14.570066,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086098.6977258,
+      14.193456,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086100.6988428,
+      13.55509,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086102.6997085,
+      13.465536,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086104.7003572,
+      14.701748,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086106.7010934,
+      14.458048,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086108.7019486,
+      14.306407,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086110.7044291,
+      14.27916,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086112.7055306,
+      14.132294,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086114.7060435,
+      15.951218,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086116.7070696,
+      15.76949,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086118.7082896,
+      15.40413,
+      "suspended"
+    ],
+    [
+      "intel: one request every 10 s",
+      1793086120.7096581,
+      15.08334,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086122.71084,
+      14.842392,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086124.711839,
+      17.012842,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086126.7128901,
+      19.170346,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086128.7137046,
+      21.988208,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086130.715897,
+      23.403418,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086132.717226,
+      24.205671,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086134.7178197,
+      25.966284,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086136.7184777,
+      27.272955,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086138.719725,
+      28.238112,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086140.7209544,
+      28.891421,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086142.7218637,
+      28.844816,
+      "suspended"
+    ],
+    [
+      "intel: back-to-back requests",
+      1793086144.7222881,
+      30.491612,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086174.726279,
+      25.280262,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086176.7268264,
+      24.81024,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086178.728429,
+      24.624745,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086180.7297328,
+      23.118592,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086182.7305243,
+      22.433202,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086184.730956,
+      21.03015,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086186.7321239,
+      21.615585,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086188.7334146,
+      21.98525,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086190.7344291,
+      20.647896,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086192.735576,
+      20.003697,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086194.736273,
+      18.57846,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086196.737313,
+      19.526976,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086198.7385101,
+      20.013084,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086200.7400117,
+      18.970246,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086202.7410166,
+      18.582844,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086204.741411,
+      17.667618,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086206.7418814,
+      18.94431,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086208.743054,
+      19.349773,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086210.744164,
+      18.715266,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086212.745449,
+      18.72533,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086214.746182,
+      17.631681,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086216.7473528,
+      18.836068,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086218.748658,
+      19.829484,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086220.7495518,
+      19.032816,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086222.7504494,
+      18.23045,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086224.7508543,
+      17.487045,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086226.752374,
+      18.149043,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086228.7535622,
+      19.466685,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086230.754771,
+      18.204134,
+      "suspended"
+    ],
+    [
+      "cpu: one request every 10 s",
+      1793086232.7564769,
+      17.629245,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086234.757351,
+      17.294712,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086236.7579162,
+      17.702548,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086238.7585406,
+      19.544266,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086240.759731,
+      20.66749,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086242.7610962,
+      20.76371,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086244.7616737,
+      22.18767,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086246.7632241,
+      23.141,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086248.7639906,
+      23.53572,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086250.765152,
+      23.67943,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086252.7663913,
+      24.10969,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086254.7674632,
+      24.646694,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086256.7686205,
+      24.58188,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086258.7691994,
+      25.25466,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086260.770361,
+      25.4555,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086262.7716663,
+      25.891119,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086264.772682,
+      26.048512,
+      "suspended"
+    ],
+    [
+      "cpu: back-to-back requests",
+      1793086266.773088,
+      26.611689,
+      "suspended"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086284.7752128,
+      39.99828,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086286.7759776,
+      40.360431,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086288.7764251,
+      40.586526,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086290.7772121,
+      40.663336,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086292.7779622,
+      40.680655,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086294.7787907,
+      40.79768,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086296.7795906,
+      41.613218,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086298.7801793,
+      39.798003,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086300.7815096,
+      37.53728,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086302.7827466,
+      36.560132,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086304.7834322,
+      33.992182,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086306.7855449,
+      32.824162,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086308.7864065,
+      31.42804,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086310.78945,
+      30.21261,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086312.7901654,
+      29.174832,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086314.7908583,
+      29.015282,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086316.791222,
+      27.991516,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086318.7917814,
+      27.318174,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086320.7933586,
+      26.478588,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086322.7941523,
+      25.780292,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086324.795213,
+      25.587477,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086326.7958035,
+      25.039983,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086328.7963192,
+      24.76296,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086330.7973466,
+      24.289512,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086332.7988448,
+      23.8958,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086334.799862,
+      23.655518,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086336.8023915,
+      23.333661,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086338.8030481,
+      23.08371,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086340.8046055,
+      22.856232,
+      "active"
+    ],
+    [
+      "nvidia: model loaded, idle",
+      1793086342.805667,
+      22.612634,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086344.8066518,
+      22.63936,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086346.8070114,
+      24.140841,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086348.807447,
+      26.2422,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086350.808015,
+      28.03013,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086352.80881,
+      29.613229,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086354.8093767,
+      31.1286,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086356.8099308,
+      32.83861,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086358.8105943,
+      33.63681,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086360.8112504,
+      35.334224,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086362.8127882,
+      36.152578,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086364.813208,
+      37.18299,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086366.8134975,
+      38.17032,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086368.814107,
+      38.179583,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086370.8147583,
+      39.0533,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086372.815362,
+      39.295808,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086374.8158302,
+      39.416424,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086376.81616,
+      40.324328,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086378.8168814,
+      40.413,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086380.8176963,
+      40.760832,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086382.8182383,
+      41.101803,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086384.819002,
+      41.512176,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086386.819374,
+      41.471092,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086388.8197782,
+      41.875913,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086390.8203819,
+      41.57636,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086392.8207548,
+      41.246845,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086394.821203,
+      41.235656,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086396.8217256,
+      40.76862,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086398.8225088,
+      41.006416,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086400.8233593,
+      40.886548,
+      "active"
+    ],
+    [
+      "nvidia: one request every 10 s",
+      1793086402.8242178,
+      40.771968,
+      "active"
+    ],
+    [
+      "nvidia: back-to-back requests",
+      1793086404.8253162,
+      40.523366,
+      "active"
+    ],
+    [
+      "nvidia: back-to-back requests",
+      1793086406.8257143,
+      40.70304,
+      "active"
+    ],
+    [
+      "nvidia: back-to-back requests",
+      1793086408.8261173,
+      42.121335,
+      "active"
+    ],
+    [
+      "nvidia: back-to-back requests",
+      1793086410.8265102,
+      43.249596,
+      "active"
+    ],
+    [
+      "nvidia: back-to-back requests",
+      1793086412.8268094,
+      43.737792,
+      "active"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086438.8295398,
+      21.817224,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086440.830915,
+      20.438,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086442.8320735,
+      19.2696,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086444.8340638,
+      18.21047,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086446.8349037,
+      17.24572,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086448.8353975,
+      16.483067,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086450.836678,
+      16.071384,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086452.838705,
+      15.629421,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086454.8400378,
+      15.074124,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086456.8416615,
+      14.624926,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086458.8424835,
+      14.197428,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086460.843935,
+      13.78805,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086462.8456674,
+      13.394201,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086464.8466966,
+      13.114566,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086466.847774,
+      13.012112,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086468.8484192,
+      12.750615,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086470.8496826,
+      12.481344,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086472.8509243,
+      12.255293,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086474.8524115,
+      12.131856,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086476.8538568,
+      11.974336,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086478.8545587,
+      11.85186,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086480.8558075,
+      11.684736,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086482.8569925,
+      11.62122,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086484.8583353,
+      11.930552,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086486.8595283,
+      11.8306,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086488.860136,
+      11.68708,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086490.8612826,
+      11.581962,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086492.862351,
+      11.47685,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086494.863406,
+      11.381671,
+      "suspended"
+    ],
+    [
+      "A2 baseline, nothing loaded",
+      1793086496.864686,
+      11.304812,
+      "suspended"
+    ]
+  ]
+}
