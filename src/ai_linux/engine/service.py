@@ -71,7 +71,7 @@ class Engine:
         self.followup_until = 0.0
         self.called = False  # the name alone was said: the request is still to come
         self.sleep_after = False  # "go to sleep": no follow-up window after this turn
-        self.dictating = False  # every sentence is typed at the cursor until "stop dictation" or silence
+        self.dictating = ""  # polish | exact: every sentence is typed at the cursor until "stop dictation"
         self.quiet_until = 0.0  # half-duplex: ignore the mic until our own voice has died away
         self._confirms: dict[str, tuple[threading.Event, dict]] = {}
         self.confirming = False
@@ -412,7 +412,7 @@ class Engine:
 
     def cancel_turn(self) -> None:
         self.cancel.set()
-        self.dictating = False
+        self.dictating = ""
         self._hold.clear()  # a paused reply is dropped, not resumed
         for ev, box in list(self._confirms.values()):  # an on-screen question would hold the Work thread 55 s
             box["cancelled"] = True
@@ -758,7 +758,7 @@ class Engine:
     def _dictate(self, text: str) -> None:
         from ai_linux.engine import tools as T
         self._clear_live()
-        rest = dictation.start(text)
+        begin = dictation.start(text)
         if self.dictating and dictation.is_stop(text):
             self._end_dictation("ok")
             return
@@ -770,10 +770,18 @@ class Engine:
                 if self.state == "listening":
                     self.set_state("idle")
                 return
-            self.dictating = True
             log.info("dictation on")
             self.cue("listen")
-        words = dictation.clean(rest if rest is not None else text)
+        if begin is not None:
+            self.dictating = begin[0]
+        words = dictation.clean(begin[1] if begin is not None else text)
+        if words and self.dictating == "polish":
+            self.set_state("thinking", "Fixing the wording")
+            try:
+                words = dictation.pick(words, self.brain.polish(words))
+            except Exception as exc:  # no big model: type it as it was said
+                log.warning("polishing dictation: %s", exc)
+                self.notice("warning", "The big model isn't available, so I typed it as you said it.")
         self.followup_until = time.monotonic() + DICTATE_IDLE_S
         self.set_state("followup", "Dictating")
         self.emit({"ev": "followup", "seconds": DICTATE_IDLE_S})
@@ -783,7 +791,7 @@ class Engine:
                 self.notice("warning", res.say)
 
     def _end_dictation(self, sound: str) -> None:
-        self.dictating = False
+        self.dictating = ""
         self.followup_until = 0.0
         log.info("dictation off")
         self.cue(sound)

@@ -13,10 +13,11 @@ from ai_linux.engine import dictation as D  # noqa: E402
 
 class PhraseTests(unittest.TestCase):
     def test_start(self):
-        self.assertEqual(D.start("Dictate."), "")
-        self.assertEqual(D.start("dictate, hello there"), "hello there")
-        self.assertEqual(D.start("Start dictation"), "")
-        self.assertEqual(D.start("type what I say: see you at five"), "see you at five")
+        self.assertEqual(D.start("Dictate."), ("polish", ""))
+        self.assertEqual(D.start("dictate, hello there"), ("polish", "hello there"))
+        self.assertEqual(D.start("Start dictation"), ("polish", ""))
+        self.assertEqual(D.start("type what I say: see you at five"), ("exact", "see you at five"))
+        self.assertEqual(D.start("Type exactly."), ("exact", ""))
         for text in ("what does dictate mean", "open the dictation app settings", "play some music", ""):
             self.assertIsNone(D.start(text), text)
 
@@ -25,6 +26,25 @@ class PhraseTests(unittest.TestCase):
             self.assertTrue(D.is_stop(text), text)
         for text in ("stop the music when it ends", "I'm done with the report", "hello"):
             self.assertFalse(D.is_stop(text), text)
+
+
+class PickTests(unittest.TestCase):
+    """The big model's rewrite is used only when it still looks like the same sentence."""
+
+    def test_a_fixed_sentence_is_used(self):
+        self.assertEqual(D.pick("I has went to the shop yesterday and buyed milk.",
+                                "I went to the shop yesterday and bought milk."),
+                         "I went to the shop yesterday and bought milk.")
+        self.assertEqual(D.pick("hello", '"Hello."'), "Hello.")  # quotes around the reply go
+
+    def test_answers_and_additions_fall_back_to_what_was_said(self):
+        said = "What time does the meeting start?"
+        self.assertEqual(D.pick(said, "The meeting starts at 10 AM."), said)  # it answered instead
+        self.assertEqual(D.pick("Thanks for the update.", "Thanks for the update. I will review the document, "
+                                "share my notes with the team and get back to you by Friday."),
+                         "Thanks for the update.")  # it added things
+        self.assertEqual(D.pick("Please send the report today.", ""), "Please send the report today.")
+        self.assertEqual(D.pick("See you soon.", "<think>x</think>See you soon!"), "See you soon!")
 
 
 class CleanTests(unittest.TestCase):

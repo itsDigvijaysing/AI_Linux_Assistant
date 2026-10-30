@@ -471,6 +471,16 @@ class BrainTests(unittest.TestCase):
         self.assertIn("turned off", said[0])
         self.assertEqual(cues, ["fail"])
 
+    def test_polish_asks_the_big_model_once_without_tools(self):
+        b = brain_mod.Brain({"ollama_url": "http://x", "big_model": "qwen3.5:4b", "context_length": 8192,
+                             "big_model_policy": "auto", "ollama_keep_alive": "30m"}.get, env(), speak=lambda s: None)
+        with mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "I went "), ("text", "home.")])) as chat:
+            self.assertEqual(b.polish("i has went home"), "I went home.")
+        msgs = chat.call_args.args[2]
+        self.assertIn("i has went home", msgs[-1]["content"])
+        self.assertEqual(chat.call_args.kwargs.get("tools"), None)
+        self.assertEqual(chat.call_args.kwargs["options"]["temperature"], 0)
+
     def test_yes_no(self):
         b, *_ = self.make({"yes": 0.9, "no": 0.05, "unclear": 0.05})
         self.assertTrue(b.yes_no("Should I?", "Yes."))
@@ -748,6 +758,7 @@ class DictationEngineTests(unittest.TestCase):
         e.asr = mock.Mock()
         e.brain = mock.Mock()
         e.brain.env.executor.gate = ActionGate(armed=armed)
+        e.brain.polish.side_effect = lambda text: text  # the big model's rewrite, faked
         e.cue = mock.Mock()
         return e, events
 
@@ -766,6 +777,33 @@ class DictationEngineTests(unittest.TestCase):
         e.brain.handle.assert_not_called()
         self.assertFalse(e.dictating)
         self.assertEqual(e.state, "idle")
+
+    def test_dictate_lets_the_big_model_fix_the_grammar(self):
+        e, events = self.make()
+        e.brain.polish.side_effect = lambda text: "I went to the shop and bought milk."
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "I has went to the shop and buyed milk.")
+        e.brain.polish.assert_called_once_with("I has went to the shop and buyed milk.")
+        self.assertEqual(paste.call_args.args[1], "I went to the shop and bought milk. ")
+
+    def test_type_what_i_say_types_it_as_said(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, type what I say.")
+            self.say(e, "I has went to the shop.")
+        e.brain.polish.assert_not_called()
+        self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
+
+    def test_without_the_big_model_it_types_what_was_said(self):
+        from ai_linux.engine import llm
+        e, events = self.make()
+        e.brain.polish.side_effect = llm.LLMError("connection refused")
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "I has went to the shop.")
+        self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
+        self.assertTrue(any(ev.get("ev") == "notice" for ev in events))
 
     def test_text_after_the_start_word_is_typed_at_once(self):
         e, events = self.make()

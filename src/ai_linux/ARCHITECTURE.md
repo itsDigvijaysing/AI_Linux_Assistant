@@ -217,8 +217,11 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
   when stopped. The pixmap is only a fallback, drawn once per state.
 - **Dictation** (`engine/dictation.py`, 2026-10-30): "Phoenix, dictate" (optionally followed by text) turns it on;
-  every sentence is cleaned (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question mark")
-  and typed at the cursor through `paste_text`, never acted on and never sent to a model. "Stop dictation", "done"
+  every sentence is cleaned (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question mark"),
+  its grammar fixed by the big model (`Brain.polish`, temperature 0, no tools) and typed at the cursor through
+  `paste_text`, never acted on. `dictation.pick` keeps the words as said when the rewrite is empty, much longer or
+  shorter, or turned a question into an answer; without the big model it types them as said. "Type what I say" /
+  "type exactly" skips the model. "Stop dictation", "done"
   or `DICTATE_IDLE_S` (10 s) of silence ends it. Needs actions allowed (it types into other apps).
 - Measurements and model choices: `bench/README.md`.
 
