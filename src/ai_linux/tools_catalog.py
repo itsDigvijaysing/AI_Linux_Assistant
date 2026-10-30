@@ -25,6 +25,7 @@ CATEGORIES = {
     "screen": ("Screen and Text", "view-reveal-symbolic", "Screenshots, reading the screen, writing and the clipboard"),
     "command": ("Command Line", "utilities-terminal-symbolic", "A terminal, and commands for anything else"),
     "assistant": ("Assistant", "user-info-symbolic", "Time, timers, its voice, sleep and what it remembers"),
+    "tasks": ("Todoist", "object-select-symbolic", "Add, read and finish your Todoist tasks with your API token"),
 }
 
 # MCP server per family; the engine names tools mcp.<server>.<tool>, built-ins have no prefix.
@@ -119,6 +120,10 @@ TOOLS: tuple[ToolInfo, ...] = (
        "or a project.", "assistant", False, "user-info-symbolic", "assistant"),
     _t("forget", "Forget", "Delete a saved fact when you ask it to forget or say it is wrong.",
        "assistant", False, "edit-clear-symbolic", "assistant"),
+    # Todoist (on the menus only once a token is saved)
+    _t("todoist", "Todoist", "“Add buy milk tomorrow to Todoist”, “what's on my Todoist today”, “mark buy milk as "
+       "done” (it asks first). Uses the internet with your token, whatever Web Access says.",
+       "assistant", False, "object-select-symbolic", "tasks"),
 )
 
 _BY_NAME = {t.name: t for t in TOOLS}

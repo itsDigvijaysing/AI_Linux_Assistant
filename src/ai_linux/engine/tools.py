@@ -22,9 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from ai_linux.engine import apps as appdb
-from ai_linux.engine import web
+from ai_linux.engine import todoist, web
 from ai_linux.engine.timers import spoken_span
 from ai_linux.paths import REPO_ROOT, STATE_DIR
+from ai_linux.safety.gate import ConfirmRequest
 
 SINK = "@DEFAULT_AUDIO_SINK@"
 NONE = "none"
@@ -58,6 +59,7 @@ class Env:
     timers: Any = None  # ai_linux.engine.timers.Timers
     running: Callable[[str], bool] = appdb.running  # is a program with this file name running
     on_bus: Callable[[str], bool] = appdb.on_bus  # does a running app own this D-Bus name
+    secret: Callable[[str], str | None] = lambda name: None  # tokens the app read from the user's keyring
 
 
 @dataclass(frozen=True)
@@ -1082,6 +1084,110 @@ def run_lookup(a: dict, env: Env) -> Result:
     return Result(True, answer) if answer else Result(False, f"I couldn't find a short answer about {q}.")
 
 
+# Todoist (shown on the menus only once the user saved a token)
+
+TODOIST_OFF = "Todoist isn't connected. You can add your API token in Tools, under Todoist."
+_TD_LIST = r"(?:todoist|to-?do\s+list|task\s+list)"
+_TD_TAIL = rf"(?:\s+(?:in|on|from)\s+(?:my\s+|the\s+)?{_TD_LIST})?[.!?]*$"
+_TD_ASK = r"(?i)^(?:please\s+)?(?:can you\s+|could you\s+)?"
+_TD_DONE = [
+    re.compile(_TD_ASK + r"mark\s+(?:the\s+task\s+)?(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)" + _TD_TAIL),
+    re.compile(_TD_ASK + r"(?:tick|check|cross)\s+off\s+(?:the\s+task\s+)?(.+?)" + _TD_TAIL),
+    re.compile(_TD_ASK + r"(?:complete|finish|close)\s+(?:the\s+|my\s+)?(?:todoist\s+)?task\s+(.+?)" + _TD_TAIL),
+    re.compile(_TD_ASK + rf"(?:complete|finish)\s+(.+?)\s+(?:in|on)\s+(?:my\s+)?{_TD_LIST}[.!?]*$"),
+]
+_TD_ADD = re.compile(_TD_ASK + r"(?:add|put|create|make|write down|note down)\s+(.+?)\s+(?:to|on|in|into|onto)\s+"
+                     rf"(?:my\s+|the\s+)?{_TD_LIST}\b\s*(.*?)[.!?]*$")
+_TD_NEW = re.compile(_TD_ASK + r"(?:add|create|make|new)\s+(?:a\s+)?(?:new\s+)?(?:todoist\s+)?task\s+"
+                     r"(?:to\s+|called\s+|named\s+|for\s+)?(.+?)[.!?]*$")
+_TD_ASKS = re.compile(r"(?i)\b(?:what|what's|whats|which|show|list|read|any|tell me|do i have|are there)\b")
+_TD_ITEMS = re.compile(r"(?i)\b(?:todoist|to-?do(?:\s+list)?|tasks?)\b")
+
+
+def _p_todoist(text: str, env: Env) -> dict | None:
+    """Spoken Todoist requests; the words to add go to Quick Add as said (it reads the date itself)."""
+    t = " ".join(text.split())
+    for pat in _TD_DONE:
+        m = pat.match(t)
+        if m:
+            return {"task": m.group(1).strip(), "action": "complete"}
+    m = _TD_ADD.match(t) or _TD_NEW.match(t)
+    if m:
+        words = " ".join(g.strip() for g in m.groups() if g and g.strip())
+        return {"text": words, "action": "add"} if words else None
+    if _TD_ASKS.search(t) and _TD_ITEMS.search(t):
+        low = t.lower()
+        when = next((w for w in ("overdue", "tomorrow", "week") if re.search(rf"\b{w}\b", low)), "today")
+        return {"when": when, "action": "list"}
+    return None
+
+
+def _spoken_list(names: list[str]) -> str:
+    shown = names[:5]
+    if len(names) > 5:
+        return ", ".join(shown) + f" and {len(names) - 5} more"
+    return shown[0] if len(shown) == 1 else ", ".join(shown[:-1]) + f" and {shown[-1]}"
+
+
+_TD_STOP = {"the", "a", "an", "my", "task", "todo", "to", "do"}
+
+
+def _todoist_find(token: str, want: str) -> dict | None:
+    words = [w for w in re.findall(r"[a-z0-9']+", want.lower()) if w not in _TD_STOP]
+    if not words:
+        return None
+    hits = todoist.tasks(token, "search: " + " ".join(words))
+    if not hits and len(words) > 1:
+        hits = todoist.tasks(token, "search: " + max(words, key=len))
+    scored = [(sum(w in str(h.get("content", "")).lower() for w in words), h) for h in hits]
+    best = max(scored, key=lambda x: x[0], default=(0, None))
+    return best[1] if best[0] else None
+
+
+def run_todoist(a: dict, env: Env) -> Result:
+    token = env.secret("todoist") if env.secret is not None else None
+    if not token:
+        return Result(False, TODOIST_OFF)
+    action = str(a.get("action") or "list").lower()
+    try:
+        if action == "add":
+            text = str(a.get("text") or "").strip()
+            if not text:
+                return Result(False, "What should I add to Todoist?")
+            task = todoist.quick_add(token, text)
+            content = str(task.get("content") or text)
+            due = str((task.get("due") or {}).get("string") or "")
+            return Result(True, f"Added {content}, due {due}." if due else f"Added {content} to Todoist.")
+        if action == "complete":
+            want = str(a.get("task") or "").strip()
+            if not want:
+                return Result(False, "Which task should I mark as done?")
+            task = _todoist_find(token, want)
+            if task is None:
+                return Result(False, f"I couldn't find a Todoist task like {want}.")
+            content = str(task.get("content") or want)
+            ask = ConfirmRequest("todoist", {"task": content}, detail=f"Mark {content} as done?")
+            if env.confirm is not None and not env.confirm(ask):
+                return Result(False, "Okay, I'll leave it.")
+            todoist.close(token, str(task["id"]))
+            return Result(True, f"Marked {content} as done.")
+        if action != "list":
+            return Result(False, "Should I add a task, read your tasks, or mark one as done?")
+        when = str(a.get("when") or "today").lower()
+        when = when if when in todoist.WHEN else "today"
+        names = [str(x.get("content") or "a task") for x in todoist.tasks(token, todoist.WHEN[when])]
+        label = {"today": "for today", "tomorrow": "for tomorrow", "week": "for this week"}.get(when, "")
+        if not names:
+            return Result(True, "Nothing overdue in Todoist." if when == "overdue" else f"Nothing in Todoist {label}.")
+        n = len(names)
+        what = f"{n} overdue task{'s' * (n != 1)}" if when == "overdue" else f"{n} task{'s' * (n != 1)} {label}"
+        return Result(True, f"You have {what}: {_spoken_list(names)}.")
+    except todoist.TokenRejected:
+        return Result(False, "Todoist didn't accept your token. You can change it in Tools, under Todoist.")
+    except todoist.TodoistError as exc:
+        return Result(False, "I couldn't reach Todoist.", str(exc))
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool("set_screen_brightness", "Set the display brightness to a percentage, or make the screen brighter or dimmer.",
          {"percent": {"type": "integer", "description": "0-100"},
@@ -1167,7 +1273,14 @@ TOOLS: tuple[Tool, ...] = (
          family="info", needs_args=False),
     Tool("web_lookup", "Look up a quick fact, a person, a place or a word's meaning online and say a short answer.",
          {"query": {"type": "string"}}, run_lookup, _p_lookup, family="info", required=("query",)),
+    Tool("todoist", "Todoist: add a task, read today's, tomorrow's or overdue tasks, or mark a task as done.",
+         {"action": {"type": "string", "enum": ["add", "list", "complete"]},
+          "text": {"type": "string", "description": "for add: the task as the user said it, with any date"},
+          "when": {"type": "string", "enum": ["today", "tomorrow", "overdue", "week"]},
+          "task": {"type": "string", "description": "for complete: which task"}},
+         run_todoist, _p_todoist, family="assistant", answers=True, required=("action",)),
 )
+TODOIST_TOOLS = frozenset({"todoist"})  # on the menus only while a token is saved
 
 BY_NAME = {t.name: t for t in TOOLS}
 

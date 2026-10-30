@@ -27,7 +27,8 @@ from pathlib import Path
 
 from ai_linux.engine import llm
 from ai_linux.engine.quick import quick
-from ai_linux.engine.tools import MEMORY_TOOLS, NONE, TOOLS, WEB_TOOLS, Env, Result, Tool, menu, parse_memory
+from ai_linux.engine.tools import (MEMORY_TOOLS, NONE, TODOIST_TOOLS, TOOLS, WEB_TOOLS, Env, Result, Tool, menu,
+                                    parse_memory)
 from ai_linux.safety.gate import ConfirmRequest
 from ai_linux.schema import BIG_WAKING, BIG_WORKING
 from ai_linux.tools_catalog import lookup as tool_info
@@ -179,7 +180,9 @@ class Brain:
         """The routing menu. Without Web Access the online tools are left out, so questions still reach the
         big model instead of a tool that would only say web access is off."""
         web = bool(self.settings("web_access"))
-        return (*(t for t in TOOLS if web or t.name not in WEB_TOOLS), *self.extra_tools)
+        todo = bool(self.env.secret("todoist")) if self.env.secret is not None else False
+        return (*(t for t in TOOLS if (web or t.name not in WEB_TOOLS) and (todo or t.name not in TODOIST_TOOLS)),
+                *self.extra_tools)
 
     def chat_tools(self) -> tuple[Tool, ...]:
         """What the big model may call: the routing menu plus remembering and forgetting."""

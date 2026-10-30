@@ -79,6 +79,7 @@ class Engine:
         self._saying = ""  # the sentence being spoken: an echo of it is not the user
         self._busy = False  # a turn is running
         self._think_detail = ""  # what the big model is doing, restored after "One moment."
+        self._secrets: dict[str, str] = {}  # tokens from the user's keyring, in memory only
         self.mcp = None
         self._mcp_lock = threading.Lock()  # two quick setting changes must not each keep a set of servers
         self.timers = None
@@ -129,7 +130,7 @@ class Engine:
         self.timers = Timers(STATE_DIR / "timers.json", self._ring)
         env = Env(Executor(self.gate), confirm=self._confirm, set_voice=self._set_voice, sleep=self._sleep,
                   cue=self.cue, knowledge=Knowledge(on_change=lambda: self.emit({"ev": "knowledge"})),
-                  setting=self.setting, timers=self.timers)
+                  setting=self.setting, timers=self.timers, secret=self._secrets.get)
         try:
             self.tts = SpeechSynthesizer(self._voice_id(self.s.get("voice")))
             self.asr = self._new_asr()
@@ -234,6 +235,14 @@ class Engine:
             threading.Thread(target=self.brain.warm, name="Warm", daemon=True).start()
         if "mcp_servers" in changed:
             threading.Thread(target=self._load_mcp, name="MCP", daemon=True).start()
+
+    def set_secrets(self, values: dict) -> None:
+        """Tokens the app read from the keyring; an empty value removes one. Never logged or saved."""
+        for name, value in values.items():
+            if value:
+                self._secrets[str(name)] = str(value)
+            else:
+                self._secrets.pop(str(name), None)
 
     def _confirm_globs(self) -> list[str]:
         return ["shell.run_command"] if self.s.get("confirm_shell", True) else []

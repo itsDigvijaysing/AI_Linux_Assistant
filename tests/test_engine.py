@@ -652,6 +652,14 @@ class EngineSettingsTests(unittest.TestCase):
         self.assertEqual(e.s["escalate_threshold"], DEFAULTS["escalate_threshold"])
         self.assertEqual((e.s["voice"], e.s["wake_word"]), ("supertonic:F1", "phoenix"))
 
+    def test_secrets_are_kept_in_memory_and_can_be_removed(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.set_secrets({"todoist": "dummy-token"})
+        self.assertEqual(e._secrets.get("todoist"), "dummy-token")
+        self.assertNotIn("dummy-token", repr(e.s))  # not a setting, so never sent back or saved
+        e.set_secrets({"todoist": ""})
+        self.assertIsNone(e._secrets.get("todoist"))
 
 class NameTestEngineTests(unittest.TestCase):
     def make(self):
