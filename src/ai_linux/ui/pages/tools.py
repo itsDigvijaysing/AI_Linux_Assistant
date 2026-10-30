@@ -140,8 +140,8 @@ class Page(Adw.NavigationPage):
 
     def _web_rows(self) -> list[Gtk.Widget]:
         switch = Adw.SwitchRow(title="Allow Web Access",
-                               subtitle="Weather and quick look-ups ask the internet. Off: nothing leaves "
-                                        "this computer except web searches you open in the browser.")
+                               subtitle="Weather and quick look-ups ask the internet. Off, they don't; Todoist "
+                                        "and servers you add have their own switches.")
         switch.set_active(bool(self.settings.get("web_access")))
         switch.connect("notify::active", lambda r, _p: self._set("web_access", r.get_active()))
         self._web_switch = switch

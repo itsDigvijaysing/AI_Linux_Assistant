@@ -17,7 +17,6 @@ SCRIPT = textwrap.dedent("""
     import sys
     sys.path.insert(0, sys.argv[1])
     from ai_linux import secret_store as S
-    assert S.available()
     assert S.lookup("todoist") is None
     S.store("todoist", "dummy-token-1", "Phoenix test")
     S.store("todoist", "dummy-token-2", "Phoenix test")

@@ -40,9 +40,9 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `autostart.py` | `is_enabled()`, `set_enabled(bool)` | XDG autostart entry with `--background` |
 | `desktop_entry.py` | `install()`, `uninstall()`; `python3 -m ai_linux.desktop_entry install` | app-grid launcher and icons under `~/.local/share`, no sudo |
 | `credits.py` | `CREDITS`, `KINDS`, `by_kind()`, `ref_dir()`, `gtk_licence()` | every open-source credit (code, models, libraries, references); read by the About window (one section per kind, featured first) and `scripts/sync_refs.py` |
-| `secret_store.py` | `lookup(name)`, `store(name, value, label)`, `clear(name)`, `available()` | the login keyring over the freedesktop Secret Service (Gio only; libsecret's typelib isn't on a default Ubuntu); blocking, so worker threads only |
+| `secret_store.py` | `lookup(name)`, `store(name, value, label)`, `clear(name)` | the login keyring over the freedesktop Secret Service (Gio only; libsecret's typelib isn't on a default Ubuntu); blocking, so worker threads only |
 | `todoist_link.py` | `TodoistLink(settings, send_secret)`: `load`, `save(token, done)`, `disconnect(done)`, `.busy` | the Todoist token: checked with Todoist, kept in the keyring, handed to the engine; `ctx.todoist` |
-| `mcp_presets.py` | `PRESETS`, `Preset.server()`, `get(key)` | Files, Web page reader, Git: fill the Add Server form; only read-only tools start on |
+| `mcp_presets.py` | `PRESETS`, `Preset.server()`, `get(key)` | Files, Git: fill the Add Server form; only read-only tools start on |
 | `paste_portal.py` | `paste`, `authorize`, `detect`, `probe` (CLI); `PortalPaste`, `is_terminal()` | paste keys through the RemoteDesktop portal; system Python only |
 
 ## Rules
@@ -177,7 +177,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   After starting them the engine sends `{"ev": "mcp_tools", "servers": {name: [{name, description}]}}` (`bus.mcp_tools`,
   signal `mcp-tools-changed`); the Tools page lists each server's tools with a switch (`disabled_tools` in the server
   entry). Only switched-on tools reach the menus, and a change to only `disabled_tools` re-filters them without
-  restarting the servers (`Engine._filter_mcp`). Presets: `mcp_presets.py`.
+  restarting the servers (`Engine._filter_mcp`). Presets: `mcp_presets.py`. A server's description reaches the menu
+  as its first sentence, at most 120 characters (`mcp_client.menu_line`; the filesystem server's run to 450).
 - **Speech device** (`stt_device`, one value for both profiles; Voice page's first group and the Models page): Parakeet TDT's encoder runs on the Intel GPU through OpenVINO
   (`engine/asr/ov_encoder.py`), the decoder and joiner stay on the CPU. Input is padded to whole seconds (each new
   length costs ~0.6 s of compiling, cached in `~/.cache/ai-linux/openvino`, ~1.3 GB) and every length up to 15 s is

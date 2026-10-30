@@ -134,18 +134,3 @@ def clear(name: str) -> int:
         _prompt(bus, prompt)
     return len(items)
 
-
-def available() -> bool:
-    """A Secret Service is running (or can be started) on the session bus."""
-    try:
-        bus = _bus()
-        (names,) = _call_bus(bus, "ListActivatableNames")
-        (running,) = _call_bus(bus, "ListNames")
-    except (KeyringError, GLib.Error):
-        return False
-    return BUS_NAME in names or BUS_NAME in running
-
-
-def _call_bus(bus, method: str):
-    return bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", method, None,
-                         GLib.VariantType("(as)"), Gio.DBusCallFlags.NONE, CALL_MS, None).unpack()

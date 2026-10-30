@@ -11,8 +11,6 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REFERENCE = "https://github.com/modelcontextprotocol/servers"
-
 
 @dataclass(frozen=True)
 class Preset:
@@ -45,8 +43,6 @@ PRESETS: tuple[Preset, ...] = (
            "npx", ("-y", "@modelcontextprotocol/server-filesystem", "~/Documents"), "Node.js (npx)",
            off=("read_media_file", "read_multiple_files", "write_file", "edit_file", "create_directory",
                 "list_directory_with_sizes", "move_file", "directory_tree", "list_allowed_directories")),
-    Preset("web_page", "Web page reader", "Fetch a web page and read it as text. Reaches the internet whatever "
-           "Web Access says.", "uvx", ("mcp-server-fetch",), "uv (uvx)"),
     Preset("git", "Git", "Status, log, branches and changes of one repository (set its folder in Arguments). "
            "Commit, add, reset and checkout start off.",
            "uvx", ("mcp-server-git", "--repository", "~"), "uv (uvx)",

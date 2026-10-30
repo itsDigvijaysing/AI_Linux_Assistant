@@ -220,7 +220,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         local = Adw.PreferencesGroup()
         note = Adw.ActionRow(title="Everything stays on this computer",
                              subtitle="Your voice, conversations and models are processed here and never uploaded. "
-                                      "The internet is used only when you download a model.")
+                                      "The internet is used to download models, and by Web Access, Todoist "
+                                      "and servers you add, once you turn them on.")
         note.add_prefix(Gtk.Image(icon_name="security-high-symbolic", pixel_size=24,
                                   css_classes=["ail-prefs-note-icon"]))
         local.add(note)
