@@ -1031,3 +1031,32 @@ class TurnOverlapTests(unittest.TestCase):
         e.brain.handle.side_effect = handle
         e._one("text", "second", 0.0)
         self.assertEqual(seen["state"], "thinking")
+
+
+class EngineReviewTests(unittest.TestCase):
+    def test_cancel_ends_a_confirmation_waiting_on_screen(self):
+        from ai_linux.engine.service import Engine
+        from ai_linux.safety.gate import ConfirmRequest
+        events = []
+        e = Engine(events.append, {"spoken_confirm": False})
+        out = {}
+        req = ConfirmRequest("shell.run_command", {"command": "ls"}, "ls")
+        t = threading.Thread(target=lambda: out.setdefault("ok", e._confirm(req)), name="Work", daemon=True)
+        t.start()
+        deadline = time.monotonic() + 2
+        while not any(ev.get("ev") == "confirm" for ev in events) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        e.cancel_turn()
+        t.join(2)
+        self.assertFalse(t.is_alive())  # was stuck for CONFIRM_S, and every request after it waited too
+        self.assertFalse(out["ok"])
+        self.assertTrue(any(ev.get("ev") == "confirm_done" for ev in events))  # the dialog closes
+
+    def test_listen_mode_change_while_starting_waits_for_start_up(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "wake"})
+        e.audio, e._capture = mock.Mock(), mock.Mock()
+        e.state = "loading"
+        e.update_settings({"listen_mode": "always"})
+        self.assertEqual(e.state, "loading")  # _get_ready opens the mic once the models are warm
+        e._capture.assert_not_called()

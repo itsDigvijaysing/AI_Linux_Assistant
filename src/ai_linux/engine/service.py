@@ -208,8 +208,8 @@ class Engine:
         stt = ("stt_engine", "stt_device")
         if any(self.s.get(k) != old.get(k) for k in stt) and self.asr is not None:
             threading.Thread(target=self._reload_asr, daemon=True).start()
-        if self.s.get("listen_mode") != old.get("listen_mode") and self.audio is not None:
-            self.apply_listen_mode()
+        if self.s.get("listen_mode") != old.get("listen_mode") and self.audio is not None and self.state != "loading":
+            self.apply_listen_mode()  # while starting, _get_ready applies it once the models are warm
         if self.brain is None:
             return
         changed = {k for k in values if old.get(k) != self.s.get(k)}
@@ -369,6 +369,9 @@ class Engine:
     def cancel_turn(self) -> None:
         self.cancel.set()
         self._hold.clear()  # a paused reply is dropped, not resumed
+        for ev, box in list(self._confirms.values()):  # an on-screen question would hold the Work thread 55 s
+            box["cancelled"] = True
+            ev.set()
         for item in self._drain(self.say_q):
             if item[0] == "ring":  # a timer still rings after an interrupted reply
                 self.say_q.put(item)
@@ -816,7 +819,7 @@ class Engine:
                 ev.wait(CONFIRM_S)
         finally:
             self._confirms.pop(cid, None)
-        if not ev.is_set() or by_voice:
+        if not ev.is_set() or by_voice or box.get("cancelled"):
             self.emit({"ev": "confirm_done", "id": cid, "allowed": box["ok"]})  # closes the dialog
         return box["ok"] and not self.cancel.is_set()
 
