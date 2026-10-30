@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ai_linux.engine import mic_watch, sounds
+from ai_linux.engine import dictation, mic_watch, sounds
 from ai_linux.engine.live_text import LiveText, settled
 from ai_linux.safety import ActionGate, Executor
 from ai_linux.safety.gate import ConfirmRequest
@@ -36,6 +36,7 @@ BARGE_VAD = 0.3  # echo cancelling eats half the user's frames while we talk; ou
 BARGE_WINDOW, BARGE_FRAMES = 12, 5  # 5 voiced of the last 12 frames (~0.4 s) pause the reply (2026-10-30 tests)
 FALSE_BARGES = 2  # pauses that were only our own echo, per turn, before barge-in sits out the rest of the reply
 FOLLOWUP_S = 10.0  # after a reply, follow-ups need no wake word
+DICTATE_IDLE_S = 10.0  # dictation ends after this long with nothing said
 CONFIRM_S = 55.0  # a confirmation not answered by then is a no (the app's dialog gives up at the same time)
 LISTEN_NOW_S = 8.0  # hotkey: how long to wait for speech to start
 NAME_TEST_S = 20.0  # a name-test sentence must be heard within this
@@ -70,6 +71,7 @@ class Engine:
         self.followup_until = 0.0
         self.called = False  # the name alone was said: the request is still to come
         self.sleep_after = False  # "go to sleep": no follow-up window after this turn
+        self.dictating = False  # every sentence is typed at the cursor until "stop dictation" or silence
         self.quiet_until = 0.0  # half-duplex: ignore the mic until our own voice has died away
         self._confirms: dict[str, tuple[threading.Event, dict]] = {}
         self.confirming = False
@@ -410,6 +412,7 @@ class Engine:
 
     def cancel_turn(self) -> None:
         self.cancel.set()
+        self.dictating = False
         self._hold.clear()  # a paused reply is dropped, not resumed
         for ev, box in list(self._confirms.values()):  # an on-screen question would hold the Work thread 55 s
             box["cancelled"] = True
@@ -628,6 +631,9 @@ class Engine:
         """The window after the name or a reply closed with nothing said: back to waiting for the name."""
         if self.state != "followup" or self.speaking or time.monotonic() < self.followup_until:
             return
+        if self.dictating:
+            self._end_dictation("sleep")
+            return
         self.set_state("idle")
         if self.called:
             self.called = False
@@ -705,6 +711,9 @@ class Engine:
                     self._called()  # only the name: being called, not a request (it once changed the voice)
                     return
                 text = cmd or text
+            if self.dictating or dictation.start(text) is not None:
+                self._dictate(text)  # typed where the cursor is, never acted on
+                return
             if " ".join(_words(text)) in JUNK:
                 self._clear_live()
                 if self.state == "listening":
@@ -743,6 +752,43 @@ class Engine:
             self.emit({"ev": "turn_update", "turn": marked})
         self.emit({"ev": "turn", "turn": turn})
         self.say_q.put(("end", turn["id"], cancel))
+
+    # dictation
+
+    def _dictate(self, text: str) -> None:
+        from ai_linux.engine import tools as T
+        self._clear_live()
+        rest = dictation.start(text)
+        if self.dictating and dictation.is_stop(text):
+            self._end_dictation("ok")
+            return
+        if not self.dictating:
+            gate = self.brain.env.executor.gate.check("desktop.write_text") if self.brain is not None else None
+            if gate is None or not gate.allowed:
+                self.notice("warning", "Dictation types into other apps, so it needs actions allowed on the "
+                                       "Safety page.")
+                if self.state == "listening":
+                    self.set_state("idle")
+                return
+            self.dictating = True
+            log.info("dictation on")
+            self.cue("listen")
+        words = dictation.clean(rest if rest is not None else text)
+        self.followup_until = time.monotonic() + DICTATE_IDLE_S
+        self.set_state("followup", "Dictating")
+        self.emit({"ev": "followup", "seconds": DICTATE_IDLE_S})
+        if words:
+            res = T.paste_text(self.brain.env, words + " ", {})
+            if not res.ok or "clipboard" in res.say:
+                self.notice("warning", res.say)
+
+    def _end_dictation(self, sound: str) -> None:
+        self.dictating = False
+        self.followup_until = 0.0
+        log.info("dictation off")
+        self.cue(sound)
+        self.set_state("idle")
+        self._mic_after_turn()
 
     # speaking
 

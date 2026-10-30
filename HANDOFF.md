@@ -163,7 +163,7 @@ details of each piece.
 - Voice-not-heard follow-ups not done yet: follow a changed default microphone (OpenWhispr does), retry an empty
   transcription once.
 - Close app: GNOME may show "is ready" instead of raising a window for Switch (focus-stealing rules); untested live.
-- **Dictation** (type what I say at the cursor): approved for later, as its own task.
+- **Dictation**: done on the PR branch ("Phoenix, dictate"); live check: type into a text editor and a browser field.
 - Laya: one full download check through the Models page.
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package; `FUTURE_DIRECTION.md` predates
   v3.

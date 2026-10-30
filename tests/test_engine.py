@@ -740,6 +740,56 @@ class TimerEventTests(unittest.TestCase):
         self.assertEqual([ev for ev in events if ev.get("ev") == "timers"][-1]["items"], [])
         e.cancel_timer("nope")  # unknown or already rung: nothing happens
 
+class DictationEngineTests(unittest.TestCase):
+    def make(self, armed=True):
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {"listen_mode": "wake", "wake_word": "phoenix"})
+        e.asr = mock.Mock()
+        e.brain = mock.Mock()
+        e.brain.env.executor.gate = ActionGate(armed=armed)
+        e.cue = mock.Mock()
+        return e, events
+
+    def say(self, e, heard, at=None):
+        e.asr.transcribe.return_value = heard
+        e._one("audio", object(), at or time.monotonic())
+
+    def test_dictation_types_each_sentence_without_the_model(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.assertTrue(e.dictating)
+            self.say(e, "Um, hello Sam comma new line see you at five full stop")
+            self.say(e, "Stop dictation.")
+        self.assertEqual([c.args[1] for c in paste.call_args_list], ["Hello Sam,\nSee you at five. "])
+        e.brain.handle.assert_not_called()
+        self.assertFalse(e.dictating)
+        self.assertEqual(e.state, "idle")
+
+    def test_text_after_the_start_word_is_typed_at_once(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate meeting moved to Monday.")
+        self.assertEqual(paste.call_args.args[1], "Meeting moved to Monday. ")
+
+    def test_silence_ends_dictation(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            self.say(e, "Phoenix, dictate.")
+        e.followup_until = time.monotonic() - 1
+        e._check_followup()
+        self.assertFalse(e.dictating)
+        self.assertEqual(e.state, "idle")
+
+    def test_needs_actions_allowed(self):
+        e, events = self.make(armed=False)
+        with mock.patch("ai_linux.engine.tools.paste_text") as paste:
+            self.say(e, "Phoenix, dictate.")
+        paste.assert_not_called()
+        self.assertFalse(e.dictating)
+        self.assertTrue(any("Safety" in ev.get("text", "") for ev in events if ev.get("ev") == "notice"))
+
 class NameTestEngineTests(unittest.TestCase):
     def make(self):
         from ai_linux.engine.service import Engine

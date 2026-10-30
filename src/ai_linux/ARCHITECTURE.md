@@ -216,11 +216,13 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   `phoenix-tray-*-symbolic.svg` (`scripts/gen_tray_icons.py`) so the shell paints them in the panel's text colour:
   solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
   when stopped. The pixmap is only a fallback, drawn once per state.
+- **Dictation** (`engine/dictation.py`, 2026-10-30): "Phoenix, dictate" (optionally followed by text) turns it on;
+  every sentence is cleaned (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question mark")
+  and typed at the cursor through `paste_text`, never acted on and never sent to a model. "Stop dictation", "done"
+  or `DICTATE_IDLE_S` (10 s) of silence ends it. Needs actions allowed (it types into other apps).
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)
-- **Dictation** (OpenWhispr's main feature: type what you say at the cursor): wanted, a separate task. The paste half
-  exists (`paste_text`); it needs its own listen mode or trigger, and tests.
 - Routing re-measured on 2026-10-29 for chat (above); a full task re-run on the 27-tool menu is still open.
   Voice-not-heard follow-ups: follow a changed default mic, retry an empty transcription.
 - **Not committed yet:** everything since `a6a1c9c` (live words, pill caption, Dark theme, Knowledge, load modes,
