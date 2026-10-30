@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 MISSED_S = 3600  # rings late if missed by at most this, else it is dropped
 MAX_S = 7 * 24 * 3600
+CHECK_S = 30.0  # waits are monotonic and pause in suspend, so look at the wall clock this often
 
 
 def spoken_span(seconds: float) -> str:
@@ -79,17 +80,30 @@ class Timers:
                 t.cancel()
 
     def _schedule(self, tid: str, due: float, message: str, length: int = 0) -> None:
-        t = threading.Timer(max(0.0, due - self.clock()), self._fire, args=(tid,))
-        t.daemon = True
         with self._lock:
             self._items[tid] = {"id": tid, "due": due, "message": message, "length": length}
+        self._arm(tid)
+
+    def _arm(self, tid: str) -> None:
+        with self._lock:
+            it = self._items.get(tid)
+            if it is None:  # cancelled meanwhile
+                return
+            t = threading.Timer(min(max(0.0, it["due"] - self.clock()), CHECK_S), self._fire, args=(tid,))
+            t.daemon = True
             self._threads[tid] = t
-        t.start()
+            t.start()
 
     def _fire(self, tid: str) -> None:
         with self._lock:
-            it = self._items.pop(tid, None)
-            self._threads.pop(tid, None)
+            it = self._items.get(tid)
+            early = it is not None and it["due"] - self.clock() > 0.05
+            if not early:
+                self._items.pop(tid, None)
+                self._threads.pop(tid, None)
+        if early:
+            self._arm(tid)
+            return
         self._save()
         if it is not None:
             try:
