@@ -178,8 +178,12 @@ class Engine:
             if not servers:
                 self.brain.extra_tools = []
                 return
-            self.mcp = McpTools(servers, notice=self.notice)
-            self.brain.extra_tools = self.mcp.tools()
+            tools = McpTools(servers, notice=self.notice)
+            if self._stop.is_set():  # quit while they started: their own session outlives the engine's group
+                tools.close()
+                return
+            self.mcp = tools
+            self.brain.extra_tools = tools.tools()
 
     def stop(self) -> None:
         self._stop.set()

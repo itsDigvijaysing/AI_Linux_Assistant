@@ -978,6 +978,33 @@ class McpCleanupTests(unittest.TestCase):
         self.assertEqual(len(made), 2)
         self.assertEqual([m for m in made if not m.closed], [e.mcp])
 
+    def test_quit_while_mcp_servers_start_stops_them(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+
+        class Fake:
+            def __init__(self, specs, notice=None):
+                time.sleep(0.3)
+                self.closed = False
+                made.append(self)
+
+            def tools(self):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        e = Engine(lambda ev: None, {"mcp_servers": [{"name": "a", "command": "x"}]})
+        e.brain = mock.Mock()
+        with mock.patch.object(mcp_client, "McpTools", Fake), mock.patch("ai_linux.engine.llm.unload"):
+            t = threading.Thread(target=e._load_mcp)
+            t.start()
+            time.sleep(0.05)
+            e.stop()  # the app quits; servers live in their own session, so nothing else ends them
+            t.join(2)
+        self.assertTrue(made and made[0].closed)
+
 
 class TurnOverlapTests(unittest.TestCase):
     """A cancelled turn's leftovers must not reach the next turn (the speaker runs on its own thread)."""
