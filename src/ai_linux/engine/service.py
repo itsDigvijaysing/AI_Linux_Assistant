@@ -62,6 +62,7 @@ class Engine:
         self.cancel = threading.Event()
         self.state = "loading"
         self.capturing = False
+        self._capture_on = threading.Event()  # wakes the listen loop; it sleeps while the mic is off
         self.speaking = False
         self.armed_until = 0.0  # hotkey / listen_now: next utterance needs no wake word
         self.name_test_until = 0.0  # until then, the next utterance is only transcribed and sent back
@@ -182,6 +183,7 @@ class Engine:
 
     def stop(self) -> None:
         self._stop.set()
+        self._capture_on.set()
         self.cancel_turn()
         if self.brain is not None:
             from ai_linux.engine import llm
@@ -396,6 +398,7 @@ class Engine:
             try:
                 self.audio.start_listening() if on else self.audio.stop_listening()
                 self.capturing = on
+                self._capture_on.set() if on else self._capture_on.clear()
                 if on:
                     self._mic.restart(time.monotonic())
             except Exception as exc:
@@ -473,7 +476,6 @@ class Engine:
         last_level = 0.0
         while not self._stop.is_set():
             if not self.capturing or self.audio is None:
-                time.sleep(0.05)
                 pre.clear()
                 if self._hold.is_set():
                     self.cancel_turn()
@@ -481,6 +483,7 @@ class Engine:
                     self._end_utterance()
                     self._clear_live()
                 rec, recording, voiced, silent = [], False, 0, 0
+                self._capture_on.wait(1.0)  # was a 50 ms poll: 20 wake-ups a second while muted
                 continue
             try:
                 frame, prob = self.audio.get_sample_queue().get(timeout=0.2)

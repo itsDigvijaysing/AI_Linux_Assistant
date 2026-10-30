@@ -1060,3 +1060,31 @@ class EngineReviewTests(unittest.TestCase):
         e.update_settings({"listen_mode": "always"})
         self.assertEqual(e.state, "loading")  # _get_ready opens the mic once the models are warm
         e._capture.assert_not_called()
+
+
+class ListenLoopIdleTests(unittest.TestCase):
+    def test_mic_off_listen_loop_waits_instead_of_polling(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e._hold = mock.Mock(wraps=threading.Event())
+        t = threading.Thread(target=e._listen_loop, daemon=True)
+        t.start()
+        time.sleep(0.5)
+        e._stop.set()
+        self.assertLessEqual(e._hold.is_set.call_count, 2)  # was 20 wake-ups a second while muted
+
+    def test_mic_turned_on_wakes_the_listen_loop(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        frames = __import__("queue").Queue()
+        e.audio = mock.Mock(get_sample_queue=mock.Mock(return_value=frames))
+        t = threading.Thread(target=e._listen_loop, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        e._capture(True)
+        frames.put((np.zeros(512, np.float32), 0.0))
+        deadline = time.monotonic() + 0.5
+        while not frames.empty() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        e._stop.set()
+        self.assertTrue(frames.empty())
