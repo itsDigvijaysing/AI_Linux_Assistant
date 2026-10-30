@@ -873,6 +873,7 @@ class BargeInTests(unittest.TestCase):
 
 
 
+@unittest.skipIf(importlib.util.find_spec("onnxruntime") is None, "the VAD needs the engine's onnxruntime")
 class EchoCancelSetupTests(unittest.TestCase):
     """PipeWire is faked: no pw-cli or pw-record runs."""
 
