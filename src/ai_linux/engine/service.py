@@ -37,6 +37,7 @@ BARGE_WINDOW, BARGE_FRAMES = 12, 5  # 5 voiced of the last 12 frames (~0.4 s) pa
 FALSE_BARGES = 2  # pauses that were only our own echo, per turn, before barge-in sits out the rest of the reply
 FOLLOWUP_S = 10.0  # after a reply, follow-ups need no wake word
 DICTATE_IDLE_S = 10.0  # dictation ends after this long with nothing said
+DICTATE_END_SILENCE = 47  # ~1.5 s: while dictating a short pause to think stays in one recording
 CONFIRM_S = 55.0  # a confirmation not answered by then is a no (the app's dialog gives up at the same time)
 LISTEN_NOW_S = 8.0  # hotkey: how long to wait for speech to start
 NAME_TEST_S = 20.0  # a name-test sentence must be heard within this
@@ -71,7 +72,8 @@ class Engine:
         self.followup_until = 0.0
         self.called = False  # the name alone was said: the request is still to come
         self.sleep_after = False  # "go to sleep": no follow-up window after this turn
-        self.dictating = ""  # polish | exact: every sentence is typed at the cursor until "stop dictation"
+        self.dictating = ""  # polish | exact: what is said is collected, then typed at the cursor once
+        self._dictated: list[str] = []
         self.quiet_until = 0.0  # half-duplex: ignore the mic until our own voice has died away
         self._confirms: dict[str, tuple[threading.Event, dict]] = {}
         self.confirming = False
@@ -412,7 +414,7 @@ class Engine:
 
     def cancel_turn(self) -> None:
         self.cancel.set()
-        self.dictating = ""
+        self.dictating, self._dictated = "", []
         self._hold.clear()  # a paused reply is dropped, not resumed
         for ev, box in list(self._confirms.values()):  # an on-screen question would hold the Work thread 55 s
             box["cancelled"] = True
@@ -594,7 +596,8 @@ class Engine:
             if self.state == "listening" and time.monotonic() - last_level > 0.03:
                 last_level = time.monotonic()
                 self.emit({"ev": "level", "v": round(float(np.sqrt(np.mean(frame ** 2))), 4), "src": "mic"})
-            done = (silent >= END_SILENCE and not self.ptt) or len(rec) >= MAX_FRAMES or (ptt_rec and not self.ptt)
+            end = DICTATE_END_SILENCE if self.dictating else END_SILENCE
+            done = (silent >= end and not self.ptt) or len(rec) >= MAX_FRAMES or (ptt_rec and not self.ptt)
             live = self._live
             if (not done and live is not None and self.s.get("live_text", True) and silent < 8
                     and live.due(len(rec) * len(frame))):
@@ -631,8 +634,9 @@ class Engine:
         """The window after the name or a reply closed with nothing said: back to waiting for the name."""
         if self.state != "followup" or self.speaking or time.monotonic() < self.followup_until:
             return
-        if self.dictating:
-            self._end_dictation("sleep")
+        if self.dictating:  # typed on the Work thread: the big model must not hold up the mic
+            self.set_state("thinking", "Fixing the wording" if self.dictating == "polish" else "Typing")
+            self.work.put(("dictated", "sleep", 0.0))
             return
         self.set_state("idle")
         if self.called:
@@ -669,8 +673,13 @@ class Engine:
                 self.set_state("idle")
 
     def _one(self, kind: str, payload, t_start: float) -> None:
-        """kind: "audio" (to transcribe), "heard" (said during a confirmation, already transcribed) or "text"."""
+        """kind: "audio" (to transcribe), "heard" (said during a confirmation, already transcribed), "text" or
+        "dictated" (dictation's silence ran out: type what was collected)."""
         asr_s = 0.0
+        if kind == "dictated":
+            if self.dictating:
+                self._finish_dictation(str(payload))
+            return
         if kind == "heard":
             text, wake_free, asked = str(payload).strip(), True, True  # mid-conversation: no wake word needed
         elif kind == "audio":
@@ -756,12 +765,8 @@ class Engine:
     # dictation
 
     def _dictate(self, text: str) -> None:
-        from ai_linux.engine import tools as T
         self._clear_live()
         begin = dictation.start(text)
-        if self.dictating and dictation.is_stop(text):
-            self._end_dictation("ok")
-            return
         if not self.dictating:
             gate = self.brain.env.executor.gate.check("desktop.write_text") if self.brain is not None else None
             if gate is None or not gate.allowed:
@@ -774,24 +779,37 @@ class Engine:
             self.cue("listen")
         if begin is not None:
             self.dictating = begin[0]
-        words = dictation.clean(begin[1] if begin is not None else text)
-        if words and self.dictating == "polish":
+        rest, stop = dictation.split_stop(begin[1] if begin is not None else text,
+                                          str(self.s.get("wake_word") or ""))
+        if rest.strip():
+            self._dictated.append(rest.strip())
+        if stop:
+            self._finish_dictation("ok")
+            return
+        self.followup_until = time.monotonic() + DICTATE_IDLE_S
+        self.set_state("followup", "Dictating")
+        self.emit({"ev": "followup", "seconds": DICTATE_IDLE_S})
+
+    def _finish_dictation(self, sound: str) -> None:
+        """Everything said since "dictate", fixed by the big model as one text (polish) and typed once."""
+        from ai_linux.engine import tools as T
+        words = dictation.clean(" ".join(self._dictated))
+        mode, self._dictated = self.dictating, []
+        if words and mode == "polish":
             self.set_state("thinking", "Fixing the wording")
             try:
                 words = dictation.pick(words, self.brain.polish(words))
             except Exception as exc:  # no big model: type it as it was said
                 log.warning("polishing dictation: %s", exc)
                 self.notice("warning", "The big model isn't available, so I typed it as you said it.")
-        self.followup_until = time.monotonic() + DICTATE_IDLE_S
-        self.set_state("followup", "Dictating")
-        self.emit({"ev": "followup", "seconds": DICTATE_IDLE_S})
         if words:
             res = T.paste_text(self.brain.env, words + " ", {})
             if not res.ok or "clipboard" in res.say:
                 self.notice("warning", res.say)
+        self._end_dictation(sound)
 
     def _end_dictation(self, sound: str) -> None:
-        self.dictating = ""
+        self.dictating, self._dictated = "", []
         self.followup_until = 0.0
         log.info("dictation off")
         self.cue(sound)

@@ -22,10 +22,17 @@ class PhraseTests(unittest.TestCase):
             self.assertIsNone(D.start(text), text)
 
     def test_stop(self):
-        for text in ("Stop dictation.", "stop", "Done.", "that's all", "end dictation", "stop typing"):
-            self.assertTrue(D.is_stop(text), text)
-        for text in ("stop the music when it ends", "I'm done with the report", "hello"):
-            self.assertFalse(D.is_stop(text), text)
+        for text in ("Stop dictation.", "stop dictating", "Please stop dictating!"):
+            self.assertEqual(D.split_stop(text), ("", True), text)
+        for text in ("stop", "Done.", "that's all", "stop the music when it ends", "I'm done with the report", "hi"):
+            self.assertFalse(D.split_stop(text)[1], text)  # "done" or "that's all" can be part of the text
+
+    def test_stop_at_the_end_of_a_sentence(self):
+        self.assertEqual(D.split_stop("That is the plan. Stop dictating."), ("That is the plan.", True))
+        self.assertEqual(D.split_stop("that is the plan, Phoenix, stop dictating", "phoenix"),
+                         ("that is the plan", True))
+        self.assertEqual(D.split_stop("we must stop dictating rules to them"), ("we must stop dictating rules to them",
+                                                                                False))
 
 
 class PickTests(unittest.TestCase):

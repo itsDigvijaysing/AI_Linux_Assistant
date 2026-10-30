@@ -2,6 +2,7 @@
 
 "Dictate" lets the big model fix grammar and wording (like OpenWhispr's clean-up); "type what I say" types the
 words as said. Both get a light clean-up first: fillers out, spoken "comma", "new line" and the like into text.
+What is said is collected until "stop dictating" or a silence, then typed once (pauses to think cut nothing).
 A 4B model can answer or add instead of rewriting, so ``pick`` keeps what was said when its text looks wrong.
 """
 
@@ -14,8 +15,8 @@ _START_EXACT = re.compile(r"(?i)^(?:please\s+)?(?:just\s+)?type\s+"
                           r"(?:exactly\s+what\s+i\s+say|what\s+i\s+say|exactly)\b[\s,:;.!-]*(.*?)\s*$")
 _START_ALONE = re.compile(r"(?i)^(?:please\s+)?(?:(?:start|begin)\s+)?(?:dictation|dictating|take\s+dictation)"
                           r"(?:\s+mode)?[.!]*$")
-_STOP = re.compile(r"(?i)^(?:please\s+)?(?:stop|end|finish|done|that's all|that is all|i'm done|im done)"
-                   r"(?:\s+(?:dictating|dictation|typing))?[.!]*$")
+# only "stop dictating": "done" or "that's all" can be part of the text
+_STOP = r"(?:please\s+)?stop\s+(?:dictating|dictation|dictate)[.!]*"
 _FILLER = re.compile(r"(?i)(?<![\w'])(?:um+|uh+|erm+|hmm+|mm+)(?![\w'])[,.]?[ \t]*")
 _SPOKEN = ((r"new paragraph", "\n\n"), (r"new line|next line", "\n"), (r"comma", ", "), (r"full stop", ". "),
            (r"question mark", "? "), (r"exclamation (?:mark|point)", "! "), (r"colon", ": "))
@@ -46,8 +47,12 @@ def pick(said: str, rewrite: str) -> str:
     return r
 
 
-def is_stop(text: str) -> bool:
-    return bool(_STOP.match(" ".join(text.split())))
+def split_stop(text: str, wake: str = "") -> tuple[str, bool]:
+    """(words before it, True) when ``text`` ends with "stop dictating", also said after the name; else (text, False)."""
+    t = " ".join(text.split())
+    name = rf"(?:{re.escape(wake)}[\s,.!?]*)?" if wake.strip() else ""
+    m = re.fullmatch(rf"(?i)(.*?)[\s,;:-]*\b{name}{_STOP}", t)
+    return (m.group(1).strip(), True) if m else (text, False)
 
 
 def clean(text: str) -> str:
