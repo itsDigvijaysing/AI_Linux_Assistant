@@ -72,6 +72,7 @@ DEFAULTS: dict[str, object] = {
     "mcp_servers": [],  # [{"name", "command", "args": [...], "enabled": bool}]
     "web_access": False,  # weather and quick look-ups reach the internet only when this is on
     "weather_city": "",  # the city for "what's the weather" when none is named
+    "todoist_connected": False,  # a Todoist token is in the keyring (the token itself never is a setting)
     "onboarding_done": False,
 }
 

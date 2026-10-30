@@ -17,6 +17,16 @@ details of each piece.
   asks for 480 itself, so reset it to 0 after Phoenix restarts (it also resets on reboot).
 - **How the user wants replies:** short key-point bullets; clarify every doubt (AskUserQuestion) before coding.
 
+## Done on 2026-10-30, cloud session (on `main`, merged PR #1; ready to test)
+| Change | Files |
+|---|---|
+| 13 review fixes with failing-test-first proof (speech tied to its turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist `/home`, muted listen loop sleeps, ...) | see the PR table |
+| Volume and brightness accept "40%", "fifty" and floats from the big model (it said "Sorry, something went wrong") | `engine/tools.py` (`_level`) |
+| Todoist: add, read, finish tasks; token in the login keyring; Tools page section | `engine/todoist.py`, `engine/tools.py`, `secret_store.py`, `todoist_link.py`, `ui/pages/tools.py` |
+| MCP: a switch per tool (fewer tools on the menu), presets Files / Git | `engine/mcp_client.py`, `engine/service.py`, `mcp_presets.py`, `ui/pages/tools.py` |
+| Timers on Home with Cancel; dictation ("Phoenix, dictate" polished by the big model, "type what I say" as said); `SECURITY.md` for v3 | `ui/pages/home.py`, `engine/timers.py`, `engine/dictation.py`, `engine/brain.py` (`polish`), `SECURITY.md` |
+| Live checks still open (PR #1 list): the keyring's unlock dialog (auto-login), a real Todoist token, a preset server started with npx/uvx, dictation quality and delay, timers on Home, routing accuracy with Todoist and MCP tools on the menu, the browser opening behind windows | |
+
 ## Done on 2026-10-30 (uncommitted)
 | Change | Files |
 |---|---|
@@ -140,7 +150,9 @@ details of each piece.
 - **Argument fixes:** "change your voice" picks the next voice, "default" = F1; YouTube rule accepts "can you" and
   plays the first video with Web Access on; "play a song" with no player searches YouTube; a timer without a time asks.
 - **One-command installer** (`scripts/install.sh`): apt packages (sudo once), venv, launcher, user-only Ollama, models.
-- **Claude Code cloud review:** prompt drafted in the 2026-10-30 session (areas A-D, draft PRs on cloud/* branches).
+- **Cloud review (whole project):** draft PR on `cloud/project-review`: 13 fixes with tests (speech tied to its
+  turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist
+  `/home`, muted listen loop sleeps). Its "needs live check" rows are for the desktop.
 - **Live check on the desktop (user), batch 4:** talking over a reply (the log line `while speaking: voice up to`
   says what the mic heard), plain chat, a request right after a confirmation, the Home speed row, the Models page.
 - **Live check on the desktop (user):** sleep words ("Phoenix, that's all"), "Stop Phoenix", greetings, "One moment"
@@ -152,7 +164,7 @@ details of each piece.
 - Voice-not-heard follow-ups not done yet: follow a changed default microphone (OpenWhispr does), retry an empty
   transcription once.
 - Close app: GNOME may show "is ready" instead of raising a window for Switch (focus-stealing rules); untested live.
-- **Dictation** (type what I say at the cursor): approved for later, as its own task.
+- **Dictation**: done on `main` ("Phoenix, dictate" polished, "type what I say" as said); live check in a text editor and a browser field.
 - Laya: one full download check through the Models page.
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package; `FUTURE_DIRECTION.md` predates
   v3.

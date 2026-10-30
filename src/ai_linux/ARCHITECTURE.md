@@ -40,6 +40,9 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `autostart.py` | `is_enabled()`, `set_enabled(bool)` | XDG autostart entry with `--background` |
 | `desktop_entry.py` | `install()`, `uninstall()`; `python3 -m ai_linux.desktop_entry install` | app-grid launcher and icons under `~/.local/share`, no sudo |
 | `credits.py` | `CREDITS`, `KINDS`, `by_kind()`, `ref_dir()`, `gtk_licence()` | every open-source credit (code, models, libraries, references); read by the About window (one section per kind, featured first) and `scripts/sync_refs.py` |
+| `secret_store.py` | `lookup(name)`, `store(name, value, label)`, `clear(name)` | the login keyring over the freedesktop Secret Service (Gio only; libsecret's typelib isn't on a default Ubuntu); blocking, so worker threads only |
+| `todoist_link.py` | `TodoistLink(settings, send_secret)`: `load`, `save(token, done)`, `disconnect(done)`, `.busy` | the Todoist token: checked with Todoist, kept in the keyring, handed to the engine; `ctx.todoist` |
+| `mcp_presets.py` | `PRESETS`, `Preset.server()`, `get(key)` | Files, Git: fill the Add Server form; only read-only tools start on |
 | `paste_portal.py` | `paste`, `authorize`, `detect`, `probe` (CLI); `PortalPaste`, `is_terminal()` | paste keys through the RemoteDesktop portal; system Python only |
 
 ## Rules
@@ -98,7 +101,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
   logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
-- **Echo cancel** (`engine/audio.py`): the WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
+- **Echo cancel** (`engine/audio.py`): loaded once per engine (the held `pw-cli` is reused on every mic open; a
+  PipeWire restart loads it again). The WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
   10 ms block). At PipeWire's power-of-two 256 one CPU spike (start-up loading) desynced it for good: ~70 dropouts a
   second and 2 to 18 of ~140 speech frames passed, so every sentence was "too short" (measured 2026-10-30).
 - **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
@@ -170,6 +174,11 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   system Python because the engine venv has no gi.
 - **MCP** (`engine/mcp_client.py`, stdlib stdio JSON-RPC): each server's tools join as `<server>_<tool>`, gated as
   `mcp.<server>.<tool>` and confirmed unless the server sets `confirm: false`; reloaded live on a settings change.
+  After starting them the engine sends `{"ev": "mcp_tools", "servers": {name: [{name, description}]}}` (`bus.mcp_tools`,
+  signal `mcp-tools-changed`); the Tools page lists each server's tools with a switch (`disabled_tools` in the server
+  entry). Only switched-on tools reach the menus, and a change to only `disabled_tools` re-filters them without
+  restarting the servers (`Engine._filter_mcp`). Presets: `mcp_presets.py`. A server's description reaches the menu
+  as its first sentence, at most 120 characters (`mcp_client.menu_line`; the filesystem server's run to 450).
 - **Speech device** (`stt_device`, one value for both profiles; Voice page's first group and the Models page): Parakeet TDT's encoder runs on the Intel GPU through OpenVINO
   (`engine/asr/ov_encoder.py`), the decoder and joiner stay on the CPU. Input is padded to whole seconds (each new
   length costs ~0.6 s of compiling, cached in `~/.cache/ai-linux/openvino`, ~1.3 GB) and every length up to 15 s is
@@ -184,7 +193,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   spoken sentence. The pill and Home (a lighter user bubble at the end of the list) show them. A reply that doesn't
   fit the pill turns pages in step with the voice (`ui/caption_model.pages` balances them, `page_starts` spreads
   them over `seconds`); the card grows at once so no line is clipped.
-- **Timers** (`engine/timers.py`, tool `set_timer`): kept in `STATE_DIR/timers.json`, one `threading.Timer` each; a
+- **Timers** (`engine/timers.py`, tool `set_timer`): kept in `STATE_DIR/timers.json`, one `threading.Timer` each, re-armed at least every 30 s
+  (`CHECK_S`) so a reminder due during suspend rings on resume; a
   ring plays the timer sound, sends `notify-send` and speaks the message even when muted (`("ring", text)` on the
   speech queue). One missed by under an hour while the app was closed rings at start; longer than 7 days is capped.
   Spans parse number words and halves ("an hour and a half" = 90 min); a bare hour already past ("at 5", 17:00) means
@@ -192,6 +202,13 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - **Web Access** (`web_access`, off by default; `weather_city`): `engine/web.py` (stdlib, 6 s timeout, fixed https
   hosts): weather from Open-Meteo, look-up from DuckDuckGo Instant Answer then Wikipedia. While off, `WEB_TOOLS` are
   left off every routing menu, so questions still reach the big model; called anyway they say how to turn it on.
+- **Todoist** (`engine/todoist.py`, API v1, stdlib, 8 s timeout; tool `todoist`, family assistant, not gated): add
+  with Quick Add (Todoist reads the date from the sentence, so the model only picks the tool), list today / tomorrow
+  / overdue / this week, complete after "Mark ... as done?" (`Tool.asks`, so an unsure router doesn't ask twice). On
+  the menus only while the engine holds a token. The token lives in the login keyring (`secret_store.py`); only the
+  `todoist_connected` flag is a setting, so the keyring is opened only for people who connected. The app sends it as
+  `{"cmd": "secrets"}` (engine memory only, re-sent to every new engine by `Controller.secrets`). Independent of
+  Web Access: saving a token is the opt-in.
 - **App tools** (`engine/apps.py`): `installed_apps` (all apps by group, or what one is for, from the .desktop
   Comment), `list_folder` (newest items of a known folder), `switch_to_app` (D-Bus Activate, else `gtk-launch`),
   `close_app` (D-Bus `quit` action, else `flatpak kill`, else `pkill -TERM -x` for this user; web apps refused).
@@ -199,11 +216,16 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   `phoenix-tray-*-symbolic.svg` (`scripts/gen_tray_icons.py`) so the shell paints them in the panel's text colour:
   solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
   when stopped. The pixmap is only a fallback, drawn once per state.
+- **Dictation** (`engine/dictation.py`, 2026-10-30): "Phoenix, dictate" (optionally followed by text) turns it on;
+  every sentence is cleaned (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question mark"),
+  its grammar fixed by the big model (`Brain.polish`, temperature 0, no tools) and typed at the cursor through
+  `paste_text`, never acted on. `dictation.pick` keeps the words as said when the rewrite is empty, much longer or
+  shorter, or turned a question into an answer; without the big model it types them as said. "Type what I say" /
+  "type exactly" skips the model. "Stop dictation", "done"
+  or `DICTATE_IDLE_S` (10 s) of silence ends it. Needs actions allowed (it types into other apps).
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)
-- **Dictation** (OpenWhispr's main feature: type what you say at the cursor): wanted, a separate task. The paste half
-  exists (`paste_text`); it needs its own listen mode or trigger, and tests.
 - Routing re-measured on 2026-10-29 for chat (above); a full task re-run on the 27-tool menu is still open.
   Voice-not-heard follow-ups: follow a changed default mic, retry an empty transcription.
 - **Not committed yet:** everything since `a6a1c9c` (live words, pill caption, Dark theme, Knowledge, load modes,

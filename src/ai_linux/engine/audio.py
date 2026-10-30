@@ -84,6 +84,14 @@ class PipeWireAudioIO:
 
     def _ensure_aec(self) -> None:
         """Load WebRTC module-echo-cancel (named ai_aec_*) unless those nodes already exist. Reversible."""
+        if self._aec_proc is not None and self._aec_proc.poll() is None:
+            # our pw-cli still holds the module; another would only stack up and block for 4 s
+            if not self._aec_ok and self._node_exists(self._src):
+                self._aec_ok = True  # it came up after the first wait
+            return
+        if self._aec_ok and not self._aec_owned:
+            return  # the user's own persistent nodes
+        self._aec_proc, self._aec_ok, self._aec_owned = None, False, False  # PipeWire restarted: load it again
         if self._node_exists(self._src):
             self._aec_ok = True
             logger.info("AEC source '{}' already present, reusing it", self._src)

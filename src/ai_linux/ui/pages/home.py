@@ -8,6 +8,7 @@ import threading
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
+from ai_linux.engine.timers import spoken_span
 from ai_linux.paths import APP_NAME
 from ai_linux.schema import BIG_WAKING, SPEEDS
 from ai_linux.state import ACTIVE_STATES, STATE_LABELS, AssistantState, Turn
@@ -28,6 +29,15 @@ MODES = (("wake", "Wake word"), ("hotkey", "Hotkey"), ("always", "Always on"))  
 EXAMPLES = ("What time is it?", "How much battery is left?", "Open my Downloads folder")  # harmless first tries
 NO_WAKE_HINT_S = 4  # how long "say the wake word first" stays
 STATE_CLASSES = tuple(s.value for s in AssistantState)
+
+
+def timer_text(item: dict) -> tuple[str, str]:
+    """(title, subtitle) for a pending timer: when it rings, not a countdown, so nothing ticks while idle."""
+    message = str(item.get("message") or "").strip()
+    title = message[:1].upper() + message[1:] if message else "Timer"
+    when = dt.datetime.fromtimestamp(float(item.get("due") or 0)).strftime("%-I:%M %p")
+    length = int(item.get("length") or 0)
+    return title, f"Rings at {when}" + (f", set for {spoken_span(length)}" if length else "")
 
 
 def hotkey_label(accel: str) -> str:
@@ -137,6 +147,7 @@ class Page(Adw.NavigationPage):
         self._connect(bus, "turn-updated", lambda _b, t: self._upsert(t))
         self._connect(bus, "session-cleared", lambda *_: self._on_session_cleared())
         self._connect(bus, "wake-missed", lambda *_: self._on_wake_missed())
+        self._connect(bus, "timers-changed", lambda *_: self._sync_timers())
         self._connect(settings, "changed::speed", lambda *_: self._sync_speed())
         self._connect(settings, "profile-changed", lambda *_: self._sync_speed())
         for key in ("listen_mode", "muted", "wake_word", "hotkey"):
@@ -152,6 +163,7 @@ class Page(Adw.NavigationPage):
         self.connect("destroy", self._on_destroy)
 
         self._load_today()
+        self._sync_timers()
         self._on_listen_settings()
         self._on_state(bus.state.value, bus.detail)
         live = getattr(bus, "live", None)
@@ -224,6 +236,10 @@ class Page(Adw.NavigationPage):
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         body.append(self._build_hero())
         body.append(self._build_notice())
+        self._timer_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+        self._timer_clamp = Adw.Clamp(maximum_size=760, tightening_threshold=560, child=self._timer_list,
+                                      margin_start=16, margin_end=16, margin_top=12, visible=False)
+        body.append(self._timer_clamp)
 
         self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
         self._list.set_margin_top(18)
@@ -378,6 +394,20 @@ class Page(Adw.NavigationPage):
 
     def _connect(self, obj, signal: str, cb) -> None:
         self._handlers.append((obj, obj.connect(signal, cb)))
+
+    def _sync_timers(self) -> None:
+        """Pending timers and reminders, with Cancel; the engine keeps them in timers.json."""
+        self._timer_list.remove_all()
+        items = list(getattr(self.ctx.bus, "timers", []) or [])
+        for item in items:
+            title, subtitle = timer_text(item)
+            row = Adw.ActionRow(title=title, subtitle=subtitle, use_markup=False)
+            row.add_prefix(Gtk.Image(icon_name="alarm-symbolic"))
+            cancel = Gtk.Button(label="Cancel", valign=Gtk.Align.CENTER, css_classes=["flat"])
+            cancel.connect("clicked", lambda *_, tid=str(item.get("id")): self.ctx.controller.cancel_timer(tid))
+            row.add_suffix(cancel)
+            self._timer_list.append(row)
+        self._timer_clamp.set_visible(bool(items))
 
     def _on_destroy(self, *_):
         for obj, hid in self._handlers:

@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 MISSED_S = 3600  # rings late if missed by at most this, else it is dropped
 MAX_S = 7 * 24 * 3600
+CHECK_S = 30.0  # waits are monotonic and pause in suspend, so look at the wall clock this often
 
 
 def spoken_span(seconds: float) -> str:
@@ -28,8 +29,9 @@ def spoken_span(seconds: float) -> str:
 
 
 class Timers:
-    def __init__(self, path: Path, ring: Callable[[str], None], clock: Callable[[], float] = time.time):
-        self.path, self.ring, self.clock = path, ring, clock
+    def __init__(self, path: Path, ring: Callable[[str], None], clock: Callable[[], float] = time.time,
+                 on_change: Callable[[list[dict]], None] | None = None):
+        self.path, self.ring, self.clock, self.on_change = path, ring, clock, on_change
         self._lock = threading.Lock()
         self._save_lock = threading.Lock()  # a timer firing and a new one being set may save at once
         self._items: dict[str, dict] = {}  # id -> {"id", "due": epoch s, "message", "length": s asked for}
@@ -79,17 +81,30 @@ class Timers:
                 t.cancel()
 
     def _schedule(self, tid: str, due: float, message: str, length: int = 0) -> None:
-        t = threading.Timer(max(0.0, due - self.clock()), self._fire, args=(tid,))
-        t.daemon = True
         with self._lock:
             self._items[tid] = {"id": tid, "due": due, "message": message, "length": length}
+        self._arm(tid)
+
+    def _arm(self, tid: str) -> None:
+        with self._lock:
+            it = self._items.get(tid)
+            if it is None:  # cancelled meanwhile
+                return
+            t = threading.Timer(min(max(0.0, it["due"] - self.clock()), CHECK_S), self._fire, args=(tid,))
+            t.daemon = True
             self._threads[tid] = t
-        t.start()
+            t.start()
 
     def _fire(self, tid: str) -> None:
         with self._lock:
-            it = self._items.pop(tid, None)
-            self._threads.pop(tid, None)
+            it = self._items.get(tid)
+            early = it is not None and it["due"] - self.clock() > 0.05
+            if not early:
+                self._items.pop(tid, None)
+                self._threads.pop(tid, None)
+        if early:
+            self._arm(tid)
+            return
         self._save()
         if it is not None:
             try:
@@ -108,3 +123,8 @@ class Timers:
                 os.replace(tmp, self.path)
             except OSError:
                 log.exception("saving timers")
+        if self.on_change is not None:  # the app's Home lists them
+            try:
+                self.on_change(self.pending())
+            except Exception:
+                log.exception("announcing timers")

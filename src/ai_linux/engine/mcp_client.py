@@ -150,6 +150,18 @@ class McpServer:
                 pass
 
 
+MENU_CHARS = 120  # built-in descriptions are one sentence (median 63 chars); servers' run to 450
+
+
+def menu_line(text: str) -> str:
+    """A server's description cut to its first sentence: the small model reads every option on every request."""
+    text = " ".join(str(text).split())
+    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
+    if len(first) <= MENU_CHARS:
+        return first
+    return text[:MENU_CHARS - 3].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+
+
 def tool_name(server: str, tool: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", f"{server}_{tool}")[:64]
 
@@ -174,7 +186,7 @@ def make_tool(server: McpServer, spec: dict, info: dict) -> Tool:
             return Result(False, f"The {server.name} tool failed.", text)
         return Result(True, text[:300] or "Done.", text, summarise=bool(text))
 
-    description = " ".join(str(info.get("description") or raw).split())[:400]
+    description = menu_line(info.get("description") or raw)
     return Tool(tool_name(server.name, raw), description, props, run, family="mcp", required=required,
                 needs_args=bool(props), gate_id=gate)
 
@@ -185,27 +197,35 @@ class McpTools:
 
     def __init__(self, specs: list[dict], notice=None):
         self.servers: list[McpServer] = []
-        self._tools: list[Tool] = []
+        self._tools: list[tuple[str, str, Tool]] = []  # (server, its own tool name, the tool)
+        self.catalog: dict[str, list[dict]] = {}  # every tool each server offers, for the Tools page switches
         self._lock = threading.Lock()
         notice = notice or (lambda level, text: None)
         taken = {t.name for t in TOOLS}
 
         def start(spec: dict) -> None:
+            server = None
             try:
                 server = McpServer(spec)
                 infos = server.list_tools()
             except Exception as exc:
+                if server is not None:
+                    server.close()  # started but unusable: don't leave its process running
                 log.warning("mcp server %s: %s", spec.get("name"), exc)
                 notice("warning", f"The {spec.get('name')} server didn't start: {exc}")
                 return
             with self._lock:
                 self.servers.append(server)
+                listed = []
                 for info in infos:
                     tool = make_tool(server, spec, info)
                     if tool.name in taken:
                         continue
                     taken.add(tool.name)
-                    self._tools.append(tool)
+                    self._tools.append((server.name, str(info["name"]), tool))
+                    full = " ".join(str(info.get("description") or "").split())
+                    listed.append({"name": str(info["name"]), "description": full[:200]})
+                self.catalog[server.name] = listed
             log.info("mcp server %s: %d tools", server.name, len(infos))
 
         threads = [threading.Thread(target=start, args=(s,), daemon=True) for s in specs
@@ -215,9 +235,11 @@ class McpTools:
         for t in threads:
             t.join(START_S + 15)
 
-    def tools(self) -> list[Tool]:
+    def tools(self, disabled: dict[str, set[str]] | None = None) -> list[Tool]:
+        """The tools to offer the models, leaving out the ones the user turned off per server."""
+        disabled = disabled or {}
         with self._lock:
-            return list(self._tools)
+            return [t for server, raw, t in self._tools if raw not in disabled.get(server, ())]
 
     def close(self) -> None:
         for server in self.servers:

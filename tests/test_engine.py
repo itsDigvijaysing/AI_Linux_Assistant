@@ -111,6 +111,21 @@ class RunTests(unittest.TestCase):
         self.assertEqual(e.executor.calls[-1], ["setsid", "-f", "gtk-launch", "firefox"])
         self.assertFalse(T.run_open({"target": "/no/such/path"}, e).ok)
 
+    def test_model_level_arguments_in_any_shape(self):
+        e = env()  # the big model fills these; the schema asks for an integer but nothing enforces it
+        for value, want in (("40%", "40%"), (" 40 % ", "40%"), ("fifty", "50%"), (55.6, "55%"), ("100", "100%")):
+            self.assertTrue(T.run_volume({"percent": value}, e).ok, value)
+            self.assertEqual(e.executor.calls[-1][-1], want)
+        self.assertTrue(T.run_volume({"action": "up", "step": "5%"}, e).ok)
+        self.assertEqual(e.executor.calls[-1][-1], "5%+")
+        self.assertTrue(T.run_brightness({"percent": "30%"}, e).ok)
+        self.assertEqual(e.executor.calls[-1][-1], "30%")
+        before = len(e.executor.calls)
+        for junk in ("", "loud", [], {}, None, True):
+            self.assertFalse(T.run_volume({"percent": junk}, e).ok, junk)  # asks instead of failing the turn
+            self.assertFalse(T.run_brightness({"percent": junk}, e).ok, junk)
+        self.assertEqual(len(e.executor.calls), before)
+
     def test_disarmed_gate_denies(self):
         e = env(armed=False)
         r = T.run_volume({"action": "up"}, e)
@@ -456,6 +471,16 @@ class BrainTests(unittest.TestCase):
         self.assertIn("turned off", said[0])
         self.assertEqual(cues, ["fail"])
 
+    def test_polish_asks_the_big_model_once_without_tools(self):
+        b = brain_mod.Brain({"ollama_url": "http://x", "big_model": "qwen3.5:4b", "context_length": 8192,
+                             "big_model_policy": "auto", "ollama_keep_alive": "30m"}.get, env(), speak=lambda s: None)
+        with mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "I went "), ("text", "home.")])) as chat:
+            self.assertEqual(b.polish("i has went home"), "I went home.")
+        msgs = chat.call_args.args[2]
+        self.assertIn("i has went home", msgs[-1]["content"])
+        self.assertEqual(chat.call_args.kwargs.get("tools"), None)
+        self.assertEqual(chat.call_args.kwargs["options"]["temperature"], 0)
+
     def test_yes_no(self):
         b, *_ = self.make({"yes": 0.9, "no": 0.05, "unclear": 0.05})
         self.assertTrue(b.yes_no("Should I?", "Yes."))
@@ -583,6 +608,68 @@ class McpTests(unittest.TestCase):
         self.assertIn("nope", notes[0])
 
 
+class McpToolChoiceTests(unittest.TestCase):
+    """Per-tool on/off: a big server must not flood the routing menu (fake MCP server, no network)."""
+    SERVER = Path(__file__).with_name("fake_mcp_server.py")
+
+    def spec(self, **kw):
+        return {"name": "demo", "command": sys.executable, "args": [str(self.SERVER)], "confirm": False, **kw}
+
+    def test_catalog_lists_every_tool_and_tools_skips_the_disabled(self):
+        from ai_linux.engine import mcp_client
+        tools = mcp_client.McpTools([self.spec()])
+        self.addCleanup(tools.close)
+        self.assertEqual([t["name"] for t in tools.catalog["demo"]], ["echo", "fail"])
+        self.assertEqual(tools.catalog["demo"][0]["description"], "Repeat the text.")
+        self.assertEqual([t.name for t in tools.tools({"demo": {"fail"}})], ["demo_echo"])
+        self.assertEqual([t.name for t in tools.tools()], ["demo_echo", "demo_fail"])
+
+    def test_long_server_descriptions_stay_short_on_the_menu(self):
+        from ai_linux.engine import mcp_client
+        long = ("Read the complete contents of a file from the file system as text. Handles various text "
+                "encodings and provides detailed error messages if the file cannot be read. Use this tool when "
+                "you need to examine the contents of a single file. Only works within allowed directories.")
+        server = mock.Mock()
+        server.name = "files"
+        tool = mcp_client.make_tool(server, {}, {"name": "read_text_file", "description": long})
+        self.assertEqual(tool.description, "Read the complete contents of a file from the file system as text.")
+        no_stop = mcp_client.make_tool(server, {}, {"name": "x", "description": "word " * 60})
+        self.assertLessEqual(len(no_stop.description), 120)  # every option is read on every request
+        self.assertEqual(mcp_client.make_tool(server, {}, {"name": "bare"}).description, "bare")
+
+    def test_engine_menu_follows_disabled_tools_and_reports_the_catalog(self):
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {"mcp_servers": [self.spec(disabled_tools=["fail"])]})
+        e.brain = mock.Mock(extra_tools=[])
+        e._load_mcp()
+        self.addCleanup(e.mcp.close)
+        self.assertEqual([t.name for t in e.brain.extra_tools], ["demo_echo"])
+        sent = [ev for ev in events if ev.get("ev") == "mcp_tools"]
+        self.assertEqual([t["name"] for t in sent[-1]["servers"]["demo"]], ["echo", "fail"])
+
+    def test_turning_a_tool_off_does_not_restart_the_servers(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+        real = mcp_client.McpTools
+
+        def counting(*a, **k):
+            made.append(1)
+            return real(*a, **k)
+
+        e = Engine(lambda ev: None, {"mcp_servers": [self.spec()]})
+        e.brain = mock.Mock(extra_tools=[])
+        with mock.patch.object(mcp_client, "McpTools", counting):
+            e._load_mcp()
+            self.addCleanup(e.mcp.close)
+            e.update_settings({"mcp_servers": [self.spec(disabled_tools=["echo"])]})
+            deadline = time.monotonic() + 2
+            while [t.name for t in e.brain.extra_tools] != ["demo_fail"] and time.monotonic() < deadline:
+                time.sleep(0.02)
+        self.assertEqual([t.name for t in e.brain.extra_tools], ["demo_fail"])
+        self.assertEqual(len(made), 1)  # the same running servers
+
 class QuitAndMicTests(unittest.TestCase):
     def test_quit_frees_the_graphics_card(self):
         from ai_linux.engine.service import Engine
@@ -637,6 +724,109 @@ class EngineSettingsTests(unittest.TestCase):
         self.assertEqual(e.s["escalate_threshold"], DEFAULTS["escalate_threshold"])
         self.assertEqual((e.s["voice"], e.s["wake_word"]), ("supertonic:F1", "phoenix"))
 
+    def test_secrets_are_kept_in_memory_and_can_be_removed(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.set_secrets({"todoist": "dummy-token"})
+        self.assertEqual(e._secrets.get("todoist"), "dummy-token")
+        self.assertNotIn("dummy-token", repr(e.s))  # not a setting, so never sent back or saved
+        e.set_secrets({"todoist": ""})
+        self.assertIsNone(e._secrets.get("todoist"))
+
+class TimerEventTests(unittest.TestCase):
+    def test_timer_list_goes_to_the_app_and_one_can_be_cancelled(self):
+        from ai_linux.engine.service import Engine
+        from ai_linux.engine.timers import Timers
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        events = []
+        e = Engine(events.append, {})
+        e.timers = Timers(Path(tmp.name) / "t.json", lambda m: None, on_change=e._timers_changed)
+        self.addCleanup(e.timers.close)
+        item = e.timers.add(300, "stretch")
+        sent = [ev for ev in events if ev.get("ev") == "timers"]
+        self.assertEqual([it["message"] for it in sent[-1]["items"]], ["stretch"])
+        e.cancel_timer(item["id"])
+        self.assertEqual([ev for ev in events if ev.get("ev") == "timers"][-1]["items"], [])
+        e.cancel_timer("nope")  # unknown or already rung: nothing happens
+
+class DictationEngineTests(unittest.TestCase):
+    def make(self, armed=True):
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {"listen_mode": "wake", "wake_word": "phoenix"})
+        e.asr = mock.Mock()
+        e.brain = mock.Mock()
+        e.brain.env.executor.gate = ActionGate(armed=armed)
+        e.brain.polish.side_effect = lambda text: text  # the big model's rewrite, faked
+        e.cue = mock.Mock()
+        return e, events
+
+    def say(self, e, heard, at=None):
+        e.asr.transcribe.return_value = heard
+        e._one("audio", object(), at or time.monotonic())
+
+    def test_dictation_types_each_sentence_without_the_model(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.assertTrue(e.dictating)
+            self.say(e, "Um, hello Sam comma new line see you at five full stop")
+            self.say(e, "Stop dictation.")
+        self.assertEqual([c.args[1] for c in paste.call_args_list], ["Hello Sam,\nSee you at five. "])
+        e.brain.handle.assert_not_called()
+        self.assertFalse(e.dictating)
+        self.assertEqual(e.state, "idle")
+
+    def test_dictate_lets_the_big_model_fix_the_grammar(self):
+        e, events = self.make()
+        e.brain.polish.side_effect = lambda text: "I went to the shop and bought milk."
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "I has went to the shop and buyed milk.")
+        e.brain.polish.assert_called_once_with("I has went to the shop and buyed milk.")
+        self.assertEqual(paste.call_args.args[1], "I went to the shop and bought milk. ")
+
+    def test_type_what_i_say_types_it_as_said(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, type what I say.")
+            self.say(e, "I has went to the shop.")
+        e.brain.polish.assert_not_called()
+        self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
+
+    def test_without_the_big_model_it_types_what_was_said(self):
+        from ai_linux.engine import llm
+        e, events = self.make()
+        e.brain.polish.side_effect = llm.LLMError("connection refused")
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "I has went to the shop.")
+        self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
+        self.assertTrue(any(ev.get("ev") == "notice" for ev in events))
+
+    def test_text_after_the_start_word_is_typed_at_once(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate meeting moved to Monday.")
+        self.assertEqual(paste.call_args.args[1], "Meeting moved to Monday. ")
+
+    def test_silence_ends_dictation(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            self.say(e, "Phoenix, dictate.")
+        e.followup_until = time.monotonic() - 1
+        e._check_followup()
+        self.assertFalse(e.dictating)
+        self.assertEqual(e.state, "idle")
+
+    def test_needs_actions_allowed(self):
+        e, events = self.make(armed=False)
+        with mock.patch("ai_linux.engine.tools.paste_text") as paste:
+            self.say(e, "Phoenix, dictate.")
+        paste.assert_not_called()
+        self.assertFalse(e.dictating)
+        self.assertTrue(any("Safety" in ev.get("text", "") for ev in events if ev.get("ev") == "notice"))
 
 class NameTestEngineTests(unittest.TestCase):
     def make(self):
@@ -743,7 +933,7 @@ class NameTestEngineTests(unittest.TestCase):
         e, events = self.make()
         long_cmd = "find ~/Downloads -name '*.tmp' -mtime +30 -print"
         e._say("Should I run this command? Say yes or no.", f"Run this? {long_cmd} Say yes or no.")
-        kind, spoken, shown = e.say_q.get_nowait()
+        kind, spoken, shown = e.say_q.get_nowait()[:3]
         self.assertNotIn(long_cmd, spoken)
         self.assertIn(long_cmd, shown)
 
@@ -870,3 +1060,276 @@ class BargeInTests(unittest.TestCase):
         e.audio = mock.Mock(measure_percentage_spoken=measure)
         e._play("Hello there.")
         self.assertEqual(len(calls), 2)
+
+
+
+@unittest.skipIf(importlib.util.find_spec("onnxruntime") is None, "the VAD needs the engine's onnxruntime")
+class EchoCancelSetupTests(unittest.TestCase):
+    """PipeWire is faked: no pw-cli or pw-record runs."""
+
+    def make(self, exists, alive=True):
+        import contextlib
+        from ai_linux.engine import audio
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(mock.patch.object(audio, "VAD"))
+        stack.enter_context(mock.patch.object(audio.atexit, "register"))
+        proc = mock.Mock(poll=mock.Mock(return_value=None if alive else 0))
+        self.popen = stack.enter_context(mock.patch.object(audio.subprocess, "Popen", return_value=proc))
+        self.exists = stack.enter_context(mock.patch.object(audio.PipeWireAudioIO, "_node_exists",
+                                                            side_effect=exists))
+        self.sleep = stack.enter_context(mock.patch.object(audio.time, "sleep"))
+        io = audio.PipeWireAudioIO()
+        self.popen.reset_mock()
+        self.exists.reset_mock()
+        self.sleep.reset_mock()
+        return io, proc
+
+    def test_failed_echo_cancel_is_not_loaded_again_on_every_mic_open(self):
+        io, _ = self.make(exists=lambda name: False)
+        io._ensure_aec()  # what each start_listening does
+        self.popen.assert_not_called()  # was another pw-cli left running per mic open
+        self.assertEqual(self.sleep.call_count, 0)  # and 4 s of waiting in the caller's thread
+
+    def test_echo_cancel_that_came_up_late_is_used(self):
+        io, _ = self.make(exists=lambda name: False)
+        self.exists.side_effect = lambda name: True  # appeared after the 4 s wait
+        io._ensure_aec()
+        self.assertTrue(io._aec_ok)
+        self.popen.assert_not_called()
+
+    def test_working_echo_cancel_is_not_listed_again(self):
+        answers = iter([False, True])
+        io, _ = self.make(exists=lambda name: next(answers, True))
+        self.assertTrue(io._aec_ok)
+        io._ensure_aec()
+        self.popen.assert_not_called()
+        self.exists.assert_not_called()  # one pw-cli ls per mic open before
+
+    def test_echo_cancel_loads_again_after_pipewire_restarted(self):
+        answers = iter([False, True])
+        io, proc = self.make(exists=lambda name: next(answers, True))
+        proc.poll.return_value = 0  # our pw-cli ended with the old PipeWire, and the module with it
+        self.exists.side_effect = iter([False, True])
+        io._ensure_aec()
+        self.popen.assert_called_once()
+        self.assertTrue(io._aec_ok)
+
+
+class McpCleanupTests(unittest.TestCase):
+    SERVER = Path(__file__).with_name("fake_mcp_server.py")
+
+    def test_server_whose_tool_list_fails_is_stopped(self):
+        from ai_linux.engine import mcp_client
+        made = []
+
+        class Spy(mcp_client.McpServer):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                made.append(self)
+
+            def list_tools(self):
+                raise mcp_client.McpError("tools/list: no answer in 30 s")
+
+        with mock.patch.object(mcp_client, "McpServer", Spy):
+            tools = mcp_client.McpTools([{"name": "demo", "command": sys.executable, "args": [str(self.SERVER)]}])
+        self.assertEqual(tools.tools(), [])
+        try:
+            made[0].proc.wait(timeout=3)
+        except Exception:
+            made[0].close()
+            self.fail("the server was left running")
+
+    def test_reloading_mcp_twice_at_once_closes_every_old_server(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+
+        class Fake:
+            def __init__(self, specs, notice=None):
+                time.sleep(0.2)  # servers take a while to start
+                self.closed = False
+                made.append(self)
+
+            catalog: dict = {}
+
+            def tools(self, *disabled):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        e = Engine(lambda ev: None, {"mcp_servers": [{"name": "a", "command": "x"}]})
+        e.brain = mock.Mock()
+        with mock.patch.object(mcp_client, "McpTools", Fake):
+            threads = [threading.Thread(target=e._load_mcp) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(3)
+        self.assertEqual(len(made), 2)
+        self.assertEqual([m for m in made if not m.closed], [e.mcp])
+
+    def test_quit_while_mcp_servers_start_stops_them(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+
+        class Fake:
+            def __init__(self, specs, notice=None):
+                time.sleep(0.3)
+                self.closed = False
+                made.append(self)
+
+            catalog: dict = {}
+
+            def tools(self, *disabled):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        e = Engine(lambda ev: None, {"mcp_servers": [{"name": "a", "command": "x"}]})
+        e.brain = mock.Mock()
+        with mock.patch.object(mcp_client, "McpTools", Fake), mock.patch("ai_linux.engine.llm.unload"):
+            t = threading.Thread(target=e._load_mcp)
+            t.start()
+            time.sleep(0.05)
+            e.stop()  # the app quits; servers live in their own session, so nothing else ends them
+            t.join(2)
+        self.assertTrue(made and made[0].closed)
+
+
+class TurnOverlapTests(unittest.TestCase):
+    """A cancelled turn's leftovers must not reach the next turn (the speaker runs on its own thread)."""
+
+    def make(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "wake"})
+        e._play = mock.Mock()
+        e.brain = mock.Mock()
+        return e
+
+    def start_speaker(self, e):
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+
+    @staticmethod
+    def drain(e):
+        deadline = time.monotonic() + 2
+        while not e.say_q.empty() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.1)
+
+    def cancelled_first_turn(self, e):
+        def handle(text, source, cancel):
+            cancel.set()  # the user cancelled; this sentence was already on its way past the cleared queue
+            e._say("the rest of the old answer")
+            return {"id": "a", "latency": {}}
+        e.brain.handle.side_effect = handle
+        e._one("text", "first", 0.0)
+
+    def test_late_sentence_of_a_cancelled_turn_is_not_spoken_in_the_next(self):
+        e = self.make()
+        self.cancelled_first_turn(e)
+        e.brain.handle.side_effect = lambda text, source, cancel: (e._say("the new answer"),
+                                                                  {"id": "b", "latency": {}})[1]
+        e._one("text", "second", 0.0)
+        self.start_speaker(e)
+        self.drain(e)
+        self.assertEqual([c.args[0] for c in e._play.call_args_list], ["the new answer"])
+
+    def test_end_of_a_cancelled_turn_leaves_the_next_one_thinking(self):
+        e = self.make()
+        self.cancelled_first_turn(e)
+        seen = {}
+
+        def handle(text, source, cancel):
+            self.start_speaker(e)
+            self.drain(e)
+            seen["state"] = e.state
+            return {"id": "b", "latency": {}}
+        e.brain.handle.side_effect = handle
+        e._one("text", "second", 0.0)
+        self.assertEqual(seen["state"], "thinking")
+
+
+class EngineReviewTests(unittest.TestCase):
+    def test_cancel_ends_a_confirmation_waiting_on_screen(self):
+        from ai_linux.engine.service import Engine
+        from ai_linux.safety.gate import ConfirmRequest
+        events = []
+        e = Engine(events.append, {"spoken_confirm": False})
+        out = {}
+        req = ConfirmRequest("shell.run_command", {"command": "ls"}, "ls")
+        t = threading.Thread(target=lambda: out.setdefault("ok", e._confirm(req)), name="Work", daemon=True)
+        t.start()
+        deadline = time.monotonic() + 2
+        while not any(ev.get("ev") == "confirm" for ev in events) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        e.cancel_turn()
+        t.join(2)
+        self.assertFalse(t.is_alive())  # was stuck for CONFIRM_S, and every request after it waited too
+        self.assertFalse(out["ok"])
+        self.assertTrue(any(ev.get("ev") == "confirm_done" for ev in events))  # the dialog closes
+
+    def test_listen_mode_change_while_starting_waits_for_start_up(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "wake"})
+        e.audio, e._capture = mock.Mock(), mock.Mock()
+        e.state = "loading"
+        e.update_settings({"listen_mode": "always"})
+        self.assertEqual(e.state, "loading")  # _get_ready opens the mic once the models are warm
+        e._capture.assert_not_called()
+
+
+class ListenLoopIdleTests(unittest.TestCase):
+    def test_mic_off_listen_loop_waits_instead_of_polling(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e._hold = mock.Mock(wraps=threading.Event())
+        t = threading.Thread(target=e._listen_loop, daemon=True)
+        t.start()
+        time.sleep(0.5)
+        e._stop.set()
+        self.assertLessEqual(e._hold.is_set.call_count, 2)  # was 20 wake-ups a second while muted
+
+    def test_mic_turned_on_wakes_the_listen_loop(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        frames = __import__("queue").Queue()
+        e.audio = mock.Mock(get_sample_queue=mock.Mock(return_value=frames))
+        t = threading.Thread(target=e._listen_loop, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        e._capture(True)
+        frames.put((np.zeros(512, np.float32), 0.0))
+        deadline = time.monotonic() + 0.5
+        while not frames.empty() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        e._stop.set()
+        self.assertTrue(frames.empty())
+
+
+class LlmStreamTests(unittest.TestCase):
+    def test_broken_stream_is_an_llm_error(self):
+        from ai_linux.engine import llm
+
+        class Resp:
+            def __iter__(self):
+                yield b'{"message": {"content": "Hel"}}\n'
+                raise TimeoutError("timed out")
+
+            def close(self):
+                pass
+
+        # the brain then says it can't reach the model, not "something went wrong"
+        with mock.patch.object(llm, "_post", return_value=Resp()), self.assertRaises(llm.LLMError):
+            list(llm.chat("http://127.0.0.1:9", "m", []))
+
+    def test_garbled_stream_line_is_an_llm_error(self):
+        from ai_linux.engine import llm
+        resp = mock.MagicMock()
+        resp.__iter__.return_value = iter([b"<html>proxy error</html>\n"])
+        with mock.patch.object(llm, "_post", return_value=resp), self.assertRaises(llm.LLMError):
+            list(llm.chat("http://127.0.0.1:9", "m", []))

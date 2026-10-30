@@ -59,6 +59,7 @@ class EngineClient:
         self._stopping = False
         self._restarts = 0
         self._tail: deque[str] = deque(maxlen=20)
+        self.secrets: dict[str, str] = {}  # the controller's tokens, sent after the settings on every start
         self._handler = settings.connect("changed", self._on_setting)
 
     @property
@@ -99,12 +100,15 @@ class EngineClient:
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
                                          cwd=str(Path.home()), text=True, bufsize=1, start_new_session=True)
         except OSError as exc:
+            err.close()
             self.bus.set_state(AssistantState.ERROR, f"Speech engine failed to start: {exc}")
             return
         self.bus.set_state(AssistantState.LOADING, "Starting the speech engine")
         threading.Thread(target=self._read, args=(self.proc,), name="EngineOut", daemon=True).start()
         threading.Thread(target=self._log, args=(self.proc, err), name="EngineErr", daemon=True).start()
         self._send({"cmd": "settings", "values": self.snapshot()})
+        if self.secrets:
+            self._send({"cmd": "secrets", "values": dict(self.secrets)})
 
     def stop(self) -> None:
         self._stopping = True
@@ -141,6 +145,12 @@ class EngineClient:
                 p.stdin.flush()
             except (BrokenPipeError, OSError, ValueError):
                 log.warning("engine is gone; dropped %s", obj.get("cmd"))
+
+    def cancel_timer(self, tid: str) -> None:
+        self._send({"cmd": "cancel_timer", "id": tid})
+
+    def send_secret(self, name: str, value: str) -> None:
+        self._send({"cmd": "secrets", "values": {name: value}})
 
     def set_listen_mode(self, mode: str) -> None:
         pass  # the settings change already reached the engine
@@ -225,6 +235,10 @@ class EngineClient:
             self.bus.knowledge_changed()
         elif ev == "notice":
             self.bus.notice(e.get("level", "info"), e.get("text", ""))
+        elif ev == "timers":
+            self.bus.set_timers(e.get("items") if isinstance(e.get("items"), list) else [])
+        elif ev == "mcp_tools":
+            self.bus.set_mcp_tools(e.get("servers") if isinstance(e.get("servers"), dict) else {})
         elif ev == "no_wake":
             self.bus.wake_missed()
         elif ev == "followup":

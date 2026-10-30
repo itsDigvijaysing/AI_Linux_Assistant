@@ -344,6 +344,7 @@ class HelperTests(unittest.TestCase):
             self.assertRegex(sha, r"^[0-9a-f]{64}$")
 
 
+@unittest.skipIf(sys.version_info < (3, 14), "tar.zst needs Python 3.14 (compression.zstd)")
 class InstallTests(unittest.TestCase):
     """install_release with a tiny tar.zst served locally, in place of the 1.5 GB release."""
 
