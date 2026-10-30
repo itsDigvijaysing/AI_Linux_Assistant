@@ -140,7 +140,9 @@ details of each piece.
 - **Argument fixes:** "change your voice" picks the next voice, "default" = F1; YouTube rule accepts "can you" and
   plays the first video with Web Access on; "play a song" with no player searches YouTube; a timer without a time asks.
 - **One-command installer** (`scripts/install.sh`): apt packages (sudo once), venv, launcher, user-only Ollama, models.
-- **Claude Code cloud review:** prompt drafted in the 2026-10-30 session (areas A-D, draft PRs on cloud/* branches).
+- **Cloud review (whole project):** draft PR on `cloud/project-review`: 11 fixes with tests (speech tied to its
+  turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist
+  `/home`, muted listen loop sleeps). Its "needs live check" rows are for the desktop.
 - **Live check on the desktop (user), batch 4:** talking over a reply (the log line `while speaking: voice up to`
   says what the mic heard), plain chat, a request right after a confirmation, the Home speed row, the Models page.
 - **Live check on the desktop (user):** sleep words ("Phoenix, that's all"), "Stop Phoenix", greetings, "One moment"

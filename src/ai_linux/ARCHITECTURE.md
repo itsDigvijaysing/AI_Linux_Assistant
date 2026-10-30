@@ -98,7 +98,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
   logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
-- **Echo cancel** (`engine/audio.py`): the WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
+- **Echo cancel** (`engine/audio.py`): loaded once per engine (the held `pw-cli` is reused on every mic open; a
+  PipeWire restart loads it again). The WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
   10 ms block). At PipeWire's power-of-two 256 one CPU spike (start-up loading) desynced it for good: ~70 dropouts a
   second and 2 to 18 of ~140 speech frames passed, so every sentence was "too short" (measured 2026-10-30).
 - **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
@@ -184,7 +185,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   spoken sentence. The pill and Home (a lighter user bubble at the end of the list) show them. A reply that doesn't
   fit the pill turns pages in step with the voice (`ui/caption_model.pages` balances them, `page_starts` spreads
   them over `seconds`); the card grows at once so no line is clipped.
-- **Timers** (`engine/timers.py`, tool `set_timer`): kept in `STATE_DIR/timers.json`, one `threading.Timer` each; a
+- **Timers** (`engine/timers.py`, tool `set_timer`): kept in `STATE_DIR/timers.json`, one `threading.Timer` each, re-armed at least every 30 s
+  (`CHECK_S`) so a reminder due during suspend rings on resume; a
   ring plays the timer sound, sends `notify-send` and speaks the message even when muted (`("ring", text)` on the
   speech queue). One missed by under an hour while the app was closed rings at start; longer than 7 days is capped.
   Spans parse number words and halves ("an hour and a half" = 90 min); a bare hour already past ("at 5", 17:00) means
