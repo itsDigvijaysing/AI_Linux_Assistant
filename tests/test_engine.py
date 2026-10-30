@@ -873,7 +873,6 @@ class BargeInTests(unittest.TestCase):
 
 
 
-
 class EchoCancelSetupTests(unittest.TestCase):
     """PipeWire is faked: no pw-cli or pw-record runs."""
 
@@ -1088,3 +1087,27 @@ class ListenLoopIdleTests(unittest.TestCase):
             time.sleep(0.01)
         e._stop.set()
         self.assertTrue(frames.empty())
+
+
+class LlmStreamTests(unittest.TestCase):
+    def test_broken_stream_is_an_llm_error(self):
+        from ai_linux.engine import llm
+
+        class Resp:
+            def __iter__(self):
+                yield b'{"message": {"content": "Hel"}}\n'
+                raise TimeoutError("timed out")
+
+            def close(self):
+                pass
+
+        # the brain then says it can't reach the model, not "something went wrong"
+        with mock.patch.object(llm, "_post", return_value=Resp()), self.assertRaises(llm.LLMError):
+            list(llm.chat("http://127.0.0.1:9", "m", []))
+
+    def test_garbled_stream_line_is_an_llm_error(self):
+        from ai_linux.engine import llm
+        resp = mock.MagicMock()
+        resp.__iter__.return_value = iter([b"<html>proxy error</html>\n"])
+        with mock.patch.object(llm, "_post", return_value=resp), self.assertRaises(llm.LLMError):
+            list(llm.chat("http://127.0.0.1:9", "m", []))

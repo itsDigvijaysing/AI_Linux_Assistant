@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import math
 import threading
@@ -45,7 +46,10 @@ def chat(base: str, model: str, messages: list[dict], *, tools: list[dict] | Non
                 return
             if not line.strip():
                 continue
-            chunk = json.loads(line)
+            try:
+                chunk = json.loads(line)
+            except ValueError as exc:
+                raise LLMError(f"Ollama sent a line that is not JSON: {line[:80]!r}") from exc
             if chunk.get("error"):
                 raise LLMError(chunk["error"])
             msg = chunk.get("message") or {}
@@ -65,6 +69,8 @@ def chat(base: str, model: str, messages: list[dict], *, tools: list[dict] | Non
                     yield "tools", calls
                 yield "done", chunk
                 return
+    except (OSError, http.client.HTTPException) as exc:  # timeouts, resets, cut streams: "can't reach the model"
+        raise LLMError(str(exc) or type(exc).__name__) from exc
     finally:
         resp.close()
 
