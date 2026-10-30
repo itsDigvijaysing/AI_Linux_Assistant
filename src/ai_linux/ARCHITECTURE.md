@@ -14,13 +14,14 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | Module | What |
 |---|---|
 | `config.py` | `APP_ID`, `ICON_NAME`, XDG paths, `Settings` (GObject; `get/set/is_set/reset`, signal `changed::<key>`), `DEFAULTS`, `CHOICES`, `get_settings()` |
-| `state.py` | `AssistantState` enum, `ACTIVE_STATES`, `STATE_LABELS`, `Turn`, `ToolCall`, `Bus` (signals `state-changed(state, detail)`, `turn-added(turn)`, `turn-updated(turn)`, `notice(level, text)`; attributes `state`, `level` 0..1, `level_source` mic/tts, `followup_until`) |
+| `state.py` | `AssistantState` enum, `ACTIVE_STATES`, `STATE_LABELS`, `Turn`, `ToolCall`, `Bus` (signals `state-changed(state, detail)`, `turn-added(turn)`, `turn-updated(turn)`, `notice(level, text)`, `live-text(text, stable, final)`, `saying(text)`, `session-cleared()`, `wake-missed()`; attributes `state`, `level` 0..1, `level_source` mic/tts, `followup_until`, `live` (last live-text until the turn arrives), `session_start`) |
 | `context.py` | `AppContext(app, settings, bus, controller, history, ollama, tray, pill, hotkey, screenshot_mode)` |
-| `controller.py` | `Controller`: `start/stop/enable_demo/set_listen_mode/mute/toggle_listening/push_to_talk/cancel/submit_text`, `engine_available`; `DemoDriver` |
+| `controller.py` | `Controller`: `start/stop/enable_demo/set_listen_mode/mute/toggle_listening/push_to_talk/cancel/submit_text`, `new_session/delete_session/restore_session`, `engine_available`; `DemoDriver` |
 | `wake.py` | `strip_wake`, `heard`, `phrases`, `NameTest`, `rate`, `warnings` (gi- and numpy-free) |
 | `models_catalog.py` | `ModelSpec`, `CATALOG` (small: jiwo-0.8b, laya (optional) · big: qwen3.5:4b, gemma4:e4b), `get`, `for_slot` |
 | `ui/bar_model.py` | Pure bar animation: `BarAnimator.set_state/step/fps/is_settled`, `Frame`, `GEOMETRY`, `COLORS`, `fire_colors(dark)` (thinking and speaking, one colour per bar, sampled from the app icon; the rest stays blue), `level_from_rms`, `hex_to_rgb` |
-| `ui/theme.py` | `install(display)` loads every `ui/css/*.css` + icon path; `apply_color_scheme(settings, display)` |
+| `ui/theme.py` | `install(display)` loads every `ui/css/*.css` + icon path; `apply_color_scheme(settings, display)`; `color_scheme(theme)`: light / dark force, system follows the desktop |
+| `ui/caption_model.py` | The pill caption without GTK: `CaptionModel` (hidden / live / reply), `live_markup`, `scroll_target`, `edge_fades`, `reply_width`, `balanced_width`, `approach`, sizes and the `GLASS` colours |
 | `app.py` | `App(Adw.Application)`; builds optional parts by exact name (below); a missing part is logged, never fatal |
 | `devtools.py` | `render_to_png(widget, path)`, `screenshot(...)` |
 
@@ -30,14 +31,16 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `history_store.py` | `HistoryStore(path)` | sqlite3: `add(turn)`, `update(turn)`, `recent(limit)`, `search(text, limit)`, `days()`, `delete(id)`, `clear()`, `prune(days)` |
 | `ollama.py` | `OllamaManager(ctx)` | GObject, signal `status-changed`; never blocks the main thread |
 | `tray.py` | `Tray(ctx)` | `.available`, `.close()` |
-| `ui/pill.py` | `Pill(ctx)` | `.available`, `.backend` (`x11` / `layer-shell` / None), `.close()`; follows bus + settings itself |
+| `ui/pill.py` | `Pill(ctx)` | `.available`, `.backend` (`x11` / `layer-shell` / None), `.close()`; follows bus + settings itself; frosted capsule plus a caption (`_Caption`) on the side away from the screen edge; light/dark from its display's `Adw.StyleManager` (class `ail-dark`, never a media query) |
 | `hotkey.py` | `Hotkey(ctx)` | `.available`, `.close()` |
 | `ui/window.py` | `MainWindow(ctx)` | `show_page(name)`, `current_page`, `add_toast(toast)`; pages `home history models voice tools safety health`; each page gets a banner, so keep its child an `Adw.ToolbarView` |
 | `ui/pages/<name>.py` | `Page(ctx)` | an `Adw.NavigationPage`; loaded lazily, failure shows an error page |
-| `ui/preferences.py` | `show_preferences(parent, ctx)` | |
+| `ui/preferences.py` | `show_preferences(parent, ctx)` | General, Appearance, Privacy; no About tab (About is the sidebar's `Adw.AboutDialog`, `app._about`, with every credit) |
 | `ui/onboarding.py` | `maybe_show(parent, ctx)`, `show(parent, ctx)` | shown once (`onboarding_done`); the dialog has `go_to(index, animate=True)` and `.closed` |
 | `autostart.py` | `is_enabled()`, `set_enabled(bool)` | XDG autostart entry with `--background` |
 | `desktop_entry.py` | `install()`, `uninstall()`; `python3 -m ai_linux.desktop_entry install` | app-grid launcher and icons under `~/.local/share`, no sudo |
+| `credits.py` | `CREDITS`, `KINDS`, `by_kind()`, `ref_dir()`, `gtk_licence()` | every open-source credit (code, models, libraries, references); read by the About window (one section per kind, featured first) and `scripts/sync_refs.py` |
+| `paste_portal.py` | `paste`, `authorize`, `detect`, `probe` (CLI); `PortalPaste`, `is_terminal()` | paste keys through the RemoteDesktop portal; system Python only |
 
 ## Rules
 - Each builder owns its files and its own `ui/css/<area>.css`; shared files change only via the lead.
@@ -45,33 +48,160 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - Store only user-changed settings. No sudo at runtime. Licence: MIT; never copy GPL code (Alpaca, Newelle).
 - Comments: one short line, the why. No em dash characters anywhere.
 
-## Engine behaviour (2026-10-28)
+## Engine behaviour (2026-10-29)
 - **Profiles:** `schema.py` PROFILE_KEYS have a battery and a charger value; `profile` = auto (follows `on_ac_power()`,
-  polled every 5 s) | battery | charger. Charger default: no small model, the big model routes. Pages edit one profile
-  through `ProfileView`; `ui/profile_group.py` switches it.
+  polled every 5 s) | battery | charger. Since 2026-10-29 the models are one choice for both (`SHARED_NOW`: speech,
+  small and big model and their devices, reasoning, escalation); a profile keeps only `speed`, `small_on` and the voice
+  and pill keys. Charger default: Automatic, small model off (the big model routes). `Settings._migrate` moves old
+  per-profile model values to one (battery's wins; "none" becomes `small_on` off; `big_model_policy` instant becomes
+  speed full). The Voice page edits one profile through `ProfileView`; `ui/profile_group.py` switches it.
 - **Mute** is the global `muted` setting, not a profile value, so a charger switch never unmutes. The client sends the
   effective `listen_mode` ("off" when muted).
 - **Models:** jiwo (OpenVINO int8, Intel iGPU) picks the tool; arguments come from the tool's code parser, then jiwo for
-  a fixed choice, then the big model (qwen3.5:4b on NVIDIA). A device, model or context change unloads the old model.
+  a fixed choice, then the big model (qwen3.5:4b on NVIDIA). A device, model or context change unloads the old model;
+  so does quitting (`Engine.stop()`, first, before MCP servers close), else Ollama keeps it for `keep_alive`.
   Small models load through `engine/small_models.py` (`jiwo.py`, `laya.py`: both torch-free, `ask(state, question,
   options)`); downloadable OpenVINO models are listed in `downloads.OPENVINO_MODELS`.
-- **Cues** (`engine/sounds.py`, pw-play): a finished action chimes instead of speaking (`action_feedback`); failures and
-  answers are spoken; a chime when the big model takes over (`big_cue`).
+- **Cues** (`engine/sounds.py`, pure Python, pw-play through the echo-cancel sink): listen, ok, fail, unclear, big
+  (a swell and a soft flame), sleep, timer. A finished action chimes instead of speaking (`action_feedback`; a tool's
+  `Result.cue` can pick another sound); failures and answers are spoken. Called and then nothing said: the sleep
+  sound when the follow-up window closes (`Engine.called`, `_check_followup`); spoken but no words heard: unclear.
+  The Voice page's Sounds group previews each one (rendered to the runtime dir).
+- **Quick rules** (`engine/quick.py`, at most 9 words, before routing; `route` = "rule", chip "Quick reply", no model):
+  sleep words (stop, that's all, go to sleep, never mind, bye, good night), greetings, thanks, "what can you do",
+  "play X on YouTube". Kept facts' rules run there too.
+- **Sleep:** `go_to_sleep` sets `Engine.sleep_after`, so the end of the turn goes idle instead of reopening the
+  follow-up window. `wake.strip_wake`: words before the name are the request ("Stop Phoenix" = "Stop") unless they
+  are call words (`CALL_WORDS`: hey, hello, wake up, ...).
+- **Cold big model:** when it isn't in memory, it says "One moment." before loading (~8 s) and plays the big sound
+  (`Brain._cue_big`). The line goes out as a "wait" item, so the state returns to thinking (ember glow) after it.
+- **Chat or command** (`Brain.route`, 2026-10-29): offering the action tools to the big model on plain chat made it
+  call them ("hi" ran `get_time`). Now the router's letters decide first: "none" at least `CHAT_SURE` (0.5, big model
+  routing) or the escalation threshold (small model routing) answers with no action tools; memory tools only when
+  `about_self(text)` ("My sister lives in Pune"). Unsure: the router's likely tools (p at least 0.05, at most 4) plus
+  memory. A memory call is saved quietly (`_note`) and a second stream without tools answers; with "I'll remember
+  that" in its history the model kept saving instead of answering. Measured with fake actions: 17 of 18 multi-turn
+  replies good, about 0.7 s; letters 26 of 28 chat and 24 of 24 tasks right, native tool calling 13 of 28 chat.
+- **Hearing** (`engine/service.py`): the wake-free window (hotkey, follow-up) is judged at the utterance's start
+  (pre-roll adjusted), not its end, so a long sentence begun in the window counts. During a confirmation a reply that
+  isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
+  start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
+  logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
+- **Barge-in:** VAD 0.5 while listening and while speaking: echo cancelling leaves our own voice below 0.05 (measured
+  2026-10-29), so the old 0.8 only missed the user. It interrupts on 8 voiced of the last 12 frames (~0.4 s), so dips
+  between words don't reset it. Each reply logs `while speaking: voice up to X, N of 12 frames`.
 - **Confirmations** show a dialog and, with audio, can be answered by voice (`spoken_confirm`); `confirm_done` closes it.
-- **About you** (`user_name`, `about_me`) goes only into the big model's instructions. Default name/wake word: Phoenix.
+  The pill shows the whole command ("Run this? <cmd> Say yes or no.") while the voice says "this command"
+  (`Engine._say(text, shown)`).
+- **Name:** the app is **Phoenix** wherever people see it (`paths.APP_NAME`: window, desktop entry, autostart, About,
+  onboarding, tray, shortcut dialog). App id, folders, the `ai_linux` package and `bin/ai-linux-app` keep ai-linux.
+- **Knowledge** (`knowledge.py`, gi-free, `~/.local/share/ai-linux/knowledge.json`, 0600, flock + re-read on mtime so
+  app and engine share it): up to 20 kept facts (stay until deleted) and 30 learned ones (fade 14 days after their last
+  update unless kept; the oldest goes when a 31st comes). The big model alone gets `remember` / `forget`
+  (`tools.MEMORY_TOOLS`, family "assistant", not gated, never on the small model's routing menu) and the facts in its
+  instructions, capped at 2400 characters, kept first. `user_name` stays a setting. The old `about_me` text is split
+  into kept facts once at start (`migrate_about_me`). UI: `ui/knowledge.py`, a sidebar entry under Preferences; the
+  engine's `{"ev": "knowledge"}` refreshes it.
+- **Home** (`ui/pages/home.py`): one status row (bars in the `row` geometry, state, hint) with the controls on the
+  right: a listen-mode dropdown (Wake word / Hotkey / Always on) and one Start/Stop button (Stop = the `muted`
+  setting via `controller.mute`; also stopped when a profile's `listen_mode` is off). The header holds one row of
+  three toggles (Save Battery, Automatic, Max Performance) that sets the speed of the profile in use; a progress bar shows while starting or waking the big model. It wraps on a narrow window. The empty state
+  offers three example requests (sent as text); the stats line hides until there is a request. User-facing text says
+  "request", not "turn". With no engine, a notice says it isn't installed and opens Health.
+- **Speed** (`speed`, per profile, `schema.SPEEDS`): Save Battery = efficient (big model on demand, freed 2 min after),
+  Automatic = auto (on demand, kept 30 min), Max Performance = full (kept loaded). Battery default efficient, charger
+  auto. The engine never sees `speed`: `EngineClient.model_values()` sends `schema.loading(speed)`
+  (`big_model_policy`, `ollama_keep_alive`) and `small_model` = "none" when the profile's `small_on` is off. Leaving
+  instant unloads the big model.
+- **Models page** (`ui/pages/models.py`, `models_overview.py`), top to bottom: Running Now (settings in use, speech,
+  small and big model state from Ollama); Battery and Charger (a two-column table with only Speed and "Small model
+  picks commands", each column edits its profile through `settings.set_for`, the one in use is marked, a line explains
+  the speed in use); Ollama; Speech Recognition, Small Model, Big Model (pick, download, Runs On; one choice for both
+  profiles); Advanced (Reasoning, Escalation Threshold, Context Length); Storage (Ollama models on disk, delete).
+- **Starting:** the engine stays `loading` until speech recognition is warm and `Brain.warm()` (small model, plus the
+  big one when kept loaded) is done; the detail names the step ("Starting speech recognition", "Loading the small
+  model", "Loading the big model"). The mic opens only then; the hotkey and push-to-talk send a "still starting"
+  notice. The pill shows while starting.
+- **Big model at work:** once per turn, when the big model routes, fills arguments or answers, the state becomes
+  `thinking` with detail `schema.BIG_WAKING` (not in memory yet) and then `BIG_WORKING` at its first output; only while
+  still thinking. The bars play their "big" animation (all bars breathe together, ember colours); the pill capsule gets
+  the `ail-big` class (an ember glow) until the turn's speaking ends; the "big" chime plays if it was asleep or the
+  small model routed (`big_cue`).
+- **Colours** (`ui/bar_model.palette`): you talking and the assistant listening in GNOME blues (idle, follow-up,
+  listening), its reply in the phoenix fire, thinking a fire sweep over the blue, starting steel to blue; every state
+  change blends the colours over 0.45 s (`COLOR_BLEND_S`).
+- **New Session** (Home's header): the engine's `new_session` command clears the model's conversation; Home shows only
+  turns after `bus.session_start`; History keeps everything. Its menu has **Delete This Session**
+  (`controller.delete_session`): the turns on Home leave History too, then New Session; the toast's Undo
+  (`restore_session`) puts them back and resets `session_start`, but the model stays fresh. Learned facts stay.
+- A bare wake word in a wake-free window (after the hotkey, or in follow-up) opens follow-up instead of reaching the
+  model (it once changed the voice). Speech without the wake word outside such a window is dropped by design; unless it's junk
+  ("um", "okay"), the engine sends `{"ev": "no_wake"}` and Home's hint says "Heard you. Say “phoenix” first" for 4 s.
+  Default name/wake word: Phoenix.
 - **Wake word** (`wake.py`, shared by app and engine): the name must start within the first 4 words; similarity
   0.75; a name split in two by speech recognition ("Dora Emon") also matches. **Name test** (Voice page, Test beside
   the wake word; `ui/name_test.py`): the user reads 5 sentences with the name and 1 without; the engine's `name_test`
   command transcribes one utterance and sends `{"ev": "heard"}` back without acting on it (expires after 20 s).
+- **Dead mic** (`engine/mic_watch.py`): 5 s of digital silence (peak at most 4 of 32768) or no frames while capturing
+  first reopens the capture once, quietly (OpenWhispr's re-acquire), then sends an error notice naming the desktop's
+  input (`wpctl inspect @DEFAULT_AUDIO_SOURCE@`); a working mic after echo cancelling never measured below 51. Seen
+  2026-10-28: the USB card's profile flipped to its S/PDIF input.
+- **Paste** (`engine/tools.py` `paste_text`, OpenWhispr's GNOME order): clipboard, then the RemoteDesktop portal if a
+  restore token is saved (`~/.local/state/ai-linux/portal-paste-token`), else ydotool when its daemon runs, else the
+  portal with its one-time permission dialog, else "press Control V". Terminals (found through AT-SPI) get
+  Ctrl+Shift+V. The portal part is `paste_portal.py`, ported from OpenWhispr's `linux-fast-paste.c`; it runs on the
+  system Python because the engine venv has no gi.
 - **MCP** (`engine/mcp_client.py`, stdlib stdio JSON-RPC): each server's tools join as `<server>_<tool>`, gated as
   `mcp.<server>.<tool>` and confirmed unless the server sets `confirm: false`; reloaded live on a settings change.
+- **Speech device** (`stt_device`, one value for both profiles; Voice page's first group and the Models page): Parakeet TDT's encoder runs on the Intel GPU through OpenVINO
+  (`engine/asr/ov_encoder.py`), the decoder and joiner stay on the CPU. Input is padded to whole seconds (each new
+  length costs ~0.6 s of compiling, cached in `~/.cache/ai-linux/openvino`, ~1.3 GB) and every length up to 15 s is
+  warmed in the background at start (first ever ~10 s + ~11 s, later ~1.3 s + ~4 s). Any failure falls back to the CPU
+  and the `{"ev": "model", "name": "speech"}` event says why. CTC always runs on the CPU.
+- **Live words** (`engine/live_text.py`, `live_text` setting): while recording, the utterance so far is decoded again
+  about every 0.6 s (slower if a decode takes longer), one decode at a time, under the same lock as the final decode.
+  `{"ev": "partial", "text", "stable", "final"}`: `stable` counts the leading words two updates agree on. Without the
+  wake word nothing is shown; once the name is heard the state turns to listening at once. Always-on with "Ignore
+  other talk" shows nothing until the sentence is judged. The heard sentence goes out with `final: true` before
+  thinking; a rejected one is cleared with an empty final. `{"ev": "saying", "text", "seconds"}` comes before each
+  spoken sentence. The pill and Home (a lighter user bubble at the end of the list) show them. A reply that doesn't
+  fit the pill turns pages in step with the voice (`ui/caption_model.pages` balances them, `page_starts` spreads
+  them over `seconds`); the card grows at once so no line is clipped.
+- **Timers** (`engine/timers.py`, tool `set_timer`): kept in `STATE_DIR/timers.json`, one `threading.Timer` each; a
+  ring plays the timer sound, sends `notify-send` and speaks the message even when muted (`("ring", text)` on the
+  speech queue). One missed by under an hour while the app was closed rings at start; longer than 7 days is capped.
+  Spans parse number words and halves ("an hour and a half" = 90 min); a bare hour already past ("at 5", 17:00) means
+  the evening; "cancel the timer" with several running asks which (`which`: its length or message, or all).
+- **Web Access** (`web_access`, off by default; `weather_city`): `engine/web.py` (stdlib, 6 s timeout, fixed https
+  hosts): weather from Open-Meteo, look-up from DuckDuckGo Instant Answer then Wikipedia. While off, `WEB_TOOLS` are
+  left off every routing menu, so questions still reach the big model; called anyway they say how to turn it on.
+- **App tools** (`engine/apps.py`): `installed_apps` (all apps by group, or what one is for, from the .desktop
+  Comment), `list_folder` (newest items of a known folder), `switch_to_app` (D-Bus Activate, else `gtk-launch`),
+  `close_app` (D-Bus `quit` action, else `flatpak kill`, else `pkill -TERM -x` for this user; web apps refused).
+- **Top-bar icon** (`tray.py`, StatusNotifierItem): `IconName` + `IconThemePath` = `data/icons`, files
+  `phoenix-tray-*-symbolic.svg` (`scripts/gen_tray_icons.py`) so the shell paints them in the panel's text colour:
+  solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
+  when stopped. The pixmap is only a fallback, drawn once per state.
 - Measurements and model choices: `bench/README.md`.
 
-## Open work (2026-10-28)
+## Open work (2026-10-29)
+- **Dictation** (OpenWhispr's main feature: type what you say at the cursor): wanted, a separate task. The paste half
+  exists (`paste_text`); it needs its own listen mode or trigger, and tests.
+- Routing re-measured on 2026-10-29 for chat (above); a full task re-run on the 27-tool menu is still open.
+  Voice-not-heard follow-ups: follow a changed default mic, retry an empty transcription.
+- **Not committed yet:** everything since `a6a1c9c` (live words, pill caption, Dark theme, Knowledge, load modes,
+  starting and big-model effects, colour blends, New Session, the Phoenix rename, the bare-wake-word and shortcut-text
+  fixes, and the 2026-10-29 Home row, Speed and Battery, Delete This Session, About and Tools changes, and batches 2 and 3: sleep and quick rules, sounds, pill
+  paging, new tools, Web Access, Tools categories, voices, top-bar icons, Models overview; and batch 4: chat or
+  command, hearing and barge-in fixes, 14 review fixes, Speed per profile with one model choice, Models page redesign). `VERSION` still says 3.1.1; 3.2.0 suggested. Ask before committing.
 - Laya: uploaded to `itsDigvijaysing/laya-typed-decisions-openvino` (commit `c1014fc`, pinned); one full download
   check through the Models page is still to do (it was cut off by a weak connection).
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package.
-- User-only: a live voice run on the real desktop (including the name test).
-- Not yet compared with GLaDOS upstream since our 2026-06-15 copy (upstream `ea018f5`, 2026-10-10): ASR, VAD,
-  routing. Upstream's routing tree (area, server, tool) isn't ported; v3 routes over one flat menu.
+- User-only: a live voice run on the real desktop (including the name test), and a look at the new pieces live:
+  the pill while starting and with the big model's glow, the colour blends, Home's row, Mute, New Session and
+  Delete This Session (with Undo), the Speed row on Home and the Models page, the About window's credits, the
+  Knowledge dialog (remember/forget by voice), and everything in `HANDOFF.md`'s Open list. The pill capsule is anchored to the window's edge (`_column` valign
+  END/START), so a growing caption should not move it; check that live too.
+- GLaDOS upstream (`ea018f5`) compared on 2026-10-28: ASR and VAD changed only in ONNX backend choice (see
+  `REFERENCES.md`). Upstream's routing tree (area, server, tool) isn't ported; v3 routes over one flat menu.
 - `FUTURE_DIRECTION.md` predates v3 (it still says "keep the vendored GLaDOS").

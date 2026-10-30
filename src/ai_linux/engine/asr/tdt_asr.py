@@ -18,6 +18,14 @@ from .mel_spectrogram import MelSpectrogramCalculator, MelSpectrogramConfig
 ort.set_default_logger_severity(4)
 
 
+def _config_meta(config: dict) -> dict[str, str]:
+    """The encoder metadata the ONNX file carries, from the NeMo config it came with (the GPU path skips the file)."""
+    prednet = (config.get("decoder") or {}).get("prednet") or {}
+    meta = {"normalize_type": (config.get("preprocessor") or {}).get("normalize"),
+            "pred_rnn_layers": prednet.get("pred_rnn_layers"), "pred_hidden": prednet.get("pred_hidden")}
+    return {k: str(v) for k, v in meta.items() if v is not None}
+
+
 class _OnnxTDTModel:
     """
     Internal helper class to manage the three ONNX sessions (Encoder, Decoder, Joiner)
@@ -34,6 +42,8 @@ class _OnnxTDTModel:
         encoder_model_path: Path = DEFAULT_ENCODER_MODEL_PATH,
         decoder_model_path: Path = DEFAULT_DECODER_MODEL_PATH,
         joiner_model_path: Path = DEFAULT_JOINER_MODEL_PATH,
+        encoder_device: str = "cpu",
+        config: dict | None = None,
     ) -> None:
         """
         Initializes the ONNX model sessions and extracts necessary metadata.
@@ -49,7 +59,20 @@ class _OnnxTDTModel:
         session_opts.enable_mem_pattern = True  # Can uncomment if beneficial
 
         logger.info(f"Using ONNX providers: {providers}")
-        self.encoder = self._init_session(encoder_model_path, session_opts, providers)
+        self.device = "cpu"
+        self.device_error = ""
+        self.encoder = None
+        if encoder_device == "intel-gpu":
+            try:
+                from .ov_encoder import OVEncoder
+
+                self.encoder = OVEncoder(encoder_model_path, _config_meta(config or {}))
+                self.device = "intel-gpu"
+            except Exception as exc:  # no Intel GPU or OpenVINO: the CPU still works
+                self.device_error = str(exc) or type(exc).__name__
+                logger.warning(f"Speech recognition stays on the CPU: {self.device_error}")
+        if self.encoder is None:
+            self.encoder = self._init_session(encoder_model_path, session_opts, providers)
         self.decoder = self._init_session(decoder_model_path, session_opts, providers)
         self.joiner = self._init_session(joiner_model_path, session_opts, providers)
 
@@ -159,6 +182,14 @@ class _OnnxTDTModel:
             self.encoder_in_names[0]: features,
             self.encoder_in_names[1]: feature_length,
         }
+        bucket = getattr(self.encoder, "bucket", 0)
+        if bucket:  # padded to few lengths for the GPU; the true length masks the padding, then it is cut off
+            from .ov_encoder import pad_frames
+
+            padded, t = pad_frames(features, bucket)
+            input_dict = {self.encoder_in_names[0]: padded, self.encoder_in_names[1]: np.array([t], dtype=np.int64)}
+            encoder_out, lengths = self.encoder.run(None, input_dict)[:2]
+            return np.asarray(encoder_out[:, :, : int(np.asarray(lengths).ravel()[0])], dtype=np.float32)
         # We only need the main encoder output, typically the first one.
         encoder_out = self.encoder.run([self.encoder_out_names[0]], input_dict)[0]
         return np.asarray(encoder_out, dtype=np.float32)  # Shape [batch, channels, time_reduced]
@@ -263,6 +294,7 @@ class AudioTranscriber:
     def __init__(
         self,
         config_path: Path = DEFAULT_CONFIG_PATH,
+        device: str = "cpu",
     ) -> None:
         """
         Initializes the AudioTranscriber with models and configurations.
@@ -302,7 +334,9 @@ class AudioTranscriber:
             providers = ["CPUExecutionProvider"]
 
         # Initialize the internal ONNX model handler
-        self.model = _OnnxTDTModel(providers)
+        self.model = _OnnxTDTModel(providers, encoder_device=device, config=self.config)
+        self.device = self.model.device
+        self.device_error = self.model.device_error
 
         # 4. Load the vocabulary from the YAML configuration file
 
@@ -514,6 +548,20 @@ class AudioTranscriber:
         logger.info(f"Transcribed text: '{text}'")
 
         return text
+
+    def warm(self, max_seconds: float, lock=None) -> None:
+        """Run once so the first command isn't slow (1.4 s instead of 0.1 s, measured), then each GPU length."""
+        import contextlib
+
+        hold = lock if lock is not None else contextlib.nullcontext()
+        rng = np.random.default_rng(0)
+        with hold:
+            self.transcribe((rng.standard_normal(8000) * 1e-3).astype(np.float32))
+        bucket = getattr(self.model.encoder, "bucket", 0)
+        lengths = int(np.ceil(max_seconds * 100 / bucket)) if bucket else 0
+        for k in range(1, lengths + 1):
+            with hold:  # one length at a time, so a real command never waits for the whole warm-up
+                self.model.run_encoder(np.zeros((1, self.preprocessor_conf.features, k * bucket), np.float32))
 
     def transcribe_file(self, audio_path: Path) -> str:
         """

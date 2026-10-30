@@ -34,12 +34,16 @@ def install(display: Gdk.Display | None = None) -> None:
     Gtk.IconTheme.get_for_display(display).add_search_path(str(ASSETS_DIR / "icons"))
 
 
+def color_scheme(theme: str) -> Adw.ColorScheme:
+    return {"light": Adw.ColorScheme.FORCE_LIGHT, "dark": Adw.ColorScheme.FORCE_DARK}.get(theme,
+                                                                                         Adw.ColorScheme.DEFAULT)
+
+
 def apply_color_scheme(settings, display: Gdk.Display | None = None) -> None:
     manager = Adw.StyleManager.get_for_display(display) if display else Adw.StyleManager.get_default()
 
     def update(*_):
-        light = settings.get("theme") == "light"
-        manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT if light else Adw.ColorScheme.DEFAULT)
+        manager.set_color_scheme(color_scheme(settings.get("theme")))
 
     update()
     settings.connect("changed::theme", update)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Tests and headless screenshots override the id so they never talk to a running instance.
 APP_ID = os.environ.get("AI_LINUX_APP_ID", "io.github.itsdigvijaysing.AILinux")
-APP_NAME = "AI Linux"
+APP_NAME = "Phoenix"  # the name people see; ids, folders and the package stay ai-linux
 ICON_NAME = "io.github.itsdigvijaysing.AILinux"  # fixed even when tests override APP_ID
 
 

@@ -1,4 +1,4 @@
-"""Preferences dialog: startup, what the assistant knows about you, appearance, privacy and about."""
+"""Preferences dialog: startup, what the assistant knows about you, appearance and privacy (About is its own window)."""
 
 from __future__ import annotations
 
@@ -9,20 +9,15 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from ai_linux import __version__, autostart  # noqa: E402
-from ai_linux.config import APP_NAME, ICON_NAME, REPO_ROOT, ProfileView  # noqa: E402
+from ai_linux import autostart  # noqa: E402
+from ai_linux.config import ProfileView  # noqa: E402
 from ai_linux.ui.profile_group import ProfileGroup  # noqa: E402
 
 log = logging.getLogger(__name__)
 
-LICENCES = (
-    ("ai-linux", APP_NAME, "MIT licence", "LICENSE"),
-    ("glados", "GLaDOS speech pipeline", "MIT licence, David Ng", "LICENSE.GLaDOS"),
-    ("computer-use-linux", "computer-use-linux window control", "MIT licence", "LICENSE.computer-use-linux"),
-)
-THEMES = (("light", "Light"), ("system", "Follow System"))
+THEMES = (("light", "Light"), ("dark", "Dark"), ("system", "Follow System"))
 POSITIONS = (("bottom", "Bottom"), ("top", "Top"))
 
 
@@ -53,10 +48,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._binds = _Bindings()
         self._syncing = False
         self._spin_timer = 0
-        self._about_timer = 0
         self._profiles: ProfileGroup | None = None
         self._dependants: list[Gtk.Widget] = []
-        for build in (self._general, self._appearance, self._privacy, self._about):
+        for build in (self._general, self._appearance, self._privacy):
             try:
                 self.add(build())
             except Exception:
@@ -134,43 +128,13 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return page
 
     def _build_about_you(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(
-            title="About You",
-            description="The big model reads this when it answers or writes for you, for example to sign an "
-                        "email. It stays on this computer.")
-        name = Adw.EntryRow(title="Your name", show_apply_button=True, text=str(self.settings.get("user_name")))
-        name.connect("apply", lambda r: self._store("user_name", r.get_text().strip()))
-        self._watch("user_name", lambda: name.set_text(str(self.settings.get("user_name"))))
-        group.add(name)
-        view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False, top_margin=8, bottom_margin=8,
-                            left_margin=10, right_margin=10)
-        view.update_property([Gtk.AccessibleProperty.LABEL], ["About you"])
-        buf = view.get_buffer()
-        buf.set_text(str(self.settings.get("about_me")))
-        hint = Gtk.Label(label="Anything that helps, such as your city, work, languages or how you like replies. "
-                               "Up to 1,500 characters.", xalign=0, wrap=True,
-                         css_classes=["dim-label", "caption", "ail-sp-note"])
-
-        def commit():
-            self._about_timer = 0
-            self._store("about_me", buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip()[:1500])
-            return False
-
-        def changed(_b):
-            if self._syncing:
-                return
-            if self._about_timer:
-                GLib.source_remove(self._about_timer)
-            self._about_timer = GLib.timeout_add(600, commit)  # one write per pause, not per key
-
-        buf.connect("changed", changed)
-        self._about_commit = commit
-        self._watch("about_me", lambda: buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip()
-                    != self.settings.get("about_me") and buf.set_text(str(self.settings.get("about_me"))))
-        scroller = Gtk.ScrolledWindow(child=view, min_content_height=90, max_content_height=200,
-                                      propagate_natural_height=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        group.add(Gtk.Frame(child=scroller, css_classes=["card"]))
-        group.add(hint)
+        group = Adw.PreferencesGroup(title="About You")
+        row = Adw.ActionRow(title="Knowledge", activatable=True,
+                            subtitle="Your name, facts you keep and what Phoenix has learned about you")
+        row.add_prefix(Gtk.Image(icon_name="user-info-symbolic"))
+        row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        row.connect("activated", lambda *_: self.ctx.app.activate_action("knowledge", None))
+        group.add(row)
         return group
 
     def _autostart_active(self) -> bool:
@@ -219,7 +183,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         page = Adw.PreferencesPage(title="Appearance", icon_name="preferences-desktop-appearance-symbolic",
                                    name="appearance")
         style = Adw.PreferencesGroup(title="Style")
-        style.add(self._toggles("theme", "Colours", "Follow System switches to dark when your desktop does", THEMES))
+        style.add(self._toggles("theme", "Colours", "The window and the floating indicator; Follow System matches "
+                                                    "your desktop", THEMES))
+        style.add(self._switch("live_text", "Show words while talking",
+                               "Your words as you speak, on Home and in the indicator; the indicator also shows "
+                               "the reply"))
         page.add(style)
         self._profiles = ProfileGroup(self.settings, "The floating indicator can differ on battery and on the "
                                                      "charger.")
@@ -352,67 +320,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._refresh_count()
         return GLib.SOURCE_REMOVE
 
-    # About
-
-    def _about(self) -> Adw.PreferencesPage:
-        page = Adw.PreferencesPage(title="About", icon_name="help-about-symbolic", name="about")
-        hero_group = Adw.PreferencesGroup()
-        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.CENTER,
-                       css_classes=["ail-prefs-hero"])
-        hero.append(Gtk.Image(icon_name=ICON_NAME, pixel_size=96, css_classes=["icon-dropshadow"]))
-        hero.append(Gtk.Label(label=APP_NAME, css_classes=["title-1"]))
-        hero.append(Gtk.Label(label="A local-first voice assistant for the Linux desktop", wrap=True,
-                              justify=Gtk.Justification.CENTER, css_classes=["dim-label"]))
-        version = Gtk.Label(label=f"Version {__version__}", halign=Gtk.Align.CENTER, selectable=True,
-                            css_classes=["ail-prefs-version"])
-        hero.append(version)
-        hero_group.add(hero)
-        page.add(hero_group)
-
-        licences = Adw.PreferencesGroup(title="Licences",
-                                        description="Free software. You may use, study, share and change it.")
-        for key, title, subtitle, filename in LICENCES:
-            path = REPO_ROOT / filename
-            if not path.exists():
-                continue
-            row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
-            row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-            row.connect("activated", lambda _r, k=key: self.open_licence(k))
-            licences.add(row)
-        page.add(licences)
-        return page
-
-    def open_licence(self, key: str) -> None:
-        entry = next((e for e in LICENCES if e[0] == key), None)
-        if entry is None:
-            return
-        _key, title, _sub, filename = entry
-        buf = Gtk.TextBuffer()
-        buf.set_text("Loading…")
-        text = Gtk.TextView(buffer=buf, editable=False, cursor_visible=False, wrap_mode=Gtk.WrapMode.WORD_CHAR,
-                            css_classes=["ail-prefs-licence"], monospace=True)
-        scroller = Gtk.ScrolledWindow(child=text, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        view = Adw.ToolbarView(content=scroller)
-        view.add_top_bar(Adw.HeaderBar())
-        self.push_subpage(Adw.NavigationPage(title=title, child=view))
-
-        def loaded(file, result):
-            try:
-                ok, data, _etag = file.load_contents_finish(result)
-                buf.set_text(data.decode("utf-8", "replace"))
-            except GLib.Error as exc:
-                buf.set_text(f"Couldn't read {filename}: {exc.message}")
-
-        Gio.File.new_for_path(str(REPO_ROOT / filename)).load_contents_async(None, loaded)
-
     def _on_closed(self, *_):
         if self._spin_timer:
             GLib.source_remove(self._spin_timer)
             self._spin_timer = 0
             self._store("history_retention_days", int(self._spin.get_value()))
-        if self._about_timer:
-            GLib.source_remove(self._about_timer)
-            self._about_commit()
         self._binds.clear()
         if self._profiles is not None:
             self._profiles.close()

@@ -33,7 +33,7 @@ REGISTRY_IFACE = "org.freedesktop.host.portal.Registry"
 REQUEST_IFACE = "org.freedesktop.portal.Request"
 SESSION_IFACE = "org.freedesktop.portal.Session"
 SHORTCUT_ID = "toggle-listen"
-SHORTCUT_DESCRIPTION = "Talk to AI Linux"
+SHORTCUT_DESCRIPTION = "Talk to Phoenix"
 
 # GTK accelerator modifier names to the XDG shortcuts spec names.
 _MODIFIERS = {
@@ -100,6 +100,11 @@ def portal_label(trigger: str | None) -> str:
 def accel_label(accel: str | None) -> str:
     """Readable form of a GTK accelerator for tooltips and settings rows."""
     return portal_label(accel_to_portal(accel)) or (accel or "")
+
+
+def readable_trigger(desc: str) -> str:
+    """GNOME says 'Press <Alt><Super>space'; show 'Press Alt+Super+Space' (raw '<' also broke markup labels)."""
+    return re.sub(r"(?:<\w+>)+[^\s<>]+", lambda m: accel_label(m.group(0)), desc).strip()
 
 
 def _request_path(conn: Gio.DBusConnection, token: str) -> str:
@@ -368,7 +373,7 @@ class Hotkey(GObject.Object):
         """Record our shortcut's trigger from a portal list; True when it is bound."""
         for sid, info in shortcuts or []:
             if sid == SHORTCUT_ID:
-                desc = info.get("trigger_description") or None
+                desc = readable_trigger(info.get("trigger_description") or "") or None
                 self.trigger_description = desc
                 self.bound = True
                 log.info("hotkey: talk shortcut bound to %s", desc or "(no description)")

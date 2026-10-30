@@ -35,8 +35,8 @@ STATE_LABELS = {
     AssistantState.LISTENING: "Listening",
     AssistantState.THINKING: "Thinking",
     AssistantState.SPEAKING: "Speaking",
-    AssistantState.LOADING: "Loading",
-    AssistantState.MUTED: "Muted",
+    AssistantState.LOADING: "Starting",
+    AssistantState.MUTED: "Stopped",
     AssistantState.ERROR: "Error",
 }
 
@@ -86,6 +86,11 @@ class Bus(GObject.Object):
         "turn-added": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "turn-updated": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "notice": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),  # info|warning|error, text
+        "live-text": (GObject.SignalFlags.RUN_FIRST, None, (str, int, bool)),  # words so far, settled count, final
+        "saying": (GObject.SignalFlags.RUN_FIRST, None, (str, float)),  # a reply sentence as spoken, its seconds
+        "knowledge-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),  # the engine saved or forgot a fact
+        "session-cleared": (GObject.SignalFlags.RUN_FIRST, None, ()),  # Home's New Session, or its undo
+        "wake-missed": (GObject.SignalFlags.RUN_FIRST, None, ()),  # speech dropped for lacking the wake word
     }
 
     def __init__(self):
@@ -96,6 +101,8 @@ class Bus(GObject.Object):
         self.level_source: str | None = None  # mic | tts
         self.level_ts = 0.0
         self.followup_until: float | None = None  # monotonic deadline of the wake window
+        self.live: tuple[str, int, bool] = ("", 0, True)  # last live-text, for widgets made later
+        self.session_start = 0.0  # wall clock of the last New Session; Home shows only turns after it
 
     def set_state(self, state: AssistantState | str, detail: str = "") -> None:
         state = AssistantState(state)
@@ -113,13 +120,42 @@ class Bus(GObject.Object):
         self.level_ts = time.monotonic()
 
     def add_turn(self, turn: Turn) -> None:
-        self._main(self.emit, "turn-added", turn)
+        self._main(self._add_turn, turn)
+
+    def _add_turn(self, turn: Turn) -> None:
+        self.live = ("", 0, True)  # the turn now holds what was heard
+        self.emit("turn-added", turn)
 
     def update_turn(self, turn: Turn) -> None:
         self._main(self.emit, "turn-updated", turn)
 
     def notice(self, level: str, text: str) -> None:
         self._main(self.emit, "notice", level, text)
+
+    def live_text(self, text: str, stable: int = 0, final: bool = False) -> None:
+        self._main(self._live_text, str(text), int(stable), bool(final))
+
+    def _live_text(self, text: str, stable: int, final: bool) -> None:
+        self.live = (text, stable, final)
+        self.emit("live-text", text, stable, final)
+
+    def saying(self, text: str, seconds: float = 0.0) -> None:
+        self._main(self.emit, "saying", str(text), float(seconds))
+
+    def knowledge_changed(self) -> None:
+        self._main(self.emit, "knowledge-changed")
+
+    def new_session(self) -> None:
+        self.session_start = time.time()
+        self._main(self.emit, "session-cleared")
+
+    def restore_session(self, start: float) -> None:
+        """Undo of a deleted session: Home shows turns from ``start`` again."""
+        self.session_start = float(start)
+        self._main(self.emit, "session-cleared")
+
+    def wake_missed(self) -> None:
+        self._main(self.emit, "wake-missed")
 
     @staticmethod
     def _main(fn, *args) -> None:

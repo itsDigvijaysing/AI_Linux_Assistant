@@ -285,8 +285,10 @@ class OllamaManager(GObject.Object):
         return (url or DEFAULT_URL).rstrip("/")
 
     def _keep_alive(self) -> str:
-        value = self.settings.get("ollama_keep_alive") if self.settings is not None else "10m"
-        return str(value or "10m")
+        if self.settings is None:
+            return "10m"
+        from ai_linux.schema import loading
+        return loading(str(self.settings.get("speed")))["ollama_keep_alive"]
 
     @staticmethod
     def _main(fn: Callable | None, *args) -> None:
@@ -520,7 +522,7 @@ class OllamaManager(GObject.Object):
         if shutil.which("systemd-run") and not self._unit_active():
             _run(["systemctl", "--user", "reset-failed", f"{UNIT}.service"], timeout=5)
             cmd = ["systemd-run", "--user", f"--unit={UNIT}", "--collect", "--quiet",
-                   "--description=Ollama (started by AI Linux)",
+                   "--description=Ollama (started by Phoenix)",
                    *[f"--setenv={k}={v}" for k, v in env.items()], binary, "serve"]
             res = _run(cmd, timeout=20)
             launched = bool(res) and res.returncode == 0

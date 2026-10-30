@@ -6,6 +6,7 @@ import logging
 import math
 import re
 import time
+from pathlib import Path
 
 import gi
 
@@ -20,6 +21,7 @@ from ai_linux.ui.profile_group import ProfileGroup  # noqa: E402
 log = logging.getLogger(__name__)
 
 SAMPLES_DIR = ASSETS_DIR / "samples"
+AEC_SINK = "ai_aec_sink"  # the engine's echo-cancel output (engine/audio.py)
 TOGGLE_COMMAND = "ai-linux-app --toggle"
 
 LISTEN_MODES = (
@@ -36,16 +38,47 @@ STT_ENGINES = (
     ("parakeet-tdt", "Parakeet TDT, accurate"),
     ("parakeet-ctc", "Parakeet CTC, fast"),
 )
-VOICES = (
-    ("supertonic:M1", "Male 1", "SuperTonic M1, the default"),
-    ("supertonic:M4", "Male 2", "SuperTonic M4"),
-    ("supertonic:F1", "Female 1", "SuperTonic F1"),
-    ("supertonic:F3", "Female 2", "SuperTonic F3"),
+STT_DEVICES = (
+    ("intel-gpu", "Intel graphics, fastest"),
+    ("cpu", "Processor"),
+)
+VOICES = (  # every SuperTonic voice; numbers match the voice ids, so "male voice 3" works by voice too
+    ("supertonic:F1", "Female 1", "The default"),
+    ("supertonic:F2", "Female 2", ""),
+    ("supertonic:F3", "Female 3", ""),
+    ("supertonic:F4", "Female 4", ""),
+    ("supertonic:F5", "Female 5", ""),
+    ("supertonic:M1", "Male 1", ""),
+    ("supertonic:M3", "Male 3", ""),
+    ("supertonic:M4", "Male 4", ""),
+    ("supertonic:M5", "Male 5", ""),
+)
+CUES = (  # engine/sounds.py kinds, in the order they happen
+    ("listen", "Listening", "You said the name; it waits for your request"),
+    ("big", "Big model waking", "The request needs the big model; it says “One moment” while it loads"),
+    ("ok", "Done", "An action finished"),
+    ("fail", "Failed", "An action didn't work; the reason is spoken"),
+    ("unclear", "Didn't catch that", "You spoke, but no words came through"),
+    ("sleep", "Back to sleep", "Called, but no request came, or you said “that's all”"),
+    ("timer", "Timer or reminder", "A timer or reminder is up"),
 )
 # each heard 20/20 with no false wakes in bench/README.md "Assistant name"
 WAKE_SUGGESTIONS = ("Phoenix", "Pegasus", "Griffin", "Dragon", "Jarvis")
 _LEVEL_HINT = "Speak to test. The microphone is used only while this page is open."
 _WAKE_RE = re.compile(r"^[^\W\d_]+(?: [^\W\d_]+){0,2}$")  # one to three words, letters only
+
+
+def _cue_file(kind: str) -> Path | None:
+    """The sound as a WAV in the runtime dir, made on first use."""
+    from ai_linux.engine import sounds  # pure Python, no engine dependencies
+    path = Path(GLib.get_user_runtime_dir()) / f"phoenix-sound-{kind}.wav"
+    try:
+        if not path.is_file():
+            sounds.write_wav(kind, str(path))
+    except (KeyError, OSError):
+        log.exception("making the %s sound", kind)
+        return None
+    return path
 
 
 def _mode_hint(mode: str, wake_word: str) -> str:
@@ -88,7 +121,7 @@ class Page(Adw.NavigationPage):
         self._bars = None
         self._bars_state = "listening"
         self._sources: list[str] = [""]  # node names behind the device combo, "" = system default
-        self._media: Gtk.MediaFile | None = None
+        self._media: Gio.Subprocess | None = None
         self._playing: str | None = None
         self._play_buttons: dict[str, Gtk.Button] = {}
         self._voice_checks: dict[str, Gtk.CheckButton] = {}
@@ -104,6 +137,7 @@ class Page(Adw.NavigationPage):
         prefs.add(self._profiles)
         prefs.add(self._profiles.titled(self._build_how(), "Listening"))
         prefs.add(self._profiles.titled(self._build_voice(), "Replies"))
+        prefs.add(self._build_sounds())
         self._toasts.set_child(prefs)
         view.set_content(self._toasts)
         self.set_child(view)
@@ -163,7 +197,8 @@ class Page(Adw.NavigationPage):
     # microphone
 
     def _build_microphone(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Microphone")
+        group = Adw.PreferencesGroup(title="Microphone and Speech Recognition",
+                                     description="The same on battery and on the charger.")
         self._device_row = Adw.ComboRow(title="Input device", use_subtitle=True, use_markup=False,
                                         model=Gtk.StringList.new(["System default"]))
         self._device_row.add_prefix(Gtk.Image(icon_name="audio-input-microphone-symbolic"))
@@ -176,6 +211,19 @@ class Page(Adw.NavigationPage):
         self._level_row.add_prefix(Gtk.Image(icon_name="microphone-sensitivity-high-symbolic"))
         self._level_row.add_suffix(self._make_bars())
         group.add(self._level_row)
+        stt = self._choice("stt_engine", "Speech recognition", STT_ENGINES, use_subtitle=True)
+        stt.connect("notify::selected", lambda r, _p: self._store("stt_engine", r.ids[r.get_selected()]))
+        group.add(stt)
+        device = self._choice("stt_device", "Runs on", STT_DEVICES)
+        device.set_subtitle("Parakeet TDT only; falls back to the processor if the graphics can't run it")
+        device.connect("notify::selected", lambda r, _p: self._store("stt_device", r.ids[r.get_selected()]))
+
+        def tdt_only():
+            device.set_sensitive(self.settings.get("stt_engine") == "parakeet-tdt")
+
+        self._watch("stt_engine", tdt_only)
+        tdt_only()
+        group.add(device)
         return group
 
     def _level(self) -> float:
@@ -337,9 +385,6 @@ class Page(Adw.NavigationPage):
         group.add(mode_row)
         group.add(filter_row)
 
-        stt = self._choice("stt_engine", "Speech recognition", STT_ENGINES, use_subtitle=True)
-        stt.connect("notify::selected", lambda r, _p: self._store("stt_engine", r.ids[r.get_selected()]))
-        group.add(stt)
         return group
 
     def _build_wake_row(self) -> Adw.EntryRow:
@@ -403,7 +448,7 @@ class Page(Adw.NavigationPage):
         hotkey = self.ctx.hotkey
         available = bool(hotkey is not None and getattr(hotkey, "available", False))
         desc = getattr(hotkey, "trigger_description", None) if available else None
-        row.set_subtitle(desc or "Starts listening from any app")
+        row.set_subtitle(GLib.markup_escape_text(desc or "Starts listening from any app"))
         if available:
             return [row]
         # no GlobalShortcuts portal: a GNOME custom shortcut running the toggle command does the same
@@ -487,6 +532,20 @@ class Page(Adw.NavigationPage):
         group.add(self._note("Voice changes apply to the next reply."))
         return group
 
+    def _build_sounds(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Sounds", description="Short tones tell you what is happening "
+                                                                 "without looking. Press play to hear one.")
+        for kind, title, subtitle in CUES:
+            row = Adw.ActionRow(title=title, subtitle=subtitle)
+            play = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER,
+                              tooltip_text=f"Play the {title.lower()} sound", css_classes=["flat", "circular"])
+            play.connect("clicked", lambda _b, k=kind: self._toggle_preview(f"cue:{k}"))
+            row.add_suffix(play)
+            row.set_activatable_widget(play)
+            self._play_buttons[f"cue:{kind}"] = play
+            group.add(row)
+        return group
+
     def _sync_voice(self) -> None:
         current = self.settings.get("voice")
         known = current in self._voice_checks
@@ -514,8 +573,6 @@ class Page(Adw.NavigationPage):
             if self._volume_timer:
                 GLib.source_remove(self._volume_timer)
             self._volume_timer = GLib.timeout_add(250, commit)  # one write per drag, not per pixel
-            if self._media is not None:
-                self._media.set_volume(s.get_value())
 
         def commit():
             self._volume_timer = 0
@@ -539,16 +596,16 @@ class Page(Adw.NavigationPage):
             self._stop_preview()
             return
         self._stop_preview()
-        path = SAMPLES_DIR / f"{vid.split(':')[-1]}.ogg"
-        if not path.is_file():
+        path = _cue_file(vid[4:]) if vid.startswith("cue:") else SAMPLES_DIR / f"{vid.split(':')[-1]}.ogg"
+        if path is None or not path.is_file():
             self._toast("No sample for this voice")
             return
         try:
-            media = Gtk.MediaFile.new_for_filename(str(path))
-            media.set_volume(float(self.settings.get("tts_volume")))
-            media.connect("notify::ended", lambda m, _p: m.get_ended() and self._stop_preview())
-            media.connect("notify::error", self._on_media_error)
-            media.play()
+            # Through the engine's echo-cancel sink (default output if it isn't there), so the mic doesn't hear it.
+            media = Gio.Subprocess.new(["pw-play", "--target", AEC_SINK, "--volume",
+                                        f"{float(self.settings.get('tts_volume')):.2f}", str(path)],
+                                       Gio.SubprocessFlags.STDERR_SILENCE)
+            media.wait_check_async(None, self._on_preview_done, vid)
         except Exception:
             log.exception("voice preview %s", vid)
             self._toast("Could not play the sample")
@@ -558,20 +615,22 @@ class Page(Adw.NavigationPage):
         btn.set_icon_name("media-playback-stop-symbolic")
         btn.set_tooltip_text("Stop the sample")
 
-    def _on_media_error(self, media, _pspec) -> None:
-        err = media.get_error()
-        if err is not None:
-            log.warning("voice preview failed: %s", err.message)
+    def _on_preview_done(self, media: Gio.Subprocess, result, vid: str) -> None:
+        try:
+            media.wait_check_finish(result)
+        except GLib.Error as exc:
+            if self._media is media:  # not stopped by us
+                log.warning("voice preview failed: %s", exc.message)
+                self._toast("Could not play the sample")
+        if self._media is media:
             self._stop_preview()
-            self._toast("Could not play the sample")
 
     def _stop_preview(self) -> None:
         media, vid = self._media, self._playing
         self._media, self._playing = None, None
         if media is not None:
             try:
-                media.pause()
-                media.clear()
+                media.force_exit()
             except Exception:
                 log.debug("stopping preview", exc_info=True)
         if vid in self._play_buttons:

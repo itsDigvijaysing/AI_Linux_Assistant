@@ -214,20 +214,20 @@ class SettleAndFps(unittest.TestCase):
         anim = BarAnimator()
         anim.step(0.0)
         anim.set_state("muted", 1.0)
-        self.assertFalse(anim.is_settled(1.0 + MUTE_BLEND_S - 0.01))
-        self.assertTrue(anim.is_settled(1.0 + MUTE_BLEND_S + 0.01))
+        self.assertFalse(anim.is_settled(1.0 + bm.COLOR_BLEND_S - 0.01))  # the colour blend is the longer
+        self.assertTrue(anim.is_settled(1.0 + max(MUTE_BLEND_S, bm.COLOR_BLEND_S) + 0.01))
 
     def test_error_settles_after_shake(self):
         anim = BarAnimator()
         anim.set_state("error", 1.0)
         self.assertFalse(anim.is_settled(1.0 + SHAKE_S - 0.01))
-        self.assertTrue(anim.is_settled(1.0 + SHAKE_S + 0.01))
+        self.assertTrue(anim.is_settled(1.0 + max(SHAKE_S, bm.COLOR_BLEND_S) + 0.01))
 
     def test_error_reduced_motion_settles_after_blend(self):
         anim = BarAnimator(reduced_motion=True)
         anim.set_state("error", 1.0)
         self.assertFalse(anim.is_settled(1.0 + BLEND_S - 0.01))
-        self.assertTrue(anim.is_settled(1.0 + BLEND_S + 0.01))
+        self.assertTrue(anim.is_settled(1.0 + max(BLEND_S, bm.COLOR_BLEND_S) + 0.01))
 
     def test_animated_states_never_settle(self):
         for state in ("idle", "followup", "thinking", "loading", "speaking"):
@@ -323,3 +323,30 @@ class GeometryAndHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Colours(unittest.TestCase):
+    def test_listening_blue_speaking_fire(self):
+        for dark in (False, True):
+            for st in ("idle", "followup", "listening"):
+                self.assertEqual(bm.palette(st, dark), bm.BLUE_DARK if dark else bm.BLUE_LIGHT)
+            self.assertEqual(bm.palette("speaking", dark), bm.fire_colors(dark))
+            self.assertEqual(len(bm.palette("big", dark)), bm.N_BARS)
+
+    def test_state_change_blends_colours(self):
+        anim = BarAnimator()
+        anim.step(0.0)
+        anim.set_state("speaking", 1.0)
+        start = anim.step(1.0).colors
+        mid = anim.step(1.0 + bm.COLOR_BLEND_S / 2).colors
+        end = anim.step(1.0 + bm.COLOR_BLEND_S + 0.01).colors
+        self.assertEqual(start, bm.BLUE_LIGHT)
+        self.assertEqual(end, bm.FIRE_LIGHT)
+        self.assertNotIn(mid[bm.CENTER], (bm.BLUE_LIGHT[bm.CENTER], bm.FIRE_LIGHT[bm.CENTER]))
+
+    def test_big_breathes_together(self):
+        anim = BarAnimator()
+        anim.set_state("big", 0.0)
+        f = anim.step(1.1)
+        self.assertTrue(f.fire)
+        self.assertAlmostEqual(f.opacities[0], f.opacities[-1])

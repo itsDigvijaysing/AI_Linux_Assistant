@@ -6,6 +6,9 @@ import configparser
 import difflib
 import os
 import re
+import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +18,10 @@ class App:
     id: str  # desktop id without .desktop
     name: str
     keywords: tuple[str, ...] = ()
+    comment: str = ""  # what it is for, from the .desktop Comment or GenericName
+    exe: str = ""  # the program's file name, from Exec; "" when a launcher (env, python3, sh) hides it
+    categories: tuple[str, ...] = ()
+    pwa: bool = False  # a browser's web app: closing its program would close the browser
 
 
 def _dirs() -> list[Path]:
@@ -23,6 +30,37 @@ def _dirs() -> list[Path]:
     dirs = [data_home, *data_dirs.split(":"), "/var/lib/flatpak/exports/share",
             str(Path.home() / ".local/share/flatpak/exports/share"), "/var/lib/snapd/desktop"]
     return [Path(d) / "applications" for d in dict.fromkeys(dirs) if d]
+
+
+# Exec words that start another program: the process to close isn't named after them.
+_LAUNCHERS = {"sh", "bash", "dash", "zsh", "python", "python3", "perl", "ruby", "node", "java", "mono", "wine",
+              "steam", "snap", "gio", "xdg-open", "exo-open", "pkexec", "sudo", "nice", "ionice", "taskset",
+              "systemd-run", "gtk-launch", "bwrap", "firejail", "electron", "appimage-run", "gamemoderun",
+              "prime-run", "switcherooctl", "uwsm", "uwsm-app"}
+
+
+def exe_name(argv: list[str]) -> str:
+    """The file name of the program an Exec line runs; "flatpak" for Flatpaks, "" when a launcher hides it."""
+    for tok in argv:
+        base = os.path.basename(tok)
+        if base == "env" or ("=" in tok and not tok.startswith(("/", "-"))):
+            continue  # env VAR=value program
+        if base == "flatpak":
+            return "flatpak"
+        return "" if base in _LAUNCHERS or tok.startswith("%") else base
+    return ""
+
+
+_CACHE: dict = {"at": 0.0, "apps": []}
+_CACHE_LOCK = threading.Lock()
+
+
+def installed_cached(max_age: float = 30.0) -> list[App]:
+    """installed(), scanned at most every max_age seconds: one request looks the list up several times."""
+    with _CACHE_LOCK:
+        if time.monotonic() - _CACHE["at"] > max_age or not _CACHE["apps"]:
+            _CACHE["apps"], _CACHE["at"] = installed(), time.monotonic()
+        return _CACHE["apps"]
 
 
 def installed() -> list[App]:
@@ -50,7 +88,12 @@ def installed() -> list[App]:
                 continue
             kw = tuple(k.strip().lower() for k in e.get("Keywords", "").split(";") if k.strip())
             generic = e.get("GenericName", "").strip().lower()
-            seen[app_id] = App(app_id, e.get("Name", app_id).strip(), kw + ((generic,) if generic else ()))
+            exe = (e.get("Exec") or "").split()
+            cats = tuple(c for c in e.get("Categories", "").split(";") if c)
+            seen[app_id] = App(app_id, e.get("Name", app_id).strip(), kw + ((generic,) if generic else ()),
+                               (e.get("Comment") or e.get("GenericName") or "").strip(),
+                               exe_name(exe), cats,
+                               any(x.startswith(("--app-id", "--app=")) for x in exe))
     return sorted((a for a in seen.values() if a), key=lambda a: a.name.lower())
 
 
@@ -89,3 +132,38 @@ def candidates(name: str, apps: list[App], n: int = 8) -> list[App]:
     scored = sorted(apps, key=lambda a: -max(difflib.SequenceMatcher(None, q, _norm(a.name)).ratio(),
                                                0.9 if q and q in a.keywords else 0.0))
     return scored[:n]
+
+
+GROUPS = (("Network", "for the internet"), ("Development", "for coding"), ("Office", "for office work"),
+          ("AudioVideo", "for music and video"), ("Graphics", "for pictures"), ("Game", "games"),
+          ("Settings", "for settings"), ("System", "system tools"), ("Utility", "utilities"))
+
+
+def summary(apps: list[App]) -> str:
+    """'63 apps: 12 for the internet, 8 for coding, ...' (each app counted once, in its first group)."""
+    counts: dict[str, int] = {}
+    for a in apps:
+        g = next((label for cat, label in GROUPS if cat in a.categories), None)
+        if g:
+            counts[g] = counts.get(g, 0) + 1
+    parts = [f"{n} {label}" for label, n in sorted(counts.items(), key=lambda kv: -kv[1])[:5]]
+    return f"You have {len(apps)} apps" + (": " + ", ".join(parts) if parts else "") + "."
+
+
+def on_bus(app_id: str) -> bool:
+    """Is a running app holding its D-Bus name (a GApplication that can be raised or asked to quit)?"""
+    try:
+        r = subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path",
+                            "/org/freedesktop/DBus", "--method", "org.freedesktop.DBus.NameHasOwner", app_id],
+                           capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and "true" in r.stdout
+
+
+def running(exe: str) -> bool:
+    try:
+        return subprocess.run(["pgrep", "-x", "-u", str(os.getuid()), exe[:15]], capture_output=True,
+                              timeout=2).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False

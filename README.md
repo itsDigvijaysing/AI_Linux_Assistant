@@ -1,6 +1,6 @@
-# AI Linux Assistant
+# Phoenix (AI Linux Assistant)
 
-A local voice assistant for Ubuntu GNOME (Wayland). You talk to it, it talks back, and it does simple desktop jobs:
+Phoenix is a local voice assistant for Ubuntu GNOME (Wayland). You talk to it, it talks back, and it does simple desktop jobs:
 opening apps and files, changing volume or brightness, searching the web, reading the screen, answering questions.
 Everything runs on your own computer: speech recognition, the language models and the voice. No account, no API key,
 no cloud.
@@ -17,13 +17,19 @@ Demo video (v2, the older GNOME Shell extension version): https://www.youtube.co
 - **One native app.** GTK4 and libadwaita, no browser view and no Shell extension. A tray icon, a small floating
   status pill, and a global shortcut (Super+Alt+Space) to talk.
 - **Listening modes:** wake word (default "Phoenix", which is also its name), shortcut only, always listening, or off.
-- **Battery and charger profiles.** On battery, a small decision model on the Intel GPU picks the command; anything it
-  is unsure of, and all chat, goes to the big model on the NVIDIA GPU. On the charger the big model does everything.
+- **Battery and charger profiles.** The models are picked once. On battery, a small decision model on the Intel GPU
+  picks the command; anything it is unsure of, and all chat, goes to the big model on the NVIDIA GPU. On the charger
+  the big model does everything by default. Each profile has its own Speed and can turn the small model on or off.
 - **Safe actions.** Every action that changes something goes through one gate: catastrophic commands are blocked,
   risky ones ask first (a dialog, or a spoken yes or no). No sudo at runtime, ever.
 - **Tools you can extend.** Built-in desktop tools plus any MCP server you add in Tools.
 - **Screen reading.** The big model can look at a screenshot to answer "what's on my screen".
-- **History** of every turn, searchable, kept on disk only.
+- **Live words.** What you say appears as you speak, in the pill and on Home; the reply shows as it is spoken.
+- **Knowledge.** Facts you keep for good, plus facts it learns from conversations that fade after 14 days. Say
+  "remember that..." or "forget that...", or edit them in the Knowledge window.
+- **Speed** on Home, one row: Save Battery (the big model loads when needed, freed after 2 minutes), Automatic (kept
+  30 minutes) or Max Performance (stays loaded). The pill shows when it is starting and when the big model takes over.
+- **History** of every turn, searchable, kept on disk only. **New Session** on Home starts a fresh conversation.
 - **Health page** that checks every part (audio, echo cancellation, GPUs, Ollama, models, shortcut, tray) and says how to fix what is missing.
 
 ## Models
@@ -91,7 +97,7 @@ GTK4 app (system Python)                    engine child process (venv)
 ## Status
 
 v3 is a full rewrite as one desktop app. Working and tested: the app, engine, profiles, models, safety gate, MCP
-tools, history and health checks. Still to do: a long live voice run on the real desktop, and an installer.
+tools, history, knowledge and health checks. Work in progress and open items: `HANDOFF.md`. Still to do: a long live voice run on the real desktop, and an installer.
 
 ## License
 

@@ -12,8 +12,8 @@ from ai_linux.state import ToolCall, Turn
 
 log = logging.getLogger(__name__)
 
-ROUTE_LABELS = {"small": "Small model", "big": "Big model"}
-ROUTE_HARDWARE = {"small": "CPU", "big": "GPU"}
+ROUTE_LABELS = {"small": "Small model", "big": "Big model", "rule": "Quick reply"}
+ROUTE_HARDWARE = {"small": "Intel GPU", "big": "NVIDIA GPU", "rule": "processor, no model"}
 LATENCY_PARTS = (("asr", "Speech"), ("route", "Routing"), ("llm", "Model"), ("tts", "Voice"))
 # verdict -> (badge text, css class); classes map to libadwaita's success/warning/error colours
 VERDICTS = {
@@ -180,7 +180,7 @@ class TurnView(Gtk.Box):
             (self._build_compact if self.compact else self._build_bubbles)(t)
         except Exception:  # a malformed turn must never take the page down
             log.exception("rendering turn %s", getattr(t, "id", "?"))
-            self.append(_label(getattr(t, "heard", "") or "(unreadable turn)", wrap=True))
+            self.append(_label(getattr(t, "heard", "") or "(unreadable request)", wrap=True))
 
     # bubbles (Home)
 

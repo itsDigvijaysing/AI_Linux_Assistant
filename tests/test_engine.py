@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import importlib.util  # noqa: E402
 if importlib.util.find_spec("numpy") is None:
@@ -124,6 +125,10 @@ class RunTests(unittest.TestCase):
 
 class WakeAndPowerTests(unittest.TestCase):
     def test_strip_wake(self):
+        self.assertEqual(strip_wake("Stop Phoenix.", "phoenix"), "Stop")  # a request said before the name
+        self.assertEqual(strip_wake("Good night, Phoenix", "phoenix"), "Good night")
+        self.assertEqual(strip_wake("Hey Phoenix", "phoenix"), "")  # only calling it
+        self.assertEqual(strip_wake("Wake up Phoenix!", "phoenix"), "")
         self.assertEqual(strip_wake("Computer, open firefox.", "computer"), "open firefox.")
         self.assertEqual(strip_wake("hey computer", "computer"), "")
         self.assertIsNone(strip_wake("we bought a new computer case yesterday at the shop", "computer"))
@@ -179,6 +184,70 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(len(said), 1)
         self.assertEqual(cues, [])
 
+    def test_remember_needs_no_model(self):
+        b, said, cues = self.make({})
+        saved = []
+        b.env.knowledge = mock.Mock(add=lambda text, kept, source: (saved.append((text, kept)) or mock.Mock(kept=kept), ""))
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            turn = b.handle("Remember that my sister is Priya.", "text", threading.Event())
+        self.assertEqual(saved, [("Their sister is Priya", False)])
+        self.assertEqual((turn["route"], turn["tools"][0]["name"]), ("rule", "remember"))
+
+    def test_sleep_words_need_no_model(self):
+        b, said, cues = self.make({})
+        slept = []
+        b.env.sleep = lambda: slept.append(True)
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            for text in ("Stop", "that's all, thanks", "you can go to sleep now", "never mind"):
+                turn = b.handle(text, "text", threading.Event())
+                self.assertEqual((turn["route"], turn["tools"][0]["name"]), ("rule", "go_to_sleep"), text)
+        self.assertEqual(len(slept), 4)
+        self.assertEqual(set(cues), {"sleep"})  # its own sound, not the "done" chime
+
+    def test_greetings_and_help_answer_without_a_model(self):
+        b, said, cues = self.make({})
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            for text in ("hi", "Good morning!", "thank you", "what can you do?"):
+                turn = b.handle(text, "text", threading.Event())
+                self.assertEqual((turn["route"], turn["tools"]), ("rule", []), text)
+        self.assertTrue(said[1].startswith("Good morning"))
+        self.assertIn("open apps", said[3])
+
+    def test_youtube_play_searches_youtube(self):
+        b, said, cues = self.make({})
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            turn = b.handle("open YouTube and play Believer", "text", threading.Event())
+        self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube"})
+        self.assertIn("youtube.com/results?search_query=Believer", b.env.executor.calls[0][-1])
+
+    def test_cold_big_model_says_one_moment(self):
+        b, said, cues = self.make({"none": 0.99})
+        with mock.patch.object(brain_mod.llm, "loaded", return_value=False), \
+                mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Sure."), ("done", {})])):
+            b.handle("tell me a joke", "text", threading.Event())
+        self.assertEqual(said, ["One moment.", "Sure."])
+        said.clear()
+        with mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Sure."), ("done", {})])):
+            b.handle("another", "text", threading.Event())
+        self.assertEqual(said, ["Sure."])
+
+    def test_empty_big_answer_plays_unclear(self):
+        b, said, cues = self.make({"none": 0.99})
+        with mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", return_value=iter([("done", {})])):
+            turn = b.handle("blorp", "text", threading.Event())
+        self.assertIn("unclear", cues)
+        self.assertEqual(turn["reply"], "Sorry, I didn't get that.")
+
+    def test_memory_rules(self):
+        self.assertEqual(T.parse_memory("Always remember I'm vegetarian"),
+                         ("remember", {"fact": "They're vegetarian", "always": True}))
+        self.assertEqual(T.parse_memory("Forget that I live in Pune."), ("forget", {"fact": "They live in Pune"}))
+        for vague in ("remember to buy milk", "do you remember my name", "remember this", "forget it",
+                      "forget about the timer"):
+            self.assertIsNone(T.parse_memory(vague), vague)
+
     def test_unsure_goes_to_big_model(self):
         b, said, cues = self.make({"set_volume": 0.5, "none": 0.5})
         chunks = [("text", "It's sunny "), ("text", "today. Enjoy it!"), ("done", {})]
@@ -195,11 +264,65 @@ class BrainTests(unittest.TestCase):
             with mock.patch.object(brain_mod.llm, "letters", return_value={"none": 0.9, "set_volume": 0.1}), \
                     mock.patch.object(brain_mod.llm, "loaded", return_value=loaded), \
                     mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi."), ("done", {})])):
-                b.handle("hello there", "text", threading.Event())
+                b.handle("tell me a joke", "text", threading.Event())
             self.assertEqual(cues, want)
 
+    def test_plain_chat_gets_no_action_tools(self):
+        b, said, cues = self.make({}, small_model="none")
+        seen = []
+
+        def chat(base, model, msgs, tools=None, **kw):
+            seen.append({t["function"]["name"] for t in tools or []})
+            return iter([("text", "Hello!"), ("done", {})])
+        with mock.patch.object(brain_mod.llm, "letters", return_value={"none": 0.9, "get_time": 0.1}), \
+                mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
+            turn = b.handle("tell me a fun fact", "text", threading.Event())
+            b.handle("my sister lives in Pune", "text", threading.Event())
+        self.assertEqual(seen, [set(), {"remember", "forget"}])  # memory only when they say something about themselves
+        self.assertEqual(turn["tools"], [])
+        seen.clear()
+        with mock.patch.object(brain_mod.llm, "letters", return_value={"none": 0.3, "get_time": 0.6,
+                                                                         "set_volume": 0.1}), \
+                mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
+            b.handle("is it late", "text", threading.Event())
+        self.assertEqual(seen, [{"get_time", "set_volume", "remember", "forget"}])  # unsure: the likely ones
+
+    def test_saving_a_fact_never_replaces_the_answer(self):
+        b, said, cues = self.make({}, small_model="none")
+        b.env.knowledge = mock.Mock(add=mock.Mock(return_value=(mock.Mock(kept=False), "")),
+                                    prompt=mock.Mock(return_value=""))
+        replies = iter([iter([("tools", [{"name": "remember", "arguments": {"fact": "Their name is Dee",
+                                                                             "always": True}}]), ("done", {})]),
+                        iter([("text", "Nice to meet you, Dee."), ("done", {})])])
+        with mock.patch.object(brain_mod.llm, "letters", return_value={"none": 0.9}), \
+                mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", side_effect=lambda *a, **k: next(replies)):
+            turn = b.handle("my name is Dee", "text", threading.Event())
+        self.assertEqual(turn["reply"], "Nice to meet you, Dee.")
+        b.env.knowledge.add.assert_called_once_with("Their name is Dee", kept=False, source="learned")
+
+    def test_new_session_drops_the_turn_still_running(self):
+        b, said, cues = self.make({}, small_model="none")
+
+        def chat(base, model, msgs, **kw):
+            b.new_session()  # Home's New Session while the model answers
+            return iter([("text", "Hello!"), ("done", {})])
+        with mock.patch.object(brain_mod.llm, "letters", return_value={"none": 0.9}), \
+                mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
+            b.handle("hi there friend", "text", threading.Event())
+        self.assertEqual(b.history, [])
+
     def test_user_details_reach_the_big_model(self):
-        b, said, cues = self.make({"none": 0.99}, user_name="Dee", about_me="I live in Pune.")
+        import tempfile
+        from ai_linux.knowledge import Knowledge
+        b, said, cues = self.make({"none": 0.99}, user_name="Dee")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        b.env.knowledge = Knowledge(Path(tmp.name) / "k.json")
+        b.env.knowledge.add("I live in Pune", kept=True)
         seen = []
 
         def chat(base, model, msgs, **kw):
@@ -207,10 +330,36 @@ class BrainTests(unittest.TestCase):
             return iter([("text", "Hi Dee."), ("done", {})])
         with mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
             b.handle("who am I", "text", threading.Event())
-        self.assertIn("Their name is Dee. I live in Pune.", seen[0])
+        self.assertIn("Their name is Dee. Facts they keep: I live in Pune.", seen[0])
         self.assertIn("You are Phoenix", seen[0])
         b2, *_ = self.make({})
         self.assertEqual(b2.about_user(), "")
+
+    def test_big_model_status_waking_then_working(self):
+        b, said, cues = self.make({"none": 0.99})
+        status = []
+        b._status = status.append
+        with mock.patch.object(brain_mod.llm, "loaded", return_value=False), \
+                mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi."), ("done", {})])):
+            b.handle("tell me a joke", "text", threading.Event())
+        self.assertEqual(status, ["Waking the big model", "The big model is answering"])
+        status.clear()
+        with mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
+                mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi."), ("done", {})])):
+            b.handle("tell me another", "text", threading.Event())
+        self.assertEqual(status, ["The big model is answering"])
+
+    def test_web_tools_only_with_web_access(self):
+        b, *_ = self.make({})
+        self.assertNotIn("web_lookup", [t.name for t in b.tools()])
+        b2, *_ = self.make({}, web_access=True)
+        self.assertIn("web_lookup", [t.name for t in b2.tools()])
+
+    def test_memory_tools_only_for_the_big_model(self):
+        b, *_ = self.make({})
+        names = {t.name for t in b.chat_tools()}
+        self.assertTrue({"remember", "forget"} <= names)
+        self.assertFalse({"remember", "forget"} & {t.name for t in b.tools()})
 
     def test_llm_options(self):
         b, *_ = self.make({}, context_length=4096)
@@ -260,27 +409,67 @@ class BrainTests(unittest.TestCase):
 
 
 class PasteTests(unittest.TestCase):
-    def test_write_text_pastes_and_restores(self):
-        e = env()
-        e.compose = lambda request: "Thanks, see you at 5."
-        e.executor.run_argv = mock.Mock(side_effect=lambda argv, **kw: {
-            "returncode": 0, "stdout": "old clip" if argv[0] == "wl-paste" else "", "stderr": ""})
-        with mock.patch.object(T.threading, "Timer") as timer, mock.patch.object(T.time, "sleep"):
-            res = T.run_write({"request": "reply that I'll be there"}, e)
-        argvs = [c.args[0] for c in e.executor.run_argv.call_args_list]
-        self.assertEqual(argvs, [["wl-paste", "--no-newline", "--type", "text/plain"],
-                                 ["wl-copy", "--", "Thanks, see you at 5."], T.CTRL_V])
-        self.assertTrue(res.ok)
-        self.assertEqual(timer.call_args.args[0], 1.5)  # the old clipboard comes back
+    def setUp(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, tmp)
+        self.token = tmp / "portal-paste-token"
+        for patcher in (mock.patch.object(T, "PORTAL_TOKEN", self.token), mock.patch.object(T.time, "sleep"),
+                        mock.patch.dict(T._portal, {"broken": False, "denied": False})):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
-    def test_without_ydotool_it_stays_on_the_clipboard(self):
+    def paste(self, ydotoold=True, detect="app", portal_rc=0, ydotool_rc=0):
         e = env()
-        e.executor.run_argv = mock.Mock(side_effect=lambda argv, **kw: {"error": "not found"}
-                                        if argv[0] == "ydotool" else {"returncode": 0, "stdout": "", "stderr": ""})
-        with mock.patch.object(T.time, "sleep"):
-            res = T.paste_text(e, "hello", {})
+        def run(argv, **kw):
+            if argv[0] == "wl-paste":
+                return {"returncode": 0, "stdout": "old clip", "stderr": ""}
+            if argv[-1] == "detect":
+                return {"returncode": 0, "stdout": detect + "\n", "stderr": ""}
+            if "paste" in argv[1:3]:
+                return {"returncode": portal_rc, "stdout": "", "stderr": ""}
+            if argv[0] == "ydotool":
+                return {"returncode": ydotool_rc, "stdout": "", "stderr": ""}
+            return {"returncode": 0, "stdout": "", "stderr": ""}
+        e.executor.run_argv = mock.Mock(side_effect=run)
+        with mock.patch.object(T, "_ydotoold_running", return_value=ydotoold), \
+                mock.patch.object(T.threading, "Timer") as timer:
+            res = T.paste_text(e, "Thanks, see you at 5.", {})
+        steps = [c.args[0] for c in e.executor.run_argv.call_args_list][2:]  # after wl-paste and wl-copy
+        return res, steps, timer
+
+    def test_ydotool_pastes_and_the_old_clipboard_comes_back(self):
+        res, steps, timer = self.paste()
+        self.assertEqual(steps[-1], ["ydotool", "key", *T.YDOTOOL_KEYS["ctrl-v"]])
+        self.assertTrue(res.ok and not res.speak)
+        self.assertEqual(timer.call_args.args[0], 1.5)
+
+    def test_terminals_get_ctrl_shift_v(self):
+        _res, steps, _t = self.paste(detect="terminal")
+        self.assertEqual(steps[-1], ["ydotool", "key", *T.YDOTOOL_KEYS["ctrl-shift-v"]])
+
+    def test_saved_portal_token_is_used_first(self):
+        self.token.write_text("tok")
+        _res, steps, _t = self.paste()
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0][2:], ["paste", "--token-file", str(self.token)])
+
+    def test_broken_portal_falls_back_to_ydotool(self):
+        self.token.write_text("tok")
+        res, steps, _t = self.paste(portal_rc=1)
+        self.assertEqual(steps[-1][0], "ydotool")
+        self.assertTrue(res.ok and T._portal["broken"])
+
+    def test_without_ydotool_the_portal_asks_once(self):
+        res, steps, _t = self.paste(ydotoold=False)
+        self.assertEqual([s[2] for s in steps], ["paste"])
+        self.assertTrue(res.ok and not res.speak)
+
+    def test_refused_portal_leaves_it_on_the_clipboard(self):
+        res, _steps, _t = self.paste(ydotoold=False, portal_rc=3)
         self.assertTrue(res.ok and res.speak)
         self.assertIn("Control V", res.say)
+        _res, steps, _t = self.paste(ydotoold=False)
+        self.assertEqual(steps, [])  # not asked again this run
 
 
 class McpTests(unittest.TestCase):
@@ -327,6 +516,53 @@ class McpTests(unittest.TestCase):
         self.assertIn("nope", notes[0])
 
 
+class QuitAndMicTests(unittest.TestCase):
+    def test_quit_frees_the_graphics_card(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.brain = mock.Mock(base="http://127.0.0.1:11434", big="qwen3.5:4b")
+        with mock.patch("ai_linux.engine.llm.unload") as unload:
+            e.stop()
+        unload.assert_called_once_with("http://127.0.0.1:11434", "qwen3.5:4b", timeout=2)
+
+    def test_dead_mic_is_reported_with_the_input_name(self):
+        from ai_linux.engine.mic_watch import SilenceWatch
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {})
+        e._mic = SilenceWatch(dead_s=0)
+        e._capture = mock.Mock()
+        with mock.patch("ai_linux.engine.mic_watch.input_name", return_value="Digital Stereo (IEC958)"):
+            e._watch_mic(0.0)  # first: opened again quietly
+            self.assertEqual([c.args for c in e._capture.call_args_list], [(False,), (True,)])
+            e._mic.restart(0.0)
+            e._watch_mic(0.0)  # still silent: now the warning
+            e._watch_mic(0.01)
+        notes = [ev for ev in events if ev.get("ev") == "notice"]
+        self.assertEqual([n["level"] for n in notes], ["error", "info"])
+        self.assertIn("Digital Stereo (IEC958)", notes[0]["text"])
+
+    def test_mic_that_recovers_after_reopening_stays_quiet(self):
+        from ai_linux.engine.mic_watch import SilenceWatch
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {})
+        e._mic = SilenceWatch(dead_s=0)
+        e._capture = mock.Mock()
+        e._watch_mic(0.0)
+        e._mic.restart(0.0)
+        e._watch_mic(0.01)
+        self.assertFalse(any(ev.get("ev") == "notice" for ev in events))
+        self.assertFalse(e._mic_reopened)  # a later failure gets its own quiet retry
+
+    def test_quit_before_the_models_load_sends_nothing(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        with mock.patch("ai_linux.engine.llm.unload") as unload:
+            e.stop()
+        unload.assert_not_called()
+
+
 class EngineSettingsTests(unittest.TestCase):
     def test_missing_settings_use_defaults(self):
         from ai_linux.engine.service import Engine
@@ -355,6 +591,27 @@ class NameTestEngineTests(unittest.TestCase):
         self.assertEqual(e.name_test_until, 0.0)
         e._capture.assert_called_with(False)  # hotkey mode: the mic closes again
 
+    def test_bare_wake_word_waits_for_the_request(self):
+        e, events = self.make()
+        e.s["wake_word"] = "phoenix"
+        e.asr.transcribe.return_value = "Phoenix."
+        e.armed_until = time.monotonic() + 5  # wake-free window, as after the hotkey
+        e._one("audio", object(), 0.0)
+        e.brain.handle.assert_not_called()
+        self.assertEqual(e.state, "followup")
+
+    def test_listen_while_starting_says_so(self):
+        e, events = self.make()
+        e.state = "loading"
+        e.listen_now()
+        self.assertTrue(any(ev.get("ev") == "notice" for ev in events))
+        e._capture.assert_not_called()
+
+    def test_new_session_forgets_the_conversation(self):
+        e, events = self.make()
+        e.new_session()
+        e.brain.new_session.assert_called_once()
+
     def test_expired_test_listens_normally(self):
         e, events = self.make()
         e.name_test_listen()
@@ -362,6 +619,126 @@ class NameTestEngineTests(unittest.TestCase):
         e.asr.transcribe.return_value = "open my files"
         e._one("audio", object(), 0.0)
         self.assertFalse(any(ev.get("ev") == "heard" for ev in events))
+
+    def test_speech_without_wake_word_sends_a_hint(self):
+        e, events = self.make()
+        e.s.update(listen_mode="wake", wake_word="phoenix")
+        e.asr.transcribe.return_value = "Hello there."
+        e._one("audio", object(), 0.0)
+        self.assertIn({"ev": "no_wake"}, events)
+        e.brain.handle.assert_not_called()
+
+    def test_noise_without_wake_word_stays_quiet(self):
+        e, events = self.make()
+        e.s.update(listen_mode="wake", wake_word="phoenix")
+        for heard in ("", "Um.", "okay"):
+            e.asr.transcribe.return_value = heard
+            e._one("audio", object(), 0.0)
+        self.assertNotIn({"ev": "no_wake"}, events)
+
+    def test_sleep_closes_the_follow_up_window(self):
+        e, events = self.make()
+        e.s["listen_mode"] = "wake"
+        e._play = mock.Mock()
+        e._sleep()  # "go to sleep" ran during the turn
+        e.say_q.put(("end", "t"))
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        deadline = time.monotonic() + 2
+        while e.sleep_after and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual((e.state, e.followup_until), ("idle", 0.0))  # no follow-up window after sleeping
+        e._stop.set()
+        e.say_q.put(("say", "", ""))
+
+    def test_called_then_silence_goes_back_to_sleep(self):
+        e, events = self.make()
+        e.cue = mock.Mock()
+        e._called()
+        self.assertEqual(e.state, "followup")
+        e._check_followup()
+        e.cue.assert_not_called()  # still inside the window
+        e.followup_until = time.monotonic() - 1
+        e._check_followup()
+        self.assertEqual(e.state, "idle")
+        e.cue.assert_called_once_with("sleep")
+
+    def test_called_then_no_words_sounds_unclear(self):
+        e, events = self.make()
+        e.s.update(listen_mode="wake", wake_word="phoenix")
+        e.cue = mock.Mock()
+        e._called()
+        e.asr.transcribe.return_value = "um"
+        e._one("audio", object(), 0.0)
+        e.cue.assert_called_once_with("unclear")
+        e.brain.handle.assert_not_called()
+
+    def test_confirm_shows_the_whole_command(self):
+        e, events = self.make()
+        long_cmd = "find ~/Downloads -name '*.tmp' -mtime +30 -print"
+        e._say("Should I run this command? Say yes or no.", f"Run this? {long_cmd} Say yes or no.")
+        kind, spoken, shown = e.say_q.get_nowait()
+        self.assertNotIn(long_cmd, spoken)
+        self.assertIn(long_cmd, shown)
+
+    def test_speech_started_in_the_window_counts_after_it_closed(self):
+        e, events = self.make()
+        e.s.update(listen_mode="wake", wake_word="phoenix")
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e.asr.transcribe.return_value = "what are you doing"
+        started = time.monotonic()
+        e.followup_until = started + 0.5
+        e._one("audio", object(), started)  # judged at its start, not after the user finished talking
+        e.brain.handle.assert_called_once()
+        e.brain.handle.reset_mock()
+        e._one("audio", object(), started + 1.0)  # began after the window: needs the name
+        e.brain.handle.assert_not_called()
+
+    def test_unclear_confirm_reply_becomes_the_next_request(self):
+        from ai_linux.safety.gate import ConfirmRequest
+        e, events = self.make()
+        e.audio = mock.Mock()
+        e.s.update(listen_mode="wake", wake_word="phoenix")
+        e.brain.yes_no.return_value = None
+        e.asr.transcribe.return_value = "Hello Phoenix, what are you doing?"
+        e.work.put(("audio", object(), time.monotonic()))
+        ev, box = threading.Event(), {"ok": False}
+        e._confirm_by_voice(ConfirmRequest("shell.run_command", {"command": "ls"}, "ls"), ev, box)
+        self.assertFalse(box["ok"])  # not run
+        kind, text, _t = e.work.get_nowait()
+        self.assertEqual((kind, text), ("heard", "Hello Phoenix, what are you doing?"))
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e._one(kind, text, _t)
+        self.assertEqual(e.brain.handle.call_args[0][0], "what are you doing?")
+
+    def test_mic_opens_even_if_a_timer_rang_while_starting(self):
+        e, events = self.make()
+        e.s["listen_mode"] = "wake"
+        e.brain.warm.side_effect = RuntimeError("ollama hung up")
+        e.asr.warm = mock.Mock()
+        e.state = "idle"  # a missed timer rang during the start and left the state at idle
+        e._get_ready()
+        e._capture.assert_called_with(True)
+
+    def test_one_moment_goes_back_to_thinking(self):
+        e, events = self.make()
+        e._play = mock.Mock()
+        e._busy, e._think_detail = True, "Waking the big model"
+        e._say_wait("One moment.")
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        deadline = time.monotonic() + 2
+        while e.state != "thinking" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(e.state, "thinking")
+        self.assertIn({"ev": "state", "state": "thinking", "detail": "Waking the big model"}, events)
+        e._stop.set()
+        e.say_q.put(("end", "x"))
+
+    def test_interrupting_keeps_a_timer_ringing(self):
+        e, events = self.make()
+        e.say_q.put(("say", "a long reply", "a long reply"))
+        e.say_q.put(("ring", "Reminder: tea."))
+        e.cancel_turn()
+        self.assertEqual(e.say_q.get_nowait()[0], "ring")
 
     def test_stop(self):
         e, _ = self.make()

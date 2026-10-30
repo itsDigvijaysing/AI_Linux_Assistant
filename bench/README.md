@@ -248,3 +248,34 @@ watt-flash-0.1 (140M) 41.6. jiwo leads on both scores; our own tests agree.
   checked) in `~/.local`; 0.30.8 kept at `~/.local/share/ollama-0.30.8-backup` until the voice assistant runs on 0.40.
   Gemma: 60 s first load, 3 GB on the GPU.
 - Never keep test models loaded with `keep_alive: -1` on the iGPU: its memory is system RAM.
+
+## Speech recognition: int8, the Intel GPU, live text (`asr/`, 2026-10-28)
+
+Test set (`asr_bench.py make`): 12 commands, SuperTonic voices M1 and F1, four conditions (clean, white noise at 10 dB
+and 0 dB SNR, a second voice 10 dB below the speaker): 96 clips of 3.5-6 s. "30%" for "thirty percent" counts as right.
+Our Parakeet is **FP16** (609 M weights at 2 bytes, encoder 1.24 GB), not FP32.
+
+| | Now: FP16, CPU, 4 threads | int8, CPU | FP16, Intel GPU (OpenVINO 2026.4) |
+|---|---|---|---|
+| Word errors: clean / noise 10 dB / noise 0 dB | 0 / 0 / 2.3 % | 0 / 0.5 / 1.8 % | 0 / 0 / 2.3 % |
+| Same text as now | | 79 / 96 (mostly capitals, commas) | 96 / 96 |
+| 5 s sentence | 0.24 s, 0.87 s CPU | 0.12 s, 0.39 s CPU | 0.09 s, 0.14 s CPU |
+| Memory after load | 4.2 GB | 1.6 GB | 0.7 GB + 1.4 GB GPU buffers (shared RAM) |
+| Load | 4.8 s | 2.0 s | 9.9 s the first time, then 0.7-1.7 s from cache |
+
+All three keep NVIDIA asleep (the GPU run opens only `renderD128` = 0000:00:02.0). With a second voice underneath,
+all three score 41-49 % because Parakeet also writes down the background words.
+
+- **int8:** ONNX Runtime's `quantize_dynamic` needs FP32 input and ran out of memory at the 6 GB cap; `quant_lite.py`
+  writes the same nodes one weight at a time (217 MatMul weights to int8, 76 M convolution weights left FP32: 879 MB).
+  OpenWhispr's sherpa-onnx build (622 MB) also shrinks the convolutions. int8 compiled for the GPU: killed at 6 GB.
+- **GPU, new lengths:** each audio length the GPU hasn't seen costs ~0.6 s once (kernels are compiled per shape and
+  kept in the cache folder; the table's 0.09 s is for cached shapes). Padding the encoder input to whole seconds (the
+  true length passed, output trimmed) caps it at 15 shapes for the 15 s limit: 94 / 96 transcripts identical, the 2
+  changes in 0 dB noise and background speech. The cache is 1.3 GB on disk (a copy of the weights);
+  `CACHE_MODE=OPTIMIZE_SIZE` doesn't apply to ONNX input.
+- **First decode after load:** 1.4-1.6 s on CPU and GPU, then 0.1-0.25 s. The engine warms the big model, not Parakeet.
+- **Live text** (`live_sim.py`, the growing utterance decoded every 0.6 s): each update 0.07-0.15 s and 0.14-0.33 s CPU
+  on the GPU, 0.1-0.35 s and 0.26-1.28 s CPU on the CPU (about 2 s vs 5.5 s of CPU for a 5 s command). Updates reach
+  the final words 0.5-1 s before the sentence ends; the first ones can be wrong ("Right a remote." for "Write a
+  reply").

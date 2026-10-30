@@ -44,7 +44,7 @@ class AutostartTest(unittest.TestCase):
         autostart.set_enabled(True)
         self.assertTrue(autostart.is_enabled())
         v = self._values()
-        self.assertEqual(v["Name"], "AI Linux")
+        self.assertEqual(v["Name"], "Phoenix")
         self.assertEqual(v["Icon"], ICON_NAME)
         self.assertEqual(v["X-GNOME-Autostart-enabled"], "true")
         self.assertEqual(v["NoDisplay"], "false")

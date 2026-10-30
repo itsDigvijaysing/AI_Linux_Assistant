@@ -14,19 +14,18 @@
   opacity: 0.85;
 }
 
-/* home: hero */
+/* home: status row */
 .ail-hero {
-  margin-top: 28px;
-  margin-bottom: 8px;
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .ail-hero .ail-state-label {
-  font-size: 1.35em;
-  margin-top: 14px;
+  font-size: 1.15em;
 }
 
 .ail-hero-hint {
-  font-size: 0.95em;
+  font-size: 0.92em;
 }
 
 .ail-home-empty {
@@ -34,9 +33,27 @@
 }
 
 .ail-listen-btn {
-  min-height: 36px;
-  padding-left: 20px;
-  padding-right: 22px;
+  min-height: 34px;
+  padding-left: 16px;
+  padding-right: 18px;
+}
+
+.ail-hero-progress trough,
+.ail-hero-progress progress {
+  min-height: 3px;
+}
+
+/* home: example requests in the empty state */
+.ail-example {
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-weight: normal;
+  background-color: alpha(var(--accent-bg-color), 0.08);
+  color: var(--accent-color);
+}
+
+.ail-example:hover {
+  background-color: alpha(var(--accent-bg-color), 0.14);
 }
 
 /* engine-off notice */
@@ -53,13 +70,6 @@
 
 .ail-notice-title {
   font-weight: 700;
-}
-
-.ail-code {
-  font-size: 0.9em;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background-color: alpha(currentColor, 0.07);
 }
 
 /* home: conversation area */
@@ -156,6 +166,10 @@ entry.ail-composer-entry:focus-within {
   background-color: alpha(var(--accent-bg-color), 0.10);
 }
 
+.ail-chip.route-rule {
+  color: alpha(currentColor, 0.75);
+}
+
 .ail-chip.route-big {
   color: var(--accent-fg-color);
   background-color: var(--accent-bg-color);
@@ -181,6 +195,11 @@ entry.ail-composer-entry:focus-within {
   background-color: var(--accent-bg-color);
   color: var(--accent-fg-color);
   border-bottom-right-radius: 6px;
+}
+
+/* your words while you speak: the same bubble, a little lighter until the turn arrives */
+.ail-bubble.user.live {
+  background-color: alpha(var(--accent-bg-color), 0.82);
 }
 
 .ail-bubble.user label selection {

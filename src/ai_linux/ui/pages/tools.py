@@ -13,7 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from ai_linux.tools_catalog import FAMILIES, TOOLS, ToolInfo  # noqa: E402
+from ai_linux.tools_catalog import CATEGORIES, ToolInfo, for_category  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -98,30 +98,73 @@ class Page(Adw.NavigationPage):
         self.set_child(view)
 
         self._binds.connect(self.settings, "changed::actions_armed", lambda *_: self._sync_armed())
+        self._binds.connect(self.settings, "changed::web_access", lambda *_: self._sync_web())
         self._binds.connect(self.settings, "changed::mcp_servers", lambda *_: self._reload_servers())
         self.connect("destroy", lambda *_: self._binds.clear())
         self._sync_armed()
+        self._sync_web()
 
     # built-in tools
 
     def _build_builtin(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(
-            title="Built-in tools",
-            description="What the assistant can do by itself. Tagged tools run only while actions are allowed "
-                        "on the Safety page.",
+            title="Built-in Tools",
+            description="Open a group to see its tools. Tools tagged “Changes your PC” run only while actions "
+                        "are allowed on the Safety page, and the risky ones ask you first.",
         )
         self._gated_tags: list[Gtk.Label] = []
-        for family in FAMILIES:
-            for tool in (t for t in TOOLS if t.family == family):
-                group.add(self._tool_row(tool))
+        self._web_row: Adw.ExpanderRow | None = None
+        for key, (title, icon, blurb) in CATEGORIES.items():
+            tools = for_category(key)
+            row = Adw.ExpanderRow(title=title, subtitle=blurb)
+            row.add_prefix(_icon_tile(icon))
+            row.add_suffix(_tag(f"{len(tools)} tool{'s' * (len(tools) != 1)}", "neutral"))
+            if key == "web":
+                self._web_row = row
+                for extra in self._web_rows():
+                    row.add_row(extra)
+            for tool in tools:
+                row.add_row(self._tool_row(tool))
+            group.add(row)
         return group
+
+    def _web_rows(self) -> list[Gtk.Widget]:
+        switch = Adw.SwitchRow(title="Allow Web Access",
+                               subtitle="Weather and quick look-ups ask the internet. Off: nothing leaves "
+                                        "this computer except web searches you open in the browser.")
+        switch.set_active(bool(self.settings.get("web_access")))
+        switch.connect("notify::active", lambda r, _p: self._set("web_access", r.get_active()))
+        self._web_switch = switch
+        city = Adw.EntryRow(title="Home city, for the weather", show_apply_button=True)
+        city.set_text(str(self.settings.get("weather_city") or ""))
+        city.connect("apply", lambda r: self._set("weather_city", r.get_text().strip()))
+        return [switch, city]
+
+    def _set(self, key: str, value) -> None:
+        if self.settings.get(key) == value:
+            return
+        try:
+            self.settings.set(key, value)
+        except Exception:
+            log.exception("saving %s", key)
+
+    def _sync_web(self) -> None:
+        on = bool(self.settings.get("web_access"))
+        if self._web_switch.get_active() != on:
+            self._web_switch.set_active(on)
+        if self._web_row is not None:
+            blurb = CATEGORIES["web"][2]
+            self._web_row.set_subtitle(blurb if on else f"{blurb}. Weather and look-ups are off")
 
     def _tool_row(self, tool: ToolInfo) -> Adw.ActionRow:
         row = Adw.ActionRow(title=tool.title, subtitle=GLib.markup_escape_text(tool.description),
                             tooltip_text=tool.qualified)
         row.add_prefix(_icon_tile(tool.icon))
+        if tool.online:
+            row.add_suffix(_tag("Online", "neutral"))
         if tool.gated:
-            tag = _tag("Needs actions armed")
+            tag = _tag("Changes your PC")
+            tag.set_tooltip_text("Runs only while actions are allowed on the Safety page")
             row.add_suffix(tag)
             self._gated_tags.append(tag)
         return row
@@ -147,7 +190,7 @@ class Page(Adw.NavigationPage):
 
     def _build_servers(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(
-            title="MCP servers",
+            title="Extra Tools (MCP Servers)",
             description="Give the assistant more tools through the Model Context Protocol.",
         )
         self._server_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])

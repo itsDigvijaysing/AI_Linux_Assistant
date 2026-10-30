@@ -19,6 +19,7 @@ from pathlib import Path
 from gi.repository import GLib
 
 from ai_linux.config import DATA_DIR, DEFAULTS, LOG_DIR, PACKAGE_DIR
+from ai_linux.schema import loading
 from ai_linux.state import AssistantState, Turn
 from ai_linux.ui.bar_model import level_from_rms
 
@@ -67,7 +68,13 @@ class EngineClient:
     def snapshot(self) -> dict:
         values = {k: self.settings.get(k) for k in DEFAULTS if k != "muted"}
         values["listen_mode"] = self.listen_mode()
+        values.update(self.model_values())
         return values
+
+    def model_values(self) -> dict:
+        """What the engine runs, from the profile in use: its speed, and the small model only when it is on."""
+        small = self.settings.get("small_model") if self.settings.get("small_on") else "none"
+        return {"small_model": small, **loading(str(self.settings.get("speed")))}
 
     def listen_mode(self) -> str:
         return "off" if self.settings.get("muted") else str(self.settings.get("listen_mode"))
@@ -147,6 +154,9 @@ class EngineClient:
     def cancel(self) -> None:
         self._send({"cmd": "cancel"})
 
+    def new_session(self) -> None:
+        self._send({"cmd": "new_session"})
+
     def submit_text(self, text: str) -> None:
         self._send({"cmd": "text", "text": text})
 
@@ -158,6 +168,8 @@ class EngineClient:
     def _on_setting(self, _settings, key: str) -> None:
         if key in ("listen_mode", "muted"):
             self._send({"cmd": "settings", "values": {"listen_mode": self.listen_mode()}})
+        elif key in ("speed", "small_on", "small_model"):
+            self._send({"cmd": "settings", "values": self.model_values()})
         elif key in DEFAULTS:
             self._send({"cmd": "settings", "values": {key: self.settings.get(key)}})
 
@@ -203,8 +215,16 @@ class EngineClient:
                 self.bus.set_state(state, e.get("detail") or "")
         elif ev == "turn":
             self.bus.add_turn(Turn.from_dict(e["turn"]))
+        elif ev == "partial":
+            self.bus.live_text(e.get("text") or "", e.get("stable") or 0, bool(e.get("final")))
+        elif ev == "saying":
+            self.bus.saying(e.get("text") or "", float(e.get("seconds") or 0))
+        elif ev == "knowledge":
+            self.bus.knowledge_changed()
         elif ev == "notice":
             self.bus.notice(e.get("level", "info"), e.get("text", ""))
+        elif ev == "no_wake":
+            self.bus.wake_missed()
         elif ev == "followup":
             self.bus.followup_until = time.monotonic() + float(e.get("seconds") or 0)
         elif ev == "confirm":

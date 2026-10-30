@@ -15,6 +15,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ai_linux import models_catalog  # noqa: E402
+from ai_linux.config import ICON_NAME  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -192,18 +193,14 @@ class Onboarding(Adw.Dialog):
     # steps
 
     def _welcome(self) -> Gtk.Widget:
-        start = time.monotonic()
-
-        def wave() -> float:
-            t = time.monotonic() - start
-            return 0.38 + 0.22 * math.sin(t * 2.4) + 0.12 * math.sin(t * 5.3)
-
         chip = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, css_classes=["ail-tour-chip"])
         chip.append(Gtk.Image(icon_name="channel-secure-symbolic"))
         chip.append(Gtk.Label(label="Runs on this computer. Nothing you say leaves it."))
         chip.set_margin_top(10)
+        icon = Gtk.Image(icon_name=ICON_NAME, pixel_size=128, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                         css_classes=["icon-dropshadow"])  # the phoenix itself greets; bars come with the mic step
         return self._step(
-            _bars(None, "speaking", wave), "Welcome to AI Linux",
+            icon, "Welcome to Phoenix",
             "Talk to your desktop. Open apps, change settings and get quick answers, all by voice.", chip)
 
     def _microphone(self) -> Gtk.Widget:
@@ -224,8 +221,8 @@ class Onboarding(Adw.Dialog):
             spec = next((m for m in models_catalog.for_slot(slot) if m.recommended), None)
             if spec is None:
                 continue
-            where = ("runs on the CPU" if spec.runtime == "onnx" else "runs on the Intel GPU or CPU"
-                     if not spec.vram_gb else f"needs about {spec.vram_gb:g} GB of GPU memory")
+            where = ("runs on the Intel GPU or CPU" if spec.runtime == "onnx" or not spec.vram_gb
+                     else f"needs about {spec.vram_gb:g} GB of GPU memory")
             row = Adw.ActionRow(title=spec.name, subtitle=f"{role} · {spec.download_gb:g} GB download · {where}",
                                 use_markup=False, subtitle_lines=2)
             icon = {"speech": "audio-input-microphone-symbolic", "small": "power-profile-balanced-symbolic"}.get(
@@ -238,7 +235,7 @@ class Onboarding(Adw.Dialog):
         cards.append(open_models)
         return self._step(
             self._icon("folder-download-symbolic"), "The models it needs",
-            "Speech recognition runs on the CPU. On battery a small model picks everyday commands; a bigger one "
+            "Speech recognition runs on the Intel GPU. On battery a small model picks everyday commands; a bigger one "
             "on the graphics card answers questions. Nothing downloads until you ask.", cards)
 
     def _listening(self) -> Gtk.Widget:
@@ -317,7 +314,7 @@ class Onboarding(Adw.Dialog):
                       "dim-label", "caption")
         tips.set_margin_top(6)
         return self._step(self._icon("object-select-symbolic"), "You are all set",
-                          "AI Linux keeps running in the background, ready when you are.", tips)
+                          "Phoenix keeps running in the background, ready when you are.", tips)
 
     # step details
 

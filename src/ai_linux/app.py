@@ -75,6 +75,11 @@ class App(Adw.Application):
         self.ctx = AppContext(app=self, settings=settings, bus=bus, controller=Controller(settings, bus))
         theme.install()
         theme.apply_color_scheme(settings)
+        try:
+            from ai_linux.knowledge import Knowledge, migrate_about_me
+            migrate_about_me(settings, Knowledge())  # the old About you text becomes facts you keep
+        except Exception:
+            log.exception("moving About you into Knowledge")
         self.ctx.history = _optional("ai_linux.history_store", "HistoryStore", HISTORY_DB)
         if self.ctx.history is not None:
             bus.connect("turn-added", lambda _b, t: self.ctx.history.add(t))
@@ -108,6 +113,7 @@ class App(Adw.Application):
             ("mute", lambda *_: c.mute(True)),
             ("unmute", lambda *_: c.mute(False)),
             ("preferences", lambda *_: self._preferences()),
+            ("knowledge", lambda *_: self._knowledge()),
             ("about", lambda *_: self._about()),
             ("quit", lambda *_: self._quit()),
         ):
@@ -170,13 +176,25 @@ class App(Adw.Application):
         if prefs:
             prefs.show_preferences(self.get_window(), self.ctx)
 
+    def _knowledge(self) -> None:
+        page = _optional_module("ai_linux.ui.knowledge")
+        if page:
+            page.show_knowledge(self.get_window(), self.ctx)
+
     def _about(self) -> None:
         about = Adw.AboutDialog(
             application_name=APP_NAME, application_icon=ICON_NAME, version=__version__,
             developer_name="Digvijaysing", license_type=Gtk.License.MIT_X11,
             comments="Local-first voice assistant for the Linux desktop.",
         )
-        about.add_legal_section("GLaDOS (speech pipeline)", "Copyright (c) 2022 David Ng", Gtk.License.MIT_X11, None)
+        from ai_linux import credits
+        for c in credits.by_kind("code"):  # their code ships with ours, so their licences are listed in full
+            about.add_legal_section(c.name, GLib.markup_escape_text(f"{c.role}. {c.owner}"),
+                                    getattr(Gtk.License, credits.gtk_licence(c) or "CUSTOM"), None)
+        for kind, title, _description in credits.KINDS:  # every credit, the best-known first
+            entries = sorted(credits.by_kind(kind), key=lambda c: not c.featured)
+            about.add_acknowledgement_section(title, [f"{c.name} {c.url}" for c in entries])
+        about.add_acknowledgement_section("Thank you", ["The open-source community"])
         about.present(self.get_window())
 
     def _confirm_dialog(self, event: dict, respond):

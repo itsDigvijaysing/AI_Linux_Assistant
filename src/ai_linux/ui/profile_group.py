@@ -12,7 +12,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk  # noqa: E402
 
-USE = (("auto", "Follow the Charger"), ("battery", "Always Battery"), ("charger", "Always Charger"))
+USE = (("auto", "Switch with the Charger"), ("battery", "Battery Settings Always"),
+       ("charger", "Charger Settings Always"))
 NAMES = {"battery": "Battery", "charger": "Charger"}
 SUFFIX = {"battery": "on Battery", "charger": "on the Charger"}
 

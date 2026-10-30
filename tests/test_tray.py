@@ -21,7 +21,7 @@ from pathlib import Path
 
 from gi.repository import Gio, GLib
 
-from ai_linux.config import APP_NAME, Settings
+from ai_linux.config import APP_NAME, ASSETS_DIR, Settings
 from ai_linux.hotkey import accel_label, accel_to_portal, portal_label
 from ai_linux.state import Bus
 from ai_linux.tray import (
@@ -293,7 +293,9 @@ class TrayTest(unittest.TestCase):
         self.assertEqual(self.item_prop("Category"), "ApplicationStatus")
         self.assertEqual(self.item_prop("Status"), "Active")
         self.assertFalse(self.item_prop("ItemIsMenu"))
-        self.assertEqual(self.item_prop("IconName"), "")  # hosts draw the live pixmap instead
+        # a named symbolic icon the shell paints in the panel's colour; faint while it waits (the test starts off)
+        self.assertEqual(self.item_prop("IconName"), "phoenix-tray-idle-symbolic")
+        self.assertTrue((ASSETS_DIR / "icons" / "phoenix-tray-idle-symbolic.svg").is_file())
         pixmaps = self.item_prop("IconPixmap")
         self.assertEqual([(w, h) for w, h, _ in pixmaps], [(s, s) for s in ICON_SIZES])
         for w, h, data in pixmaps:
@@ -333,7 +335,7 @@ class TrayTest(unittest.TestCase):
         self.assertEqual(ids, [M_OPEN, M_LISTEN, M_MUTE, M_MODE, M_SEP, M_PREFS, M_QUIT])
         by_id = {c[0]: c for c in children}
         self.assertEqual(by_id[M_OPEN][1]["label"], f"Open {APP_NAME}")
-        self.assertEqual(by_id[M_LISTEN][1]["label"], "Listen now")
+        self.assertEqual(by_id[M_LISTEN][1]["label"], "Talk Now")
         self.assertEqual(by_id[M_SEP][1]["type"], "separator")
         self.assertEqual(by_id[M_MUTE][1]["toggle-type"], "checkmark")
         self.assertEqual(by_id[M_MUTE][1]["toggle-state"], 0)
@@ -446,10 +448,11 @@ class TrayTest(unittest.TestCase):
             self.ctx.bus.set_state("listening")
             self.assertTrue(spin(lambda: "ItemsPropertiesUpdated" in seen and "NewToolTip" in seen))
             (label,) = self.menu("GetProperty", GLib.Variant("(is)", (M_LISTEN, "label")), "(v)")
-            self.assertEqual(label, "Stop listening")
+            self.assertEqual(label, "Cancel")
             _icon, _images, title, _detail = self.item_prop("ToolTip")
             self.assertIn("Listening", title)
             self.assertTrue(spin(lambda: "NewIcon" in seen))  # the icon animates while listening
+            self.assertTrue(spin(lambda: self.item_prop("IconName").startswith("phoenix-tray-wave")))
         finally:
             self.client.signal_unsubscribe(sub)
 
@@ -512,3 +515,16 @@ class HotkeyAcceleratorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IconNameTest(unittest.TestCase):
+    def test_states(self):
+        from ai_linux.tray import icon_name
+        self.assertEqual(icon_name("idle"), "phoenix-tray-idle-symbolic")
+        self.assertEqual(icon_name("loading"), "phoenix-tray-idle-symbolic")
+        self.assertEqual(icon_name("muted"), "phoenix-tray-muted-symbolic")
+        self.assertEqual(icon_name("followup"), "phoenix-tray-active-symbolic")
+        self.assertEqual(icon_name("speaking"), "phoenix-tray-active-symbolic")  # still, with animations off
+        self.assertEqual(icon_name("speaking", 7), "phoenix-tray-wave1-symbolic")
+        for st in ("idle", "muted", "followup"):
+            self.assertTrue((ASSETS_DIR / "icons" / f"{icon_name(st)}.svg").is_file())

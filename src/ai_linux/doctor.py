@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ai_linux import __version__, models_catalog
 from ai_linux.paths import APP_NAME, DATA_DIR, MODELS_DIR
-from ai_linux.schema import DEFAULTS
+from ai_linux.schema import DEFAULTS, PROFILES
 
 log = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ GROUPS = (
     ("system", "About this system"),
 )
 FIXES = ("enable_autostart", "start_ollama", "open_models")
-DESKTOP_TOOLS = {"brightnessctl": "brightnessctl", "playerctl": "playerctl", "wl-copy": "wl-clipboard",
-                 "ydotool": "ydotool"}
+# ydotool is optional: without its daemon, pasting goes through the desktop's RemoteDesktop portal.
+DESKTOP_TOOLS = {"brightnessctl": "brightnessctl", "playerctl": "playerctl", "wl-copy": "wl-clipboard"}
 AEC_GLOBS = ("/usr/lib/*/spa-0.2/aec/libspa-aec-webrtc.so", "/usr/lib/spa-0.2/aec/libspa-aec-webrtc.so",
              "/usr/lib64/spa-0.2/aec/libspa-aec-webrtc.so")
 PCI_IDS = ("/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids")
@@ -362,12 +362,20 @@ def _tag_present(tags: set[str], *names: str) -> bool:
     return any((n[:-7] if n.endswith(":latest") else n) in norm for n in names)
 
 
+def _small_used(probe: _Probe) -> bool:
+    """The small model is on for battery or the charger, so it must be downloaded."""
+    try:
+        return any(probe.ctx.settings.get_for(p, "small_on") for p in PROFILES)
+    except Exception:
+        return bool(probe.setting("small_on"))
+
+
 def _check_slot(probe: _Probe, slot: str) -> Check:
     check_id = f"model_{slot}"
     title = {"small": "Small model", "big": "Big model", "speech": "Speech recognition"}[slot]
     chosen = str(probe.setting(models_catalog.SLOT_KEYS[slot]) or "")
-    if slot == "small" and chosen == "none":
-        return Check(check_id, title, "ok", "None: the big model picks every command", group="models")
+    if slot == "small" and (chosen == "none" or not _small_used(probe)):
+        return Check(check_id, title, "ok", "Off: the big model picks every command", group="models")
     spec = models_catalog.get(chosen)
     if spec is None:
         spec = next((m for m in models_catalog.for_slot(slot) if m.recommended), None)
@@ -492,7 +500,7 @@ def check_gpus(probe: _Probe, sys_root: Path = SYS_ROOT) -> list[Check]:
 def check_tools(probe: _Probe) -> Check:
     missing = [b for b in DESKTOP_TOOLS if _which(b) is None]
     if not missing:
-        return Check("tools", "Desktop tools", "ok", "Brightness, media, clipboard and typing tools are installed",
+        return Check("tools", "Desktop tools", "ok", "Brightness, media and clipboard tools are installed",
                      group="desktop")
     pkgs = " ".join(sorted({DESKTOP_TOOLS[b] for b in missing}))
     return Check("tools", "Desktop tools", "warn",

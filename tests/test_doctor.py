@@ -217,6 +217,10 @@ class DesktopTest(unittest.TestCase):
         self.assertEqual(c.status, "warn")
         self.assertIn("wl-clipboard", c.detail)
 
+    def test_ydotool_is_optional(self):
+        with mock.patch.object(doctor, "_which", side_effect=lambda b: None if b == "ydotool" else "/usr/bin/" + b):
+            self.assertEqual(doctor.check_tools(_probe()).status, "ok")
+
     def test_pill_needs_display(self):
         with mock.patch.dict(os.environ, {"DISPLAY": ""}):
             self.assertEqual(doctor.check_pill(_probe()).status, "warn")

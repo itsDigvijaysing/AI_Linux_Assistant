@@ -100,8 +100,8 @@ def loaded(base: str, model: str) -> bool:
     return model in names or f"{model}:latest" in names
 
 
-def unload(base: str, model: str) -> None:
+def unload(base: str, model: str, timeout: float = 10) -> None:
     try:
-        _post(f"{base}/api/generate", {"model": model, "keep_alive": 0}, 10).close()
+        _post(f"{base}/api/generate", {"model": model, "keep_alive": 0}, timeout).close()
     except LLMError:
         pass

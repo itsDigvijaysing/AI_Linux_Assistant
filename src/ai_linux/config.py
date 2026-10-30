@@ -19,7 +19,7 @@ from ai_linux.paths import (  # noqa: E402,F401  re-exported for existing import
 )
 
 from ai_linux.schema import (  # noqa: E402,F401  re-exported for existing imports
-    CHOICES, DEFAULTS, PROFILE_KEYS, PROFILES, default_for, on_ac_power,
+    CHOICES, DEFAULTS, PROFILE_KEYS, PROFILES, SHARED_NOW, default_for, on_ac_power,
 )
 
 _OLD_PROFILE = {"performance": "charger", "battery": "battery", "auto": "auto"}
@@ -67,9 +67,35 @@ class Settings(GObject.Object):
         for key in PROFILE_KEYS:
             if key in self._values:
                 value = self._values.pop(key)
-                for profile in (("battery",) if key == "small_model" else PROFILES):
+                for profile in PROFILES:
                     self._values.setdefault(f"{profile}.{key}", value)
                 changed = True
+        # 2026-10-29: the models became one choice for both profiles; a profile keeps only speed and small_on
+        for key in SHARED_NOW:
+            per = {p: self._values.pop(f"{p}.{key}") for p in PROFILES if f"{p}.{key}" in self._values}
+            changed = changed or bool(per)
+            if key == "small_model":
+                if self._values.get("small_model") in ("none", ""):
+                    per = {p: "none" for p in PROFILES} | per
+                    self._values.pop("small_model")
+                    changed = True
+                for p in [p for p, v in per.items() if v in ("none", "")]:
+                    per.pop(p)
+                    if default_for(p, "small_on"):  # "none" was the old way to turn it off
+                        self._values.setdefault(f"{p}.small_on", False)
+            if per:
+                self._values.setdefault(key, per.get("battery", per.get("charger")))
+        for p in PROFILES:
+            if self._values.pop(f"{p}.big_model_policy", None) == "instant":
+                self._values.setdefault(f"{p}.speed", "full")
+                changed = True
+            changed = self._values.pop(f"{p}.ollama_keep_alive", None) is not None or changed
+        mode = self._values.pop("load_mode", None)
+        if mode is not None:
+            changed = True
+            if mode == "full":
+                for p in PROFILES:
+                    self._values.setdefault(f"{p}.speed", "full")
         return changed
 
     # profiles

@@ -29,7 +29,8 @@ PAGES = (
 )
 FOOTER = (
     ("app.preferences", "Preferences", "preferences-system-symbolic"),
-    ("app.about", "About AI Linux", "help-about-symbolic"),
+    ("app.knowledge", "Knowledge", "user-info-symbolic"),
+    ("app.about", f"About {APP_NAME}", "help-about-symbolic"),
 )
 PAGE_NAMES = tuple(p[0] for p in PAGES)
 _TITLES = {name: title for name, title, _icon in PAGES}

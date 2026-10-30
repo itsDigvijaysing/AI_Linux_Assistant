@@ -39,7 +39,7 @@ def entry() -> str:
         "Terminal=false",
         "StartupNotify=true",
         "Categories=Utility;Accessibility;",
-        "Keywords=voice;assistant;speech;phoenix;",
+        "Keywords=voice;assistant;speech;phoenix;ai;linux;",
     ]) + "\n"
 
 

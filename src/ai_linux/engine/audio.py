@@ -169,7 +169,7 @@ class PipeWireAudioIO:
                 try:
                     data = (np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0)
                     vad = self._vad_model(np.expand_dims(data, 0))
-                    self._sample_queue.put((data.copy(), bool(vad > self.vad_threshold)))
+                    self._sample_queue.put((data.copy(), float(vad)))  # the engine picks the threshold
                     bad = 0
                 except Exception as exc:  # noqa: BLE001 - a bad frame must not silently kill capture
                     bad += 1

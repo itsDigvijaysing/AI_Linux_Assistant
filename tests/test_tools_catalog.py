@@ -14,7 +14,7 @@ from ai_linux.engine import tools as engine_tools  # noqa: E402
 
 class CatalogTests(unittest.TestCase):
     def test_same_tools_as_engine(self):
-        real = {t.name for t in engine_tools.TOOLS}
+        real = {t.name for t in (*engine_tools.TOOLS, *engine_tools.MEMORY_TOOLS)}
         catalog = {t.name for t in tools_catalog.TOOLS}
         self.assertEqual(catalog, real, f"missing: {sorted(real - catalog)} extra: {sorted(catalog - real)}")
 
@@ -27,7 +27,15 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for t in tools_catalog.TOOLS:
             self.assertTrue(t.title and t.description and t.family in tools_catalog.FAMILIES)
+            self.assertIn(t.category, tools_catalog.CATEGORIES)
             self.assertNotIn("—", t.title + t.description)
+
+    def test_every_category_has_tools(self):
+        for key in tools_catalog.CATEGORIES:
+            self.assertTrue(tools_catalog.for_category(key), key)
+
+    def test_online_tools_are_the_web_ones(self):
+        self.assertEqual({t.name for t in tools_catalog.TOOLS if t.online}, {"get_weather", "web_lookup"})
 
     def test_lookup_accepts_qualified_names(self):
         self.assertEqual(tools_catalog.lookup("mcp.skills_actions.set_volume").name, "set_volume")

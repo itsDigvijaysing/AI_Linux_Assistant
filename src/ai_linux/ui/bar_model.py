@@ -32,6 +32,7 @@ COLORS = {
     "muted": "#77767b",
     "error": "#e01b24",
     "resting": "#99c1f1",
+    "big": "#e2440a",
 }
 
 # The assistant's own turn glows like the icon's phoenix: amber centre, orange, red-orange edges.
@@ -59,10 +60,39 @@ FIRE_LIGHT, FIRE_DARK = _gradient(_FIRE_LIGHT), _gradient(_FIRE_DARK)
 def fire_colors(dark: bool) -> tuple[str, ...]:
     return FIRE_DARK if dark else FIRE_LIGHT
 
+
+# You talking: GNOME blues, lighter in the middle. The big model at work: a deeper, heavier fire.
+BLUE_LIGHT, BLUE_DARK = _gradient(("#62a0ea", "#3584e4", "#1a5fb4")), _gradient(("#99c1f1", "#62a0ea", "#3584e4"))
+EMBER_LIGHT, EMBER_DARK = _gradient(("#fe7104", "#e2440a", "#c01c28")), _gradient(("#ff9e2a", "#fa4801", "#e01b24"))
+_STEEL = "#9a9996"  # starting up
+COLOR_BLEND_S = 0.45  # state changes blend the colours, never switch them
+
+
+def palette(state: str, dark: bool, glow: list[float] | None = None) -> tuple[str, ...]:
+    """Per-bar colours for a state; ``glow`` (0..1 per bar) is the thinking sweep, which carries the fire in."""
+    blue = BLUE_DARK if dark else BLUE_LIGHT
+    if state in ("idle", "followup", "listening"):
+        return blue
+    if state == "speaking":
+        return fire_colors(dark)
+    if state == "big":
+        return EMBER_DARK if dark else EMBER_LIGHT
+    glow = glow or [0.5] * N_BARS
+    if state == "thinking":  # between you and its answer: the fire sweeps in over the blue
+        return tuple(_mix(b, f, 0.25 + 0.75 * g) for b, f, g in zip(blue, fire_colors(dark), glow))
+    if state == "loading":
+        return tuple(_mix(_STEEL, b, 0.2 + 0.6 * g) for b, g in zip(blue, glow))
+    return (COLORS.get(state, COLORS["off"]),) * N_BARS
+
+
+def _smooth(u: float) -> float:
+    u = min(1.0, max(0.0, u))
+    return u * u * (3 - 2 * u)
+
 # Frame rates per state; 0 means draw once and stop ticking.
 FPS = {
     "off": 0, "idle": 20, "followup": 20, "listening": 60, "thinking": 30,
-    "loading": 20, "speaking": 60, "muted": 0, "error": 0,
+    "loading": 20, "speaking": 60, "muted": 0, "error": 0, "big": 30,
 }
 
 BLEND_S = 0.18
@@ -85,6 +115,7 @@ class Geometry:
 
 GEOMETRY = {
     "hero": Geometry(10, 8, 10, 96),
+    "row": Geometry(6, 4, 6, 44),  # Home's status row
     "pill": Geometry(4, 3, 4, 24),
     "resting": Geometry(2, 2, 2, 8),
     "tray": Geometry(2, 1, 2, 22),  # 32 px wide icon
@@ -98,7 +129,8 @@ class Frame:
     opacities: list[float] = field(default_factory=lambda: [1.0] * N_BARS)
     x_offset: float = 0.0  # pixels, error shake
     progress: float | None = None  # follow-up window time left, 0..1
-    fire: bool = False  # draw with fire_colors() instead of color
+    fire: bool = False  # the assistant's turn (fire colours)
+    colors: tuple[str, ...] = ()  # per bar, already blended between states
 
 
 def ease_out_cubic(u: float) -> float:
@@ -136,6 +168,9 @@ class BarAnimator:
         self._state_t0 = 0.0
         self._blend_from: list[float] | None = None
         self._blend_s = BLEND_S
+        self.dark = False  # set by the widget: the palettes differ in light and dark
+        self._colors: tuple[str, ...] = palette("idle", False)
+        self._color_from: tuple[str, ...] | None = None
         self._last: list[float] = [0.30 * e for e in TAPER]
         self._last_t: float | None = None
         self._mic = LevelFollower(0.040, 0.160)
@@ -148,10 +183,11 @@ class BarAnimator:
             return
         self._blend_from = list(self._last)
         self._blend_s = MUTE_BLEND_S if state == "muted" else BLEND_S
+        self._color_from = self._colors
         self.state, self._state_t0 = state, now
 
     def fps(self) -> int:
-        if self.reduced_motion and self.state in ("idle", "followup", "thinking", "loading"):
+        if self.reduced_motion and self.state in ("idle", "followup", "thinking", "loading", "big"):
             return 0
         return FPS.get(self.state, 0)
 
@@ -160,7 +196,8 @@ class BarAnimator:
 
         Pass the current ``level`` to also let a silent listening state settle (its bars are static then).
         """
-        blending = self._blend_from is not None and now - self._state_t0 < self._blend_s
+        blend_s = max(self._blend_s, COLOR_BLEND_S if self._color_from is not None else 0.0)
+        blending = (self._blend_from is not None or self._color_from is not None) and now - self._state_t0 < blend_s
         shaking = self.state == "error" and not self.reduced_motion and now - self._state_t0 < SHAKE_S
         if blending or shaking:
             return False
@@ -190,7 +227,18 @@ class BarAnimator:
                 k = ease_out_cubic(u)
                 heights = [f + (h - f) * k for f, h in zip(self._blend_from, heights)]
         self._last = heights
-        return Frame(heights, color, opac, xoff, progress if st == "followup" else None, st in FIRE_STATES)
+        glow = [min(1.0, max(0.0, (o - 0.55) / 0.45)) for o in opac] if st in ("thinking", "loading") else None
+        colors = palette(st, self.dark, glow)
+        if self._color_from is not None:
+            u = (now - self._state_t0) / COLOR_BLEND_S
+            if u >= 1:
+                self._color_from = None
+            else:
+                k = _smooth(u)
+                colors = tuple(_mix(a, b, k) for a, b in zip(self._color_from, colors))
+        self._colors = colors
+        return Frame(heights, color, opac, xoff, progress if st == "followup" else None,
+                     st in FIRE_STATES or st == "big", colors)
 
     def _target(self, st, now, t, level, dt):
         ones = [1.0] * N_BARS
@@ -213,6 +261,12 @@ class BarAnimator:
             p = CENTER - CENTER * math.cos(2 * math.pi * t / period)
             bumps = [math.exp(-((i - p) ** 2) / (2 * 1.1 ** 2)) for i in range(N_BARS)]
             return [0.35 + 0.55 * b for b in bumps], [0.55 + 0.45 * b for b in bumps], COLORS[st], 0.0
+        if st == "big":  # weight: all bars breathe together, slow and deep
+            if self.reduced_motion:
+                return [0.5] * N_BARS, ones, COLORS["thinking"], 0.0
+            pulse = 0.5 - 0.5 * math.cos(2 * math.pi * t / 2.2)
+            amps = [0.30 + 0.55 * pulse * (1 - 0.25 * abs(i - CENTER) / CENTER) for i in range(N_BARS)]
+            return amps, [0.75 + 0.25 * pulse] * N_BARS, COLORS["thinking"], 0.0
         if st == "speaking":
             lv = self._tts.update(level, dt)
             if self.reduced_motion:

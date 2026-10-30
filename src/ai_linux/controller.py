@@ -103,6 +103,24 @@ class Controller(GObject.Object):
         elif pressed:
             self.toggle_listening()
 
+    def new_session(self) -> None:
+        """The model starts fresh and Home empties; History keeps every turn."""
+        if self.engine is not None:
+            self.engine.new_session()
+        self.bus.new_session()
+
+    def delete_session(self, history, turns) -> None:
+        """Home's Delete This Session: a New Session whose turns leave History too."""
+        for t in turns:
+            history.delete(t.id)
+        self.new_session()
+
+    def restore_session(self, history, turns, start: float) -> None:
+        """Undo of delete_session: the turns return to History and Home; the model still starts fresh."""
+        for t in turns:
+            history.add(t)
+        self.bus.restore_session(start)
+
     def cancel(self) -> None:
         if self.engine is not None:
             self.engine.cancel()

@@ -44,7 +44,7 @@ CATALOG: tuple[ModelSpec, ...] = (
     ModelSpec(
         id="parakeet-tdt", slot="speech", name="Parakeet TDT 0.6B", family="NVIDIA Parakeet",
         licence="CC-BY-4.0", download_gb=1.28, runtime="onnx", source="nvidia/parakeet-tdt-0.6b-v3",
-        summary="Turns your speech into text on the CPU. The most accurate choice.", recommended=True,
+        summary="Turns your speech into text on the Intel GPU (or the processor). The most accurate choice.", recommended=True,
     ),
     ModelSpec(
         id="parakeet-ctc", slot="speech", name="Parakeet CTC 110M", family="NVIDIA Parakeet",

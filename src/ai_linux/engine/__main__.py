@@ -71,6 +71,8 @@ def main() -> int:
             engine.push_to_talk(bool(msg.get("pressed")))
         elif cmd == "cancel":
             engine.cancel_turn()
+        elif cmd == "new_session":
+            engine.new_session()
         elif cmd == "text":
             engine.submit_text(str(msg.get("text") or ""))
         elif cmd == "name_test":

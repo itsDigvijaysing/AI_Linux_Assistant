@@ -56,33 +56,8 @@
 }
 
 /* Preferences */
-.ail-prefs-hero {
-  padding: 12px 0 8px 0;
-}
-
-.ail-prefs-hero .title-1 {
-  margin-top: 8px;
-}
-
-.ail-prefs-version {
-  margin-top: 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background-color: alpha(var(--accent-bg-color), 0.10);
-  color: var(--accent-color);
-  font-weight: 600;
-  font-size: 0.9em;
-}
-
 .ail-prefs-note-icon {
   color: var(--accent-color);
-}
-
-.ail-prefs-licence {
-  font-family: monospace;
-  font-size: 0.92em;
-  padding: 18px;
-  background: none;
 }
 
 /* Welcome tour */

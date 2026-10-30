@@ -51,7 +51,7 @@ class _Section:
         self.rows = 0
 
     def set_count(self, n: int) -> None:
-        self.count.set_label(f"{n} turn" if n == 1 else f"{n} turns")
+        self.count.set_label(f"{n} request" if n == 1 else f"{n} requests")
 
 
 class Page(Adw.NavigationPage):
@@ -88,7 +88,7 @@ class Page(Adw.NavigationPage):
         content.append(search_clamp)
 
         self._days_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._more = Gtk.Button(label="Show Older Turns", halign=Gtk.Align.CENTER, visible=False)
+        self._more = Gtk.Button(label="Show Older Requests", halign=Gtk.Align.CENTER, visible=False)
         self._more.add_css_class("pill")
         self._more.set_margin_top(20)
         self._more.connect("clicked", self._show_more)
@@ -318,7 +318,7 @@ class Page(Adw.NavigationPage):
     def _delete(self, turn: Turn) -> None:
         if not self.store.delete(turn.id):
             return
-        toast = Adw.Toast(title="Turn deleted", button_label="Undo", timeout=5)
+        toast = Adw.Toast(title="Request deleted", button_label="Undo", timeout=5)
         toast.connect("button-clicked", lambda *_: self._undo_delete(turn))
         self._toast(toast)
 
@@ -332,8 +332,8 @@ class Page(Adw.NavigationPage):
         n = self.store.count() if self.store is not None else 0
         dialog = Adw.AlertDialog(
             heading="Clear All History?",
-            body=f"This deletes all {n} saved turns on this computer. It cannot be undone." if n != 1
-            else "This deletes the saved turn on this computer. It cannot be undone.",
+            body=f"This deletes all {n} saved requests on this computer. It cannot be undone." if n != 1
+            else "This deletes the saved request on this computer. It cannot be undone.",
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("clear", "Clear History")
@@ -353,7 +353,7 @@ class Page(Adw.NavigationPage):
             self._toast(Adw.Toast(title="Could not clear the history"))
             return
         self._reload(reset=True)
-        self._toast(Adw.Toast(title=f"Deleted {n} turns" if n != 1 else "Deleted 1 turn", timeout=3))
+        self._toast(Adw.Toast(title=f"Deleted {n} requests" if n != 1 else "Deleted 1 request", timeout=3))
 
     def _on_destroy(self, *_):
         if self._reload_id:

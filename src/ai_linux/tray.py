@@ -6,6 +6,8 @@ stays False there and the app keeps working without a tray.
 
 from __future__ import annotations
 
+import functools
+
 import itertools
 import logging
 import math
@@ -32,8 +34,10 @@ MENU_PATH = "/MenuBar"
 # 16 is the GNOME panel size (the extension picks the smallest pixmap >= its size); 22 KDE; 32 HiDPI.
 ICON_SIZES = (16, 22, 32)
 ANIMATED_STATES = frozenset({"listening", "thinking", "speaking"})
-# The shell batches icon updates near 8 Hz and pays CPU per frame, so stay below that.
-TRAY_FPS = 6
+# Named symbolic icons (scripts/gen_tray_icons.py) take the panel's text colour; see icon_name().
+ACTIVE_STATES_TRAY = frozenset({"followup", "listening", "thinking", "speaking"})
+WAVE_FRAMES = 6
+WAVE_FPS = 5  # the shell batches icon updates near 8 Hz and pays CPU per frame
 
 _ITEM_XML = """
 <node>
@@ -228,6 +232,15 @@ def pixmap_variant(images: list[tuple[int, int, bytes]]) -> GLib.Variant:
     return GLib.Variant.new_array(GLib.VariantType("(iiay)"), items)
 
 
+def icon_name(state: str, tick: int | None = None) -> str:
+    """The top-bar icon for a state; ``tick`` steps the wave while it works (None: the still icon)."""
+    if state in ANIMATED_STATES and tick is not None:
+        return f"phoenix-tray-wave{tick % WAVE_FRAMES}-symbolic"
+    if state in ACTIVE_STATES_TRAY:
+        return "phoenix-tray-active-symbolic"
+    return "phoenix-tray-muted-symbolic" if state == "muted" else "phoenix-tray-idle-symbolic"
+
+
 def static_frame(state: str) -> Frame:
     """One resting frame per state: the logo silhouette in the state colour (muted: flat dots)."""
     anim = BarAnimator(reduced_motion=True)
@@ -236,6 +249,12 @@ def static_frame(state: str) -> Frame:
     if state != "muted":
         frame.heights = list(TAPER)  # the animator's resting pose is too flat to read at 16 px
     return frame
+
+
+@functools.lru_cache(maxsize=8)
+def _static_pixels(state: str) -> tuple[bytes, ...]:
+    """The fallback pixmap, drawn once per state: the shell shows the named icon instead."""
+    return tuple(render_frame(static_frame(state), s) for s in ICON_SIZES)
 
 
 class Tray(GObject.Object):
@@ -255,8 +274,10 @@ class Tray(GObject.Object):
         self._anim_id = 0
         self._closed = False
         self._token: str | None = None
-        self._pixmaps: GLib.Variant = pixmap_variant([])
+        self._pixmaps: GLib.Variant = pixmap_variant([])  # for hosts that can't load the named icon
         self._last_pixels: tuple[bytes, ...] | None = None
+        self._icon = icon_name(self._state())
+        self._wave = 0
         self._last_mode = self._non_off_mode(ctx.settings.get("listen_mode"))
         self._animator = BarAnimator(reduced_motion=not _animations_enabled())
         self._animator.set_state(self._state(), time.monotonic())
@@ -375,10 +396,11 @@ class Tray(GObject.Object):
             if state in ANIMATED_STATES and self._animator.fps() > 0:
                 if not self._anim_id:
                     self._tick()
-                    self._anim_id = GLib.timeout_add(1000 // TRAY_FPS, self._tick)
+                    self._anim_id = GLib.timeout_add(1000 // WAVE_FPS, self._tick)
             else:
                 self._stop_anim()
-                self._draw_static()
+                self._set_icon(icon_name(state))
+            self._draw_static()
             self._emit_item("NewToolTip")
             self._menu_changed((M_LISTEN,))
         except Exception:
@@ -391,21 +413,28 @@ class Tray(GObject.Object):
 
     def _tick(self) -> bool:
         try:
-            frame = self._animator.step(time.monotonic(), float(getattr(self.ctx.bus, "level", 0.0)))
-            self._set_frame(frame)
+            self._wave += 1
+            self._set_icon(icon_name(self._state(), self._wave))
         except Exception:
             log.exception("tray: frame failed")
             self._anim_id = 0
             return False
         return True
 
+    def _set_icon(self, name: str) -> None:
+        if name != self._icon:
+            self._icon = name
+            self._emit_item("NewIcon")
+
     def _draw_static(self) -> None:
-        self._set_frame(static_frame(self._state()))
+        self._set_pixels(_static_pixels(self._state()))
 
     def _set_frame(self, frame: Frame) -> None:
-        pixels = tuple(render_frame(frame, s) for s in ICON_SIZES)
+        self._set_pixels(tuple(render_frame(frame, s) for s in ICON_SIZES))
+
+    def _set_pixels(self, pixels: tuple[bytes, ...]) -> None:
         if pixels == self._last_pixels:
-            return  # silence or a held pose: skip the shell's redraw
+            return  # a held pose: skip the shell's redraw
         self._last_pixels = pixels
         self._pixmaps = pixmap_variant([(s, s, p) for s, p in zip(ICON_SIZES, pixels)])
         self._emit_item("NewIcon")
@@ -420,7 +449,7 @@ class Tray(GObject.Object):
         if st == "off":
             detail = getattr(self.ctx.bus, "detail", "") or "Not running"
         elif mode == "off":
-            detail = "Microphone off"
+            detail = "Listening stopped"
         elif mode == "wake":
             detail = f"Say “{self.ctx.settings.get('wake_word')}” to start"
         elif mode == "hotkey":
@@ -451,7 +480,7 @@ class Tray(GObject.Object):
                 "Title": ("s", APP_NAME),
                 "Status": ("s", "Active"),
                 "WindowId": ("i", 0),
-                "IconName": ("s", ""),  # empty so hosts use the live pixmap
+                "IconName": ("s", self._icon),
                 "IconThemePath": ("s", str(ASSETS_DIR / "icons")),
                 "IconAccessibleDesc": ("s", f"{APP_NAME}: {label}"),
                 "OverlayIconName": ("s", ""),
@@ -530,10 +559,11 @@ class Tray(GObject.Object):
         if item_id == M_LISTEN:
             active = self._state() in _ACTIVE_VALUES
             enabled = bool(getattr(self.ctx.controller, "engine_available", True))
-            return {"label": s("s", "Stop listening" if active else "Listen now"), "enabled": s("b", enabled)}
+            return {"label": s("s", "Cancel" if active else "Talk Now"), "enabled": s("b", enabled)}
         if item_id == M_MUTE:
             muted = self.ctx.controller.is_muted()
-            return {"label": s("s", "Mute"), "toggle-type": s("s", "checkmark"), "toggle-state": s("i", int(muted))}
+            return {"label": s("s", "Stop Listening"), "toggle-type": s("s", "checkmark"),
+                    "toggle-state": s("i", int(muted))}
         if item_id == M_MODE:
             return {"label": s("s", "Listening mode"), "children-display": s("s", "submenu")}
         if item_id in RADIO_MODES:

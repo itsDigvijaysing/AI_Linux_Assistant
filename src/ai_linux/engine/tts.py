@@ -24,7 +24,7 @@ import numpy as np
 from numpy.typing import NDArray
 from ai_linux.engine.log import logger
 
-DEFAULT_VOICE = "M1"  # male
+DEFAULT_VOICE = "F1"  # female, as schema.py
 DEFAULT_LANG = "en"
 _KNOWN_VOICES = ("M1", "M3", "M4", "M5", "F1", "F2", "F3", "F4", "F5")
 

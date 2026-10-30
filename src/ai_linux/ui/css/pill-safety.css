@@ -1,6 +1,6 @@
 /* Floating pill (its own Xwayland window) and the Safety page. */
 
-/* the window is only room for the capsule and its shadow */
+/* the window is only room for the capsule, its caption and their shadows */
 window.ail-pill-window,
 window.ail-pill-window.background {
   background: none;
@@ -8,19 +8,44 @@ window.ail-pill-window.background {
   border-radius: 0;
 }
 
+/* frosted glass; ui/caption_model.py GLASS draws the caption card with the same values */
 .ail-pill {
-  background-color: #ffffff;
-  border: 1px solid rgba(0, 0, 6, 0.10);
+  background-color: rgba(252, 252, 253, 0.86);
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
+  border: 1px solid rgba(0, 0, 6, 0.09);
   border-radius: 999px;
-  box-shadow: 0 3px 9px -2px rgba(0, 0, 6, 0.16), 0 1px 2px rgba(0, 0, 6, 0.06);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.9), 0 8px 22px -4px rgba(0, 0, 6, 0.20),
+    0 1px 3px rgba(0, 0, 6, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  .ail-pill {
-    background-color: #2e2e32;
-    border-color: rgba(255, 255, 255, 0.10);
-    box-shadow: 0 3px 9px -2px rgba(0, 0, 0, 0.45);
-  }
+/* a class, not a media query: the pill follows the app's own light/dark */
+.ail-pill.ail-dark {
+  background-color: rgba(36, 36, 40, 0.84);
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 70%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px -4px rgba(0, 0, 0, 0.50),
+    0 1px 3px rgba(0, 0, 0, 0.20);
+}
+
+.ail-pill {
+  transition: box-shadow 450ms ease-out, border-color 450ms ease-out;
+}
+
+/* the big model at work: an ember glow round the capsule */
+.ail-pill.ail-big {
+  border-color: rgba(254, 113, 4, 0.55);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.9), 0 0 16px 1px rgba(254, 113, 4, 0.45),
+    0 8px 22px -4px rgba(0, 0, 6, 0.20);
+}
+
+.ail-pill.ail-dark.ail-big {
+  border-color: rgba(255, 158, 42, 0.55);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 0 16px 1px rgba(250, 72, 1, 0.55),
+    0 8px 22px -4px rgba(0, 0, 0, 0.50);
+}
+
+.ail-pill-caption {
+  font-size: 14px;
 }
 
 /* Safety: typed command in a monospace face, the row title stays in the UI font */

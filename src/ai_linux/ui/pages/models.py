@@ -1,4 +1,5 @@
-"""Models page: the Ollama runtime, the small (CPU) and big (GPU) model slots, and how they behave."""
+"""Models page: what runs now, the two settings that differ on battery and the charger, the Ollama runtime, the
+speech, small (Intel GPU) and big (NVIDIA GPU) models (one choice for both), and advanced tuning."""
 
 from __future__ import annotations
 
@@ -17,25 +18,31 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ai_linux import downloads, models_catalog  # noqa: E402
-from ai_linux.config import DATA_DIR, ProfileView  # noqa: E402
-from ai_linux.ui.profile_group import ProfileGroup  # noqa: E402
+from ai_linux.config import DATA_DIR  # noqa: E402
+from ai_linux.ui.pages.models_overview import RunningGroup, SideBySide  # noqa: E402
 
 log = logging.getLogger(__name__)
 
-POLICIES = (("on_demand", "On demand"), ("instant", "Always loaded"))
-KEEP_ALIVE = (("2m", "2 minutes"), ("5m", "5 minutes"), ("10m", "10 minutes"), ("30m", "30 minutes"),
-              ("0", "Unload right away"))
+SPEECH_DEVICES = (("intel-gpu", "Intel GPU"), ("cpu", "Processor (CPU)"))
 SMALL_DEVICES = (("GPU", "Intel GPU"), ("CPU", "Processor (CPU)"))
 BIG_DEVICES = (("gpu", "NVIDIA GPU"), ("cpu", "Processor (CPU), slow"))
 CONTEXT = ((2048, "2K tokens"), (4096, "4K tokens"), (8192, "8K tokens"), (16384, "16K tokens"))
 BUSY_TITLES = {"starting": "Starting", "stopping": "Stopping", "restarting": "Restarting",
                "installing": "Installing"}
 SLOT_TEXT = {
-    "small": ("Small Model", "Picks the command for each request without waking the NVIDIA GPU. With None, "
-                             "the big model picks it too."),
-    "speech": ("Speech Recognition", "Turns what you say into text, on the CPU."),
+    "small": ("Small Model", "Picks the command for each request on the Intel GPU, so the NVIDIA GPU can sleep. "
+                             "Turn it on or off for battery and the charger above."),
+    "speech": ("Speech Recognition", "Turns what you say into text."),
     "big": ("Big Model", "Answers questions and chat, reads the screen, writes replies, and takes over when "
                          "the small model is unsure."),
+}
+DEVICE_ROWS = {  # slot: (setting, options, hint, icon)
+    "speech": ("stt_device", SPEECH_DEVICES, "Parakeet TDT only; the processor is the fallback.",
+               "audio-input-microphone-symbolic"),
+    "small": ("small_device", SMALL_DEVICES, "The Intel GPU leaves the NVIDIA GPU asleep; the processor is the "
+                                             "fallback.", "computer-symbolic"),
+    "big": ("big_device", BIG_DEVICES, "The processor keeps the graphics card free, but answers take many "
+                                       "seconds.", "video-display-symbolic"),
 }
 _FRACTION = re.compile(r"(\.\d{6})\d+")  # Ollama sends nanoseconds, Python parses microseconds
 
@@ -102,7 +109,8 @@ class _ModelRow(Adw.PreferencesRow):
         self.add_css_class("ail-models-row")
         self.spec = spec
         self.update_property([Gtk.AccessibleProperty.LABEL], [spec.name])
-        need = ("Runs on the CPU" if spec.runtime == "onnx" else "Intel GPU or CPU" if spec.vram_gb <= 0
+        need = (("Intel GPU or CPU" if spec.id == "parakeet-tdt" else "Runs on the CPU") if spec.runtime == "onnx"
+                else "Intel GPU or CPU" if spec.vram_gb <= 0
                 else f"Needs about {_gb(spec.vram_gb)} of GPU memory")
 
         self.check = Gtk.CheckButton(valign=Gtk.Align.CENTER, group=group)
@@ -199,10 +207,9 @@ class Page(Adw.NavigationPage):
     def __init__(self, ctx):
         super().__init__(title="Models", tag="models")
         self.ctx = ctx
-        self.settings = ProfileView(ctx.settings)  # per-profile rows edit the profile picked at the top
+        self.settings = ctx.settings
         self._handlers: list[tuple[object, int]] = []
         self._syncing = False  # true while rows follow settings, so they do not write back
-        self._none_check: Gtk.CheckButton | None = None
         self._polling = False
         self._rows: dict[str, _ModelRow] = {}
         self._jobs: dict[str, _Job] = {}
@@ -224,15 +231,16 @@ class Page(Adw.NavigationPage):
 
         prefs = Adw.PreferencesPage()
         prefs.add_css_class("ail-models")
-        prefs.set_description("By default, on battery a small model picks the command and the big one wakes "
-                              "only when needed; on the charger the big model does everything. Change either "
-                              "below.")
+        prefs.set_description("Pick each model once: it is used on battery and on the charger. Only Speed and "
+                              "the small model differ between the two.")
+        self._running = RunningGroup(ctx.settings, lambda: self._status)
+        prefs.add(self._running)
+        self._side = SideBySide(ctx.settings)
+        prefs.add(self._side)
         prefs.add(self._build_ollama())
-        self._profiles = ProfileGroup(self.settings)
-        prefs.add(self._profiles)
         for slot in ("speech", "small", "big"):
-            prefs.add(self._profiles.titled(self._build_slot(slot), SLOT_TEXT[slot][0]))
-        prefs.add(self._profiles.titled(self._build_behaviour(), "Behaviour"))
+            prefs.add(self._build_slot(slot))
+        prefs.add(self._build_advanced())
         prefs.add(self._build_storage())
         self._toasts = Adw.ToastOverlay(child=prefs)
         view.set_content(self._toasts)
@@ -240,6 +248,8 @@ class Page(Adw.NavigationPage):
 
         if self.ctx.ollama is not None:
             self._connect(self.ctx.ollama, "status-changed", lambda *_: self._sync())
+        self._connect(self.ctx.settings, "changed", lambda *_: self._running.sync())
+        self._connect(self.ctx.settings, "profile-changed", lambda *_: self._running.sync())
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
         self.connect("destroy", self._on_destroy)
@@ -354,7 +364,6 @@ class Page(Adw.NavigationPage):
         self._install_row.add_suffix(cancel)
         group.add(self._install_row)
 
-        group.add(self._build_context_row())
 
         self._version_row = self._property_row("Version")
         self._address_row = self._property_row("Address")
@@ -546,24 +555,11 @@ class Page(Adw.NavigationPage):
             row.cancel_btn.connect("clicked", lambda *_, s=spec: self._cancel_download(s.id))
             self._rows[spec.id] = row
             group.add(row)
-        if slot == "small":
-            self._none_check = Gtk.CheckButton(valign=Gtk.Align.CENTER, group=first,
-                                               active=self.settings.get(key) in ("none", ""))
-            self._none_check.update_property([Gtk.AccessibleProperty.LABEL], ["Use no small model"])
-            self._none_check.connect("toggled", lambda c: c.get_active() and self._store(key, "none"))
-            none = Adw.ActionRow(title="None", subtitle="The big model picks every command: more accurate, but "
-                                                        "it keeps the NVIDIA GPU awake", activatable_widget=self._none_check)
-            none.add_prefix(self._none_check)
-            group.add(none)
-        if slot in ("small", "big"):
-            dev_key, devices = ("small_device", SMALL_DEVICES) if slot == "small" else ("big_device", BIG_DEVICES)
-            device = self._combo(dev_key, "Runs On", devices,
-                                 "The Intel GPU leaves the NVIDIA GPU asleep; the processor is the fallback."
-                                 if slot == "small" else
-                                 "The processor keeps the graphics card free, but answers take many seconds.")
-            device.set_use_subtitle(False)
-            device.add_prefix(Gtk.Image(icon_name="computer-symbolic" if slot == "small" else "video-display-symbolic"))
-            group.add(device)
+        dev_key, devices, hint, icon = DEVICE_ROWS[slot]
+        device = self._combo(dev_key, "Runs On", devices, hint)
+        device.set_use_subtitle(False)
+        device.add_prefix(Gtk.Image(icon_name=icon))
+        group.add(device)
         self._watch(key, lambda k=key, s=slot: self._follow_pick(k, s))
         return group
 
@@ -578,8 +574,6 @@ class Page(Adw.NavigationPage):
         current = self.settings.get(key)
         for spec in models_catalog.for_slot(slot):
             self._rows[spec.id].check.set_active(spec.id == current)
-        if slot == "small" and self._none_check is not None:
-            self._none_check.set_active(current in ("none", ""))
 
     def _is_installed(self, spec: models_catalog.ModelSpec) -> bool:
         if spec.runtime == "ollama":
@@ -705,20 +699,8 @@ class Page(Adw.NavigationPage):
 
     # behaviour
 
-    def _build_behaviour(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Behaviour")
-
-        self._policy_row = self._combo("big_model_policy", "Load the Big Model", POLICIES,
-                                       "On demand frees GPU memory between requests. Always loaded answers "
-                                       "sooner but keeps the GPU awake.")
-        self._policy_row.add_prefix(Gtk.Image(icon_name="system-run-symbolic"))
-        group.add(self._policy_row)
-
-        self._keep_row = self._combo("ollama_keep_alive", "Keep It Loaded After a Reply", KEEP_ALIVE,
-                                     "A short time saves battery, a longer one answers follow-ups faster.")
-        self._keep_row.add_prefix(Gtk.Image(icon_name="preferences-system-time-symbolic"))
-        group.add(self._keep_row)
-
+    def _build_advanced(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Advanced", description="The same on battery and on the charger.")
         think = Adw.SwitchRow(title="Reasoning", active=bool(self.settings.get("think")),
                               subtitle="The big model thinks before it answers: better on hard requests, "
                                        "slower to start speaking.")
@@ -737,8 +719,7 @@ class Page(Adw.NavigationPage):
         self._watch("escalate_threshold", lambda: spin.set_value(float(self.settings.get("escalate_threshold"))))
         group.add(spin)
 
-        self._connect(self.settings, "changed::big_model_policy", lambda *_: self._sync_keep_row())
-        self._sync_keep_row()
+        group.add(self._build_context_row())
         return group
 
     def _combo(self, key: str, title: str, options, subtitle: str) -> Adw.ComboRow:
@@ -775,11 +756,6 @@ class Page(Adw.NavigationPage):
         self._watch("context_length", lambda: int(self.settings.get("context_length")) in ids and
                     row.set_selected(ids.index(int(self.settings.get("context_length")))))
         return row
-
-    def _sync_keep_row(self) -> None:
-        on_demand = self.settings.get("big_model_policy") == "on_demand"
-        self._keep_row.set_sensitive(on_demand)
-        self._keep_row.set_tooltip_text(None if on_demand else "Always loaded keeps the big model in memory")
 
     # installed models
 
@@ -855,6 +831,7 @@ class Page(Adw.NavigationPage):
 
     def _sync(self) -> None:
         try:
+            self._running.sync()
             self._sync_ollama()
             self._sync_models()
             self._sync_installed()
@@ -884,8 +861,7 @@ class Page(Adw.NavigationPage):
 
     def _on_destroy(self, *_):
         self._on_unmap()
-        self._profiles.close()
-        self.settings.close()
+        self._side.close()
         for obj, hid in self._handlers:
             try:
                 obj.disconnect(hid)

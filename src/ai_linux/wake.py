@@ -19,8 +19,13 @@ def words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9']+", text.lower())
 
 
+# said before the name when calling it: "Hey Phoenix" is a call, "Stop Phoenix" is a request
+CALL_WORDS = {"hey", "hi", "hello", "okay", "ok", "yo", "so", "um", "uh", "oh", "and", "wake", "up", "dear", "hiya"}
+
+
 def strip_wake(text: str, wake: str) -> str | None:
-    """The command after the wake word, "" if only the wake word was said, None if it wasn't said."""
+    """The command after the wake word (or a short one before it, as in "stop Phoenix"), "" if only the wake word
+    was said, None if it wasn't said."""
     wake_w = words(wake)
     if not wake_w:
         return text
@@ -28,14 +33,30 @@ def strip_wake(text: str, wake: str) -> str | None:
     heard = [t.group().lower() for t in tokens]
     n = len(wake_w)
     for i in range(min(len(heard) - n + 1, SEARCH_WORDS)):
+        end = None
         if difflib.SequenceMatcher(None, " ".join(heard[i:i + n]), " ".join(wake_w)).ratio() >= MATCH:
-            return text[tokens[i + n - 1].end():].lstrip(" ,.!?;:-")
-        # speech recognition sometimes splits an unusual name in two ("Dora Emon"); same length only
-        joined, name = "".join(heard[i:i + n + 1]), "".join(wake_w)
-        if (i + n < len(heard) and abs(len(joined) - len(name)) <= 2
-                and difflib.SequenceMatcher(None, joined, name).ratio() >= JOINED_MATCH):
-            return text[tokens[i + n].end():].lstrip(" ,.!?;:-")
+            end = i + n - 1
+        else:
+            # speech recognition sometimes splits an unusual name in two ("Dora Emon"); same length only
+            joined, name = "".join(heard[i:i + n + 1]), "".join(wake_w)
+            if (i + n < len(heard) and abs(len(joined) - len(name)) <= 2
+                    and difflib.SequenceMatcher(None, joined, name).ratio() >= JOINED_MATCH):
+                end = i + n
+        if end is None:
+            continue
+        after = text[tokens[end].end():].lstrip(" ,.!?;:-")
+        before = text[:tokens[i].start()].rstrip(" ,.!?;:-")
+        if words(after) or not set(heard[:i]) - CALL_WORDS or not _closing(before):
+            return after  # "I told Phoenix" is a call, not the request "I told"
+        return before
     return None
+
+
+def _closing(text: str) -> bool:
+    """Words said before the name that make a request on their own: "Stop Phoenix", "Thanks Phoenix"."""
+    from ai_linux.engine.quick import quick  # pure Python, no engine dependencies
+    q = quick(text)
+    return q is not None and (q.tool == "go_to_sleep" or bool(q.say))
 
 
 def phrases(name: str) -> list[str]:

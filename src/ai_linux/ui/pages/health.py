@@ -269,7 +269,7 @@ class Page(Adw.NavigationPage):
             autostart.set_enabled(True)
         if not self.ctx.settings.get("autostart"):
             self.ctx.settings.set("autostart", True)
-        self._toast("AI Linux will start when you sign in")
+        self._toast("Phoenix will start when you sign in")
         self.refresh()
 
     def _schedule_recheck(self, ms: int) -> None:

@@ -19,13 +19,14 @@ gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk  # noqa: E402
 
+from ai_linux.schema import is_big  # noqa: E402
 from ai_linux.state import STATE_LABELS, AssistantState  # noqa: E402
-from ai_linux.ui.bar_model import COLORS, GEOMETRY, QUIET, BarAnimator, Frame, fire_colors, hex_to_rgb  # noqa: E402
+from ai_linux.ui.bar_model import COLORS, GEOMETRY, QUIET, BarAnimator, Frame, hex_to_rgb  # noqa: E402
 
 log = logging.getLogger(__name__)
 
 FOLLOWUP_WINDOW_S = 30.0  # the engine's wake window; a shorter one seen live is used instead
-_PAD = {"hero": 12, "pill": 4, "resting": 2, "tray": 0}  # room for the shake and the progress line
+_PAD = {"hero": 12, "row": 8, "pill": 4, "resting": 2, "tray": 0}  # room for the shake and the progress line
 _STALE_LEVEL_S = 0.5  # a writer that stopped pushing reads as silence
 _QUIET_POLL_MS = 80  # wake check while a silent listening state is parked
 _PROGRESS_FPS = 10  # progress line refresh when the bars themselves are still
@@ -120,14 +121,14 @@ class WaveBars(Gtk.Widget):
             self._followup_span = FOLLOWUP_WINDOW_S
             self._live_followup = live
         try:
-            label = STATE_LABELS.get(AssistantState(state), state.title())
+            label = STATE_LABELS.get(AssistantState("thinking" if state == "big" else state), state.title())
         except ValueError:
             label = state.title()
         self.update_property([Gtk.AccessibleProperty.LABEL], [label])
         self._wake()
 
-    def _on_bus_state(self, _bus, state: str, _detail: str) -> None:
-        self._set_state(state, live=True)
+    def _on_bus_state(self, _bus, state: str, detail: str) -> None:
+        self._set_state(_shown(state, detail), live=True)
 
     def _apply_reduced_motion(self) -> None:
         # The resting capsule sits over every app all day, so it never animates.
@@ -221,6 +222,7 @@ class WaveBars(Gtk.Widget):
             # Keep a steady cadence on any refresh rate; resync after a stall.
             self._next_due = self._next_due + period if now - self._next_due < period else now + period
             level = self._level()
+            self._anim.dark = self._dark()
             self._frame = self._anim.step(now, level, progress)
             self.queue_draw()
             if self._anim.is_settled(now, level) and not progress:
@@ -247,7 +249,8 @@ class WaveBars(Gtk.Widget):
         Gtk.Widget.do_root(self)
         if self._bus is not None and not self._bus_handler:
             self._bus_handler = self._bus.connect("state-changed", self._on_bus_state)
-            self._set_state(str(getattr(self._bus.state, "value", self._bus.state)), live=False)
+            state = str(getattr(self._bus.state, "value", self._bus.state))
+            self._set_state(_shown(state, str(getattr(self._bus, "detail", "") or "")), live=False)
 
     def do_unroot(self) -> None:
         if self._bus_handler:
@@ -266,7 +269,14 @@ class WaveBars(Gtk.Widget):
         if self._style is None:
             # per display: the pill lives on its own (X11) display
             self._style = Adw.StyleManager.get_for_display(self.get_display())
-            self._style_handler = self._style.connect("notify::dark", lambda *_: self.queue_draw())
+            self._style_handler = self._style.connect("notify::dark", lambda *_: self._on_dark())
+        self._wake()
+
+    def _dark(self) -> bool:
+        return self._style is not None and self._style.get_dark()
+
+    def _on_dark(self) -> None:
+        self._frame = None  # the next draw picks the light or dark palette
         self._wake()
 
     def do_unmap(self) -> None:
@@ -312,18 +322,18 @@ class WaveBars(Gtk.Widget):
             return
         frame = self._frame
         if frame is None:
-            now = time.monotonic()
-            frame = self._frame = self._anim.step(now, self._level(), self._progress())
+            self._anim.dark = self._dark()
+            frame = self._frame = self._anim.step(time.monotonic(), self._level(), self._progress())
         g = self._geo
         color = frame.color
+        per_bar = frame.colors or (color,) * len(frame.heights)
         if self._geo_name == "resting" and self._state in ("idle", "followup"):
-            color = COLORS["resting"]
+            color = COLORS["resting"]  # a quiet light blue over every app all day
+            per_bar = (color,) * len(frame.heights)
         # whole pixels horizontally keep the bar edges crisp; heights stay fractional for smooth motion
         x0 = round((width - g.width) / 2 + frame.x_offset)
         cy = height / 2
         radius = g.bar_w / 2
-        dark = self._style is not None and self._style.get_dark()
-        per_bar = fire_colors(dark) if frame.fire else (color,) * len(frame.heights)
         groups: dict[tuple[float, str], list[tuple[float, float, float]]] = {}
         for i, (h, op, c) in enumerate(zip(frame.heights, frame.opacities, per_bar)):
             bar_h = g.min_h + (g.max_h - g.min_h) * h
@@ -340,7 +350,7 @@ class WaveBars(Gtk.Widget):
 
     def _draw_progress(self, snapshot, progress: float, color: str, x0: float, cy: float, height: float) -> None:
         g = self._geo
-        thick = 2.0 if self._geo_name in ("hero", "pill") else 1.0
+        thick = 2.0 if self._geo_name in ("hero", "row", "pill") else 1.0
         gap = max(1.0, (height / 2 - g.max_h / 2 - thick) / 2)
         y = min(height - thick, cy + g.max_h / 2 + gap)
         track = Gsk.PathBuilder.new()
@@ -352,6 +362,11 @@ class WaveBars(Gtk.Widget):
             fill = Gsk.PathBuilder.new()
             fill.add_rounded_rect(_rounded(x0 + (g.width - w) / 2, y, w, thick, thick / 2))
             snapshot.append_fill(fill.to_path(), Gsk.FillRule.WINDING, self._rgba(color, 0.9))
+
+
+def _shown(state: str, detail: str) -> str:
+    """The big model at work gets its own heavier animation."""
+    return "big" if state == "thinking" and is_big(detail) else state
 
 
 def _rounded(x: float, y: float, w: float, h: float, r: float) -> Gsk.RoundedRect:

@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from ai_linux.engine import apps as appdb
-from ai_linux.paths import REPO_ROOT
+from ai_linux.engine import web
+from ai_linux.engine.timers import spoken_span
+from ai_linux.paths import REPO_ROOT, STATE_DIR
 
 SINK = "@DEFAULT_AUDIO_SINK@"
 NONE = "none"
@@ -36,6 +38,7 @@ class Result:
     output: str = ""
     summarise: bool = False  # the big model turns `output` into the spoken reply
     speak: bool | None = None  # True: always say it, even when finished actions only get a sound
+    cue: str = ""  # the sound instead of "ok" / "fail"
 
 
 @dataclass
@@ -48,8 +51,13 @@ class Env:
     sleep: Callable[[], None] | None = None
     vision: Callable[[str], str] | None = None
     compose: Callable[[str], str] | None = None
-    cue: Callable[[str], None] | None = None  # plays "ok", "fail" or "big"
-    apps: Callable[[], list] = appdb.installed
+    cue: Callable[[str], None] | None = None  # plays a sound from engine/sounds.py
+    knowledge: Any = None  # ai_linux.knowledge.Knowledge
+    apps: Callable[[], list] = appdb.installed_cached
+    setting: Callable[[str], Any] = lambda key: None
+    timers: Any = None  # ai_linux.engine.timers.Timers
+    running: Callable[[str], bool] = appdb.running  # is a program with this file name running
+    on_bus: Callable[[str], bool] = appdb.on_bus  # does a running app own this D-Bus name
 
 
 @dataclass(frozen=True)
@@ -509,8 +517,8 @@ def run_command(a: dict, env: Env) -> Result:
     return res
 
 
-VOICES = {"supertonic:M1": "male voice 1 (default)", "supertonic:M3": "male voice 3", "supertonic:M4": "male voice 4",
-          "supertonic:M5": "male voice 5", "supertonic:F1": "female voice 1", "supertonic:F2": "female voice 2",
+VOICES = {"supertonic:M1": "male voice 1", "supertonic:M3": "male voice 3", "supertonic:M4": "male voice 4",
+          "supertonic:M5": "male voice 5", "supertonic:F1": "female voice 1 (default)", "supertonic:F2": "female voice 2",
           "supertonic:F3": "female voice 3", "supertonic:F4": "female voice 4", "supertonic:F5": "female voice 5"}
 
 
@@ -537,7 +545,7 @@ def run_voice(a: dict, env: Env) -> Result:
 def run_sleep(a: dict, env: Env) -> Result:
     if env.sleep:
         env.sleep()
-    return Result(True, "Okay.")
+    return Result(True, "Okay, going to sleep.", cue="sleep")
 
 
 def run_time(a: dict, env: Env) -> Result:
@@ -615,21 +623,62 @@ def _p_describe(text: str, env: Env) -> dict:
     return {"question": text}
 
 
-CTRL_V = ["ydotool", "key", "29:1", "47:1", "47:0", "29:0"]  # evdev codes: left Ctrl + V
+PORTAL_HELPER = Path(__file__).resolve().parents[1] / "paste_portal.py"
+PORTAL_TOKEN = STATE_DIR / "portal-paste-token"
+SYSTEM_PYTHON = "/usr/bin/python3"  # the helper needs python3-gi, which the engine's venv doesn't have
+YDOTOOL_KEYS = {  # evdev codes: 29 left Ctrl, 42 left Shift, 47 V
+    "ctrl-v": ["29:1", "47:1", "47:0", "29:0"],
+    "ctrl-shift-v": ["29:1", "42:1", "47:1", "47:0", "42:0", "29:0"],
+}
+PORTAL_DIALOG_S, PORTAL_TIMED_OUT = 90, 4  # match paste_portal.py
+_portal = {"broken": False, "denied": False}  # for this engine run, like OpenWhispr's portalFailed / portalDenied
+
+
+def _ydotoold_running() -> bool:
+    sock = os.environ.get("YDOTOOL_SOCKET")
+    return any(os.path.exists(p) for p in ([sock] if sock else
+                                          [f"/run/user/{os.getuid()}/.ydotool_socket", "/tmp/.ydotool_socket"]))
+
+
+def _press_paste(run: Callable[[list[str]], dict]) -> str | None:
+    """Presses the paste keys in OpenWhispr's GNOME order; the method used, or None if nothing could.
+    Portal with a saved token (silent), then ydotool, then the portal with its one-time permission dialog."""
+    ok = lambda res: "error" not in res and res.get("returncode", 0) == 0  # noqa: E731
+    helper = [SYSTEM_PYTHON, str(PORTAL_HELPER)]
+    portal_ready = os.path.exists(SYSTEM_PYTHON) and PORTAL_HELPER.is_file()
+
+    def portal() -> bool:
+        first = not PORTAL_TOKEN.is_file()  # the permission dialog waits for a person
+        res = run(helper + ["paste", "--token-file", str(PORTAL_TOKEN)], timeout=PORTAL_DIALOG_S + 5 if first else 20)
+        code = res.get("returncode")
+        if not ok(res) and code != PORTAL_TIMED_OUT:  # a slow answer to the dialog is not a broken portal
+            _portal["denied" if code in (2, 3) else "broken"] = True
+        return ok(res)
+
+    usable = portal_ready and not _portal["broken"] and not _portal["denied"]
+    if usable and PORTAL_TOKEN.is_file() and portal():
+        return "portal"
+    if _ydotoold_running():
+        terminal = portal_ready and run(helper + ["detect"]).get("stdout", "").strip() == "terminal"
+        if ok(run(["ydotool", "key", *YDOTOOL_KEYS["ctrl-shift-v" if terminal else "ctrl-v"]])):
+            return "ydotool"
+    if usable and not PORTAL_TOKEN.is_file() and portal():
+        return "portal"
+    return None
 
 
 def paste_text(env: Env, text: str, args: dict) -> Result:
-    """Puts text where the user's cursor is: clipboard + Ctrl+V, then gives the old clipboard back.
-    Never presses Enter, so nothing is sent."""
-    def run(argv: list[str]) -> dict:
+    """Puts text where the user's cursor is: clipboard + the paste keys (Ctrl+Shift+V in terminals), then gives
+    the old clipboard back. Never presses Enter, so nothing is sent."""
+    def run(argv: list[str], timeout: float = 20) -> dict:
         return env.executor.run_argv(argv, tool_name="desktop.write_text", args=args, confirm=env.confirm,
-                                     resource_caps=False)  # wl-copy keeps serving the clipboard after it returns
+                                     resource_caps=False, timeout=timeout)  # wl-copy keeps serving the clipboard
     old = run(["wl-paste", "--no-newline", "--type", "text/plain"])
     put = _result(run(["wl-copy", "--", text]), "", "I couldn't use the clipboard.")
     if not put.ok:
         return Result(False, put.say, put.output)
     time.sleep(0.15)
-    if "error" in (keys := run(CTRL_V)) or keys.get("returncode", 0) != 0:
+    if _press_paste(run) is None:
         return Result(True, "It's on your clipboard: press Control V to paste it.", text, speak=True)
     if "error" not in old and old.get("returncode") == 0 and old.get("stdout"):
         previous = old["stdout"]
@@ -660,6 +709,363 @@ def _p_none(text: str, env: Env) -> dict:
 
 def _choice(arg: str, question: str, options: dict[str, str], convert=lambda x: x) -> Choice:
     return Choice(arg, question, lambda text, env: options, convert)
+
+
+def run_remember(args: dict, env: Env) -> Result:
+    if env.knowledge is None:
+        return Result(False, "I can't save facts right now.")
+    fact, why = env.knowledge.add(str(args.get("fact") or ""), kept=bool(args.get("always")), source="learned")
+    if fact is None:
+        return Result(False, why)
+    return Result(True, "I'll always remember that." if fact.kept else "I'll remember that.")
+
+
+def run_forget(args: dict, env: Env) -> Result:
+    if env.knowledge is None:
+        return Result(False, "I can't change saved facts right now.")
+    gone = env.knowledge.forget(str(args.get("fact") or ""))
+    return Result(bool(gone), "Okay, I've forgotten that." if gone else
+                  "I didn't find exactly that. You can delete facts in Knowledge too.")
+
+
+# apps and folders, read only
+
+def _p_apps(text: str, env: Env) -> dict | None:
+    m = re.search(r"(?i)\bwhat (?:does|is|can) (.+?) (?:do|for|used for|app)\b", text)
+    if m:
+        app, score = appdb.match(m.group(1), env.apps())
+        return {"app": app.id} if app and score >= 0.8 else None
+    return {} if _has(text.lower(), "apps", "applications", "programs", "software") else None
+
+
+def run_apps(a: dict, env: Env) -> Result:
+    apps = env.apps()
+    want = str(a.get("app") or "").strip()
+    if not want:
+        lines = [f"{x.name}: {x.comment}" if x.comment else x.name for x in apps]
+        return Result(True, appdb.summary(apps) + " Ask me what one is for, or say open and its name.",
+                      "\n".join(lines))
+    app = _find_app(want, env)
+    if app is None:
+        return Result(False, f"I couldn't find an app called {want}.")
+    if not app.comment:
+        return Result(True, f"{app.name} is installed, but it doesn't describe itself.")
+    return Result(True, f"{app.name}: {app.comment.rstrip('.')}.")
+
+
+_LIST_RE = re.compile(r"(?i)\b(?:what'?s|what is|what are|list|show|which files are|anything)\b.*\b(?:in|inside)\b")
+
+
+def _p_list_folder(text: str, env: Env) -> dict | None:
+    if not _LIST_RE.search(text):
+        return None
+    t = text.lower()
+    return next(({"folder": k} for k in FOLDERS if k != "home" and _has(t, k, k.rstrip("s"))), None)
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.lstat().st_mtime  # lstat: a broken link must not fail the whole folder
+    except OSError:
+        return 0.0
+
+
+def run_list_folder(a: dict, env: Env) -> Result:
+    key = str(a.get("folder") or "home").lower()
+    key = key if key in FOLDERS else "home"
+    path = _folder_path(key)
+    try:
+        entries = [x for x in path.iterdir() if not x.name.startswith(".")]
+    except OSError:
+        return Result(False, f"I can't read your {key} folder.")
+    items = sorted(entries, key=_mtime, reverse=True)
+    name = "Your home folder" if key == "home" else key.capitalize()
+    if not items:
+        return Result(True, f"{name} is empty.")
+    newest = ", ".join(x.stem[:40] for x in items[:4])
+    n = len(items)
+    return Result(True, f"{name} has {n} item{'s' * (n != 1)}. The newest: {newest}.",
+                  "\n".join(x.name for x in items[:200]))
+
+
+# switching and closing apps
+
+def _find_app(name: str, env: Env):
+    apps = env.apps()
+    app = next((x for x in apps if x.id == name), None)
+    if app is None and name:
+        app, score = appdb.match(name, apps)
+        app = app if app is not None and score >= 0.8 else None
+    return app
+
+
+def _app_target(text: str, *verbs: str) -> str | None:
+    m = re.search(rf"(?i)\b(?:{'|'.join(verbs)})\s+(?:to\s+)?(?:the\s+)?(.+?)(?:\s+(?:app|window|for me|please))*[.!]*$",
+                  text)
+    return m.group(1).strip() if m else None
+
+
+def _object_path(app_id: str) -> str:
+    """GApplication's object path for an id: dots become slashes, dashes underscores, a leading digit gets "_"."""
+    parts = [re.sub(r"[^A-Za-z0-9_]", "_", x) for x in app_id.split(".")]
+    return "/" + "/".join("_" + x if x[:1].isdigit() else x for x in parts)
+
+
+def _activate_argv(app_id: str, *method: str) -> list[str]:
+    return ["gdbus", "call", "--session", "--dest", app_id, "--object-path", _object_path(app_id), "--method", *method]
+
+
+def _p_switch(text: str, env: Env) -> dict | None:
+    name = _app_target(text, "switch", "go back", "go", "bring up", "show me", "focus", "jump")
+    app = _find_app(name, env) if name else None
+    return {"app": app.id} if app else None
+
+
+def run_switch(a: dict, env: Env) -> Result:
+    app = _find_app(str(a.get("app") or ""), env)
+    if app is None:
+        return Result(False, f"I couldn't find an app called {a.get('app') or 'that'}.")
+    if env.on_bus(app.id):  # a running GNOME app raises its own window
+        return _argv(env, "switch_to_app", _activate_argv(app.id, "org.freedesktop.Application.Activate", "{}"),
+                     f"Switching to {app.name}.", f"I couldn't switch to {app.name}.", {"app": app.id})
+    if app.exe and app.exe != "flatpak" and not app.pwa and not env.running(app.exe):
+        return _argv(env, "switch_to_app", ["gtk-launch", app.id], f"{app.name} wasn't open, so I'm opening it.",
+                     f"I couldn't open {app.name}.", {"app": app.id}, detach=True)
+    # Launching it again would open a second window; GNOME gives other apps no way to raise one.
+    return Result(False, f"I can't bring {app.name} to the front from here. Click it in the dock or press Super "
+                         "and Tab.")
+
+
+def _p_close(text: str, env: Env) -> dict | None:
+    name = _app_target(text, "close", "quit", "exit", "kill")
+    app = _find_app(name, env) if name else None
+    return {"app": app.id} if app else None
+
+
+def run_close(a: dict, env: Env) -> Result:
+    app = _find_app(str(a.get("app") or ""), env)
+    if app is None:
+        return Result(False, f"I couldn't find an app called {a.get('app') or 'that'}.")
+    if app.pwa:
+        return Result(False, f"{app.name} runs inside your browser, so close its window instead.")
+    if env.on_bus(app.id):  # asks the app to quit, so it can save or ask first
+        argv = _activate_argv(app.id, "org.freedesktop.Application.ActivateAction", "quit", "[]", "{}")
+    elif app.exe == "flatpak" or not app.exe:  # flatpak kill is a hard kill; a launcher hides the real program
+        return Result(False, f"I can't ask {app.name} to quit safely, so close its window instead.")
+    elif env.running(app.exe):
+        argv = ["pkill", "-TERM", "-x", "-u", str(os.getuid()), app.exe[:15]]  # the polite signal: it may save
+    else:
+        return Result(False, f"{app.name} isn't open.")
+    return _argv(env, "close_app", argv, f"Closing {app.name}.", f"I couldn't close {app.name}.", {"app": app.id})
+
+
+# timers and reminders
+
+_UNIT_S = {"second": 1, "sec": 1, "minute": 60, "min": 60, "hour": 3600, "hr": 3600}
+_NUM_WORD = (r"(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(?:one|two|three|four|five|six|"
+             r"seven|eight|nine))?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|"
+             r"fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|an?|a couple of|a few)")
+_SPAN_RE = re.compile(rf"(?i)\b(\d+(?:\.\d+)?|{_NUM_WORD})(\s+and\s+a\s+half)?\s+(second|sec|minute|min|hour|hr)s?"
+                      r"(\s+and\s+a\s+half)?\b")
+_SPAN_GAP = re.compile(r"(?i)^[\s,]*(?:and\s+)?$")  # "1 hour and 30 minutes" is one length, not two
+
+
+def _num_word(n: str) -> float:
+    n = re.sub(r"[\s-]+", " ", n.lower()).strip()
+    if n[0].isdigit():
+        return float(n)
+    if n in ("a", "an"):
+        return 1
+    if n in ("a couple of",):
+        return 2
+    if n == "a few":
+        return 3
+    parts = n.split()
+    return _TENS.get(parts[0], _UNITS.get(parts[0], 0)) + (_UNITS.get(parts[1], 0) if len(parts) > 1 else 0)
+
+
+def span_seconds(text: str) -> int | None:
+    """The first length said: '1 hour and 30 minutes' -> 5400, 'twenty five minutes' -> 1500,
+    'an hour and a half' -> 5400, 'half an hour' -> 1800; None when no length is said."""
+    half = re.search(r"(?i)\bhalf an? (hour|minute)\b", text)
+    rest = text[:half.start()] + " " * (half.end() - half.start()) + text[half.end():] if half else text
+    total, last_end = (_UNIT_S[half.group(1).lower()] // 2, half.end()) if half else (0, None)
+    for m in _SPAN_RE.finditer(rest):
+        if last_end is not None and not _SPAN_GAP.match(rest[last_end:m.start()]):
+            break  # a second, separate length (inside the reminder text) is not part of this one
+        value = _num_word(m.group(1)) + (0.5 if m.group(2) or m.group(4) else 0)
+        total += int(value * _UNIT_S[m.group(3).lower()])
+        last_end = m.end()
+    return total or None
+
+
+def _clock(text: str) -> tuple[str, bool] | None:
+    """("HH:MM", exact): exact is False for a bare "at 5", which means the next 5 o'clock."""
+    m = re.search(r"(?i)\bat\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?!\w)", text)
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    ampm = (m.group(3) or "").lower().replace(".", "")
+    if ampm == "pm" and h < 12:
+        h += 12
+    elif ampm == "am" and h == 12:
+        h = 0
+    if not (h < 24 and mi < 60):
+        return None
+    return f"{h:02d}:{mi:02d}", bool(ampm) or h == 0 or h > 12
+
+
+_REMIND_RE = re.compile(r"(?i)\bremind me\s+(?:to|that|about)\s+(.+?)(?:\s+(?:in|at|after)\s+(?:\d|an?\b|one|two|"
+                        r"three|four|five|ten|fifteen|twenty|thirty|half).*)?[.!]*$")
+_REMIND_AFTER_RE = re.compile(r"(?i)\bremind me\b.*?\b(?:minutes?|hours?|seconds?|[ap]\.?m\.?|\d)\s+(?:to|that|about)"
+                              r"\s+(.+?)[.!]*$")
+_TIMER_WORDS = r"(?:timers?|reminders?|alarms?)"
+_SET_START = re.compile(r"(?i)^(?:please\s+|can you\s+|could you\s+)*(?:set|start|create|make|add|put|remind me|"
+                        r"wake me)\b")
+_CANCEL_RE = re.compile(rf"(?i)\b(?:cancel|stop|delete|remove|clear|turn off|end)\b(?:\s+\S+){{0,5}}?\s+{_TIMER_WORDS}\b")
+_LIST_TIMERS = re.compile(rf"(?i)\b(?:how long|how much time|time left|left on|what|which|any|list|show)\b.*"
+                          rf"\b{_TIMER_WORDS}\b|\b{_TIMER_WORDS}\b.*\b(?:left|pending|set)\b")
+
+
+def _p_timer(text: str, env: Env) -> dict | None:
+    if not _SET_START.search(text):  # "remind me in 10 minutes to stop the oven" sets one, whatever it mentions
+        if _CANCEL_RE.search(text):
+            return {"action": "cancel", "which": text}
+        if _LIST_TIMERS.search(text):
+            return {"action": "list"}
+    m = _REMIND_RE.search(text) or _REMIND_AFTER_RE.search(text)
+    message = m.group(1).strip() if m else ""
+    bare = text.replace(message, " ") if message else text  # lengths inside the message aren't the timer's
+    seconds, at = span_seconds(bare), _clock(bare)
+    if not seconds and not at:
+        return None
+    args: dict = {"action": "set", "message": message}
+    if at:
+        args["at"], args["exact"] = at
+    else:
+        args["seconds"] = seconds
+    return args
+
+
+def _which_timers(which: str, items: list[dict]) -> list[dict]:
+    """The pending timers a cancel request means: all, the one with that length, or the one about that."""
+    t = which.lower()
+    if len(items) <= 1 or re.search(r"\b(?:all|every|everything|timers|reminders|alarms)\b", t):
+        return items
+    seconds = span_seconds(which)
+    if seconds:
+        return [it for it in items if it.get("length") == seconds]
+    said = set(re.findall(r"[a-z']{3,}", t)) - {"cancel", "stop", "delete", "remove", "clear", "the", "timer",
+                                                 "reminder", "alarm", "for", "about", "please", "you", "can", "turn"}
+    return [it for it in items if said & set(re.findall(r"[a-z']{3,}", str(it.get("message") or "").lower()))]
+
+
+def run_timer(a: dict, env: Env) -> Result:
+    if env.timers is None:
+        return Result(False, "Timers aren't available right now.")
+    action = str(a.get("action") or "set")
+    if action == "cancel":
+        items = env.timers.pending()
+        if not items:
+            return Result(True, "There are no timers to cancel.")
+        chosen = _which_timers(str(a.get("which") or "all"), items)
+        if not chosen:
+            return Result(False, f"You have {len(items)} timers. Say which one, or say cancel all timers.")
+        n = env.timers.cancel([it["id"] for it in chosen] if len(chosen) < len(items) else None)
+        return Result(True, f"Cancelled {n} timer{'s' * (n != 1)}.")
+    if action == "list":
+        items = env.timers.pending()
+        if not items:
+            return Result(True, "You have no timers.")
+        now = time.time()
+        parts = [f"{it['message'] or 'a timer'} in {spoken_span(it['due'] - now)}" for it in items[:3]]
+        return Result(True, "Coming up: " + "; ".join(parts) + ".")
+    message = str(a.get("message") or "").strip().rstrip(".")
+    if a.get("at"):
+        try:
+            h, mi = (int(x) for x in str(a["at"]).split(":")[:2])
+            now = datetime.datetime.now()
+            due = now.replace(hour=h, minute=mi, second=0, microsecond=0)
+        except (TypeError, ValueError):
+            return Result(False, "I didn't get the time for that.")
+        if due <= now and a.get("exact") is False and h < 12 and due + datetime.timedelta(hours=12) > now:
+            due += datetime.timedelta(hours=12)  # "at 5" said at noon means 5 in the evening
+        if due <= now:
+            due += datetime.timedelta(days=1)
+        seconds = (due - now).total_seconds()
+        when = "at " + due.strftime("%-I:%M %p")
+    else:
+        try:
+            seconds = float(a.get("seconds") or 0)
+        except (TypeError, ValueError):
+            seconds = 0
+        if seconds <= 0:
+            return Result(False, "How long should the timer be?")
+        when = "in " + spoken_span(seconds)
+    env.timers.add(seconds, message)
+    if message:
+        return Result(True, f"Okay, I'll remind you to {message} {when}.")
+    return Result(True, f"Timer set for {spoken_span(seconds)}." if not a.get("at") else f"Timer set for {when[3:]}.")
+
+
+# web access (off until the user turns it on)
+
+WEB_OFF = "Web access is off. You can turn it on in Tools, under Web Access."
+WEB_TOOLS = frozenset({"get_weather", "web_lookup"})  # on the menus only while Web Access is on
+_WHEN = {"today": "today", "tomorrow": "tomorrow", "tonight": "today"}
+_TIME_WORDS = {"today", "tomorrow", "tonight", "now", "morning", "evening", "afternoon", "night", "week", "weekend",
+               "hour", "hours", "minute", "minutes", "later", "moment", "while", "day", "days"}
+
+
+def _p_weather(text: str, env: Env) -> dict | None:
+    t = text.lower()
+    if not _has(t, "weather", "temperature", "forecast", "rain", "raining", "sunny", "hot", "cold", "degrees",
+                "umbrella", "snow"):
+        return None
+    when = next((v for k, v in _WHEN.items() if _has(t, k)), "now")
+    m = re.search(r"(?i)\b(?:in|at|for)\s+([A-Za-z][A-Za-z .'-]{1,40}?)(?:\s+(?:today|tomorrow|tonight|now|right "
+                  r"now|this week))?[?.!]*$", text)
+    city = m.group(1).strip() if m else ""
+    if set(city.lower().split()) & _TIME_WORDS:  # "in the evening", "for tomorrow": a time, not a place
+        city = ""
+    return {"city": city, "when": when}
+
+
+def run_weather(a: dict, env: Env) -> Result:
+    if not env.setting("web_access"):
+        return Result(False, WEB_OFF)
+    city = str(a.get("city") or "").strip() or str(env.setting("weather_city") or "").strip()
+    if not city:
+        return Result(False, "Which city? You can set your home city in Tools, under Web Access.")
+    try:
+        return Result(True, web.weather(city, str(a.get("when") or "now")))
+    except ValueError:
+        return Result(False, f"I couldn't find a place called {city}.")
+    except Exception as exc:
+        return Result(False, "I couldn't reach the weather service.", str(exc))
+
+
+_LOOKUP_RE = re.compile(r"(?i)^(?:please\s+)?(?:can you\s+)?(?:tell me\s+)?(?:who is|who was|who are|what is|what's|"
+                        r"what are|what was|define|definition of|meaning of|tell me about|look up|quickly look up)\s+")
+
+
+def _p_lookup(text: str, env: Env) -> dict | None:
+    q = _LOOKUP_RE.sub("", text.strip()).rstrip("?.! ")
+    q = re.sub(r"(?i)\s+(?:online|on the web|on the internet)$", "", q)
+    return {"query": q} if q and q != text.strip().rstrip("?.! ") else None
+
+
+def run_lookup(a: dict, env: Env) -> Result:
+    if not env.setting("web_access"):
+        return Result(False, WEB_OFF)
+    q = str(a.get("query") or "").strip()
+    if not q:
+        return Result(False, "What should I look up?")
+    try:
+        answer = web.lookup(q)
+    except Exception as exc:
+        return Result(False, "I couldn't reach the web.", str(exc))
+    return Result(True, answer) if answer else Result(False, f"I couldn't find a short answer about {q}.")
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -722,9 +1128,76 @@ TOOLS: tuple[Tool, ...] = (
          "box the user is typing in.",
          {"request": {"type": "string", "description": "what to write, in the user's words"}}, run_write, _p_write,
          family="desktop", required=("request",)),
+    Tool("installed_apps", "List the installed apps, or say what one installed app is for.",
+         {"app": {"type": "string", "description": "an app's name, empty for the whole list"}}, run_apps, _p_apps,
+         family="info", needs_args=False),
+    Tool("list_folder", "Say which files are in a folder such as Downloads or Documents, without opening it.",
+         {"folder": {"type": "string", "enum": list(FOLDERS)}}, run_list_folder, _p_list_folder,
+         _choice("folder", "Which folder?", {k: k.capitalize() for k in FOLDERS}), family="info"),
+    Tool("switch_to_app", "Bring an app that is already open to the front.",
+         {"app": {"type": "string", "description": "the app's name"}}, run_switch, _p_switch,
+         Choice("app", "Which app should come to the front?", _app_options), required=("app",)),
+    Tool("close_app", "Close or quit an open app.",
+         {"app": {"type": "string", "description": "the app's name"}}, run_close, _p_close,
+         Choice("app", "Which app should close?", _app_options), required=("app",)),
+    Tool("set_timer", "Set a timer or a reminder, list them, or cancel them.",
+         {"action": {"type": "string", "enum": ["set", "list", "cancel"]},
+          "seconds": {"type": "integer", "description": "how long from now"},
+          "at": {"type": "string", "description": "a clock time, HH:MM 24-hour"},
+          "message": {"type": "string", "description": "what to remind about, empty for a plain timer"},
+          "which": {"type": "string", "description": "for cancel: which timer, or all"}},
+         run_timer, _p_timer, family="assistant", answers=True),
+    Tool("get_weather", "Tell the weather now, today or tomorrow, here or in a named city.",
+         {"city": {"type": "string", "description": "empty for the user's home city"},
+          "when": {"type": "string", "enum": ["now", "today", "tomorrow"]}}, run_weather, _p_weather,
+         family="info", needs_args=False),
+    Tool("web_lookup", "Look up a quick fact, a person, a place or a word's meaning online and say a short answer.",
+         {"query": {"type": "string"}}, run_lookup, _p_lookup, family="info", required=("query",)),
 )
 
 BY_NAME = {t.name: t for t in TOOLS}
+
+
+_REMEMBER = re.compile(r"(?i)^(?:please\s+|hey\s+)?(?:can you\s+|could you\s+)?(always\s+)?remember\s+(?:that\s+)?(.+?)[.!]*$")
+_FORGET = re.compile(r"(?i)^(?:please\s+)?(?:can you\s+)?forget\s+(?:that\s+|about\s+)?(.+?)[.!]*$")
+_FIRST = re.compile(r"\b(i'm|i've|i'd|i'll|im|myself|mine|my|me|i)\b", re.I)  # longest first
+_THIRD = {"i": "they", "i'm": "they're", "im": "they're", "i've": "they've", "i'd": "they'd", "i'll": "they'll",
+          "me": "them", "my": "their", "mine": "theirs", "myself": "themselves"}
+
+
+def third_person(text: str) -> str:
+    """'I like tea, my sister is Priya' -> 'They like tea, their sister is Priya' (facts are about the user)."""
+    out = _FIRST.sub(lambda m: _THIRD[m.group(1).lower()], text.strip())
+    out = re.sub(r"\bthey am\b", "they are", out, flags=re.I)
+    return out[:1].upper() + out[1:]
+
+
+def parse_memory(text: str) -> tuple[str, dict] | None:
+    """An explicit "remember that ..." / "forget that I ..." needs no model; anything vaguer goes to the big one."""
+    t = " ".join(text.split())
+    m = _REMEMBER.match(t)
+    question = t.endswith("?") or (m and re.match(r"(?i)(what|when|where|who|whom|which|why|how|if|whether)\b",
+                                                    m.group(2)))
+    if m and not question and not re.match(r"(?i)(to|this|that|it)\b", m.group(2)) and len(m.group(2).split()) >= 2:
+        return "remember", {"fact": third_person(m.group(2)), "always": bool(m.group(1))}
+    m = _FORGET.match(t)
+    if m and _FIRST.search(m.group(1)):
+        return "forget", {"fact": third_person(m.group(1))}
+    return None
+
+
+# Big model only: never on the small model's routing menu (its accuracy was measured on TOOLS).
+MEMORY_TOOLS: tuple[Tool, ...] = (
+    Tool("remember", "Save one short fact about the user for later conversations: a preference, a person, a "
+         "place, a habit or a project. Use it when they share something lasting about themselves or ask you to "
+         "remember something. Not for passing details of this request.",
+         {"fact": {"type": "string", "description": "the fact in a few words, about the user in the third person"},
+          "always": {"type": "boolean", "description": "true only if they ask you to always remember it"}},
+         run_remember, family="assistant", required=("fact",)),
+    Tool("forget", "Delete a saved fact about the user when they ask you to forget it or say it is wrong.",
+         {"fact": {"type": "string", "description": "the fact to forget"}}, run_forget, family="assistant",
+         required=("fact",)),
+)
 
 
 def menu(tools: tuple[Tool, ...] = TOOLS) -> dict[str, str]:
