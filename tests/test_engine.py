@@ -111,6 +111,21 @@ class RunTests(unittest.TestCase):
         self.assertEqual(e.executor.calls[-1], ["setsid", "-f", "gtk-launch", "firefox"])
         self.assertFalse(T.run_open({"target": "/no/such/path"}, e).ok)
 
+    def test_model_level_arguments_in_any_shape(self):
+        e = env()  # the big model fills these; the schema asks for an integer but nothing enforces it
+        for value, want in (("40%", "40%"), (" 40 % ", "40%"), ("fifty", "50%"), (55.6, "55%"), ("100", "100%")):
+            self.assertTrue(T.run_volume({"percent": value}, e).ok, value)
+            self.assertEqual(e.executor.calls[-1][-1], want)
+        self.assertTrue(T.run_volume({"action": "up", "step": "5%"}, e).ok)
+        self.assertEqual(e.executor.calls[-1][-1], "5%+")
+        self.assertTrue(T.run_brightness({"percent": "30%"}, e).ok)
+        self.assertEqual(e.executor.calls[-1][-1], "30%")
+        before = len(e.executor.calls)
+        for junk in ("", "loud", [], {}, None, True):
+            self.assertFalse(T.run_volume({"percent": junk}, e).ok, junk)  # asks instead of failing the turn
+            self.assertFalse(T.run_brightness({"percent": junk}, e).ok, junk)
+        self.assertEqual(len(e.executor.calls), before)
+
     def test_disarmed_gate_denies(self):
         e = env(armed=False)
         r = T.run_volume({"action": "up"}, e)

@@ -191,12 +191,25 @@ def _clamp(n, lo=0, hi=100) -> int:
     return max(lo, min(hi, int(n)))
 
 
+def _level(value) -> int | None:
+    """A level the big model filled: 40, 55.6, "40", "40%", "fifty"; None when it isn't a number."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*%?\s*", value)
+        return int(float(m.group(1))) if m else number(value)
+    return None
+
+
 def run_brightness(a: dict, env: Env) -> Result:
-    if "percent" in a and a["percent"] is not None:
-        p = _clamp(a["percent"], 1)
+    level = _level(a.get("percent"))
+    if level is not None:
+        p = _clamp(level, 1)
         return _argv(env, "set_screen_brightness", ["brightnessctl", "-q", "set", f"{p}%"],
                      f"Brightness {p} percent.", "I couldn't change the brightness.", a)
-    step = _clamp(a.get("step") or 20, 1)
+    step = _clamp(_level(a.get("step")) or 20, 1)
     change = {"up": f"+{step}%", "down": f"{step}%-"}.get(str(a.get("action", "")).lower())
     if not change:
         return Result(False, "How bright should the screen be?")
@@ -205,12 +218,13 @@ def run_brightness(a: dict, env: Env) -> Result:
 
 
 def run_volume(a: dict, env: Env) -> Result:
-    if a.get("percent") is not None and int(a["percent"]) >= 0:
-        p = _clamp(a["percent"])
+    level = _level(a.get("percent"))
+    if level is not None and level >= 0:
+        p = _clamp(level)
         return _argv(env, "set_volume", ["wpctl", "set-volume", SINK, f"{p}%"], f"Volume {p} percent.",
                      "I couldn't change the volume.", a)
     act = str(a.get("action", "")).lower()
-    step = _clamp(a.get("step") or 10, 1)
+    step = _clamp(_level(a.get("step")) or 10, 1)
     argv = {"up": ["wpctl", "set-volume", "-l", "1.0", SINK, f"{step}%+"], "down": ["wpctl", "set-volume", SINK, f"{step}%-"],
             "mute": ["wpctl", "set-mute", SINK, "1"], "unmute": ["wpctl", "set-mute", SINK, "0"]}.get(act)
     if not argv:
