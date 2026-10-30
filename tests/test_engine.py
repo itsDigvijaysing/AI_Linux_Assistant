@@ -614,6 +614,19 @@ class McpToolChoiceTests(unittest.TestCase):
         self.assertEqual([t.name for t in tools.tools({"demo": {"fail"}})], ["demo_echo"])
         self.assertEqual([t.name for t in tools.tools()], ["demo_echo", "demo_fail"])
 
+    def test_long_server_descriptions_stay_short_on_the_menu(self):
+        from ai_linux.engine import mcp_client
+        long = ("Read the complete contents of a file from the file system as text. Handles various text "
+                "encodings and provides detailed error messages if the file cannot be read. Use this tool when "
+                "you need to examine the contents of a single file. Only works within allowed directories.")
+        server = mock.Mock()
+        server.name = "files"
+        tool = mcp_client.make_tool(server, {}, {"name": "read_text_file", "description": long})
+        self.assertEqual(tool.description, "Read the complete contents of a file from the file system as text.")
+        no_stop = mcp_client.make_tool(server, {}, {"name": "x", "description": "word " * 60})
+        self.assertLessEqual(len(no_stop.description), 120)  # every option is read on every request
+        self.assertEqual(mcp_client.make_tool(server, {}, {"name": "bare"}).description, "bare")
+
     def test_engine_menu_follows_disabled_tools_and_reports_the_catalog(self):
         from ai_linux.engine.service import Engine
         events = []
