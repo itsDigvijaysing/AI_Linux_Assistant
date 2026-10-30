@@ -17,7 +17,7 @@ details of each piece.
   asks for 480 itself, so reset it to 0 after Phoenix restarts (it also resets on reboot).
 - **How the user wants replies:** short key-point bullets; clarify every doubt (AskUserQuestion) before coding.
 
-## Done on 2026-10-30, cloud session (branch `cloud/project-review`, draft PR #1; VERSION 3.6.0, ready to test)
+## Done on 2026-10-30, cloud session (on `main`, merged PR #1; ready to test)
 | Change | Files |
 |---|---|
 | 13 review fixes with failing-test-first proof (speech tied to its turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist `/home`, muted listen loop sleeps, ...) | see the PR table |
@@ -164,7 +164,7 @@ details of each piece.
 - Voice-not-heard follow-ups not done yet: follow a changed default microphone (OpenWhispr does), retry an empty
   transcription once.
 - Close app: GNOME may show "is ready" instead of raising a window for Switch (focus-stealing rules); untested live.
-- **Dictation**: done on the PR branch ("Phoenix, dictate" polished, "type what I say" as said); live check in a text editor and a browser field.
+- **Dictation**: done on `main` ("Phoenix, dictate" polished, "type what I say" as said); live check in a text editor and a browser field.
 - Laya: one full download check through the Models page.
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package; `FUTURE_DIRECTION.md` predates
   v3.
