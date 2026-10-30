@@ -111,6 +111,21 @@ class TimerTests(unittest.TestCase):
             now[0] += 3600  # suspended for the hour: the wall clock moved, a monotonic wait did not
             self.assertTrue(done.wait(2))
 
+    def test_every_change_is_announced(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        seen, done = [], threading.Event()
+        timers = Timers(Path(tmp.name) / "t.json", lambda m: done.set(),
+                        on_change=lambda items: seen.append([it["message"] for it in items]))
+        self.addCleanup(timers.close)
+        timers.start()
+        later = timers.add(600, "call mom")
+        timers.add(0.05, "tea")
+        self.assertTrue(done.wait(2))
+        time.sleep(0.05)
+        timers.cancel([later["id"]])
+        self.assertEqual(seen, [[], ["call mom"], ["tea", "call mom"], ["call mom"], []])  # soonest first
+
     def test_missed_while_closed(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

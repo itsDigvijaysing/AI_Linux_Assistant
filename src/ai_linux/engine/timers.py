@@ -29,8 +29,9 @@ def spoken_span(seconds: float) -> str:
 
 
 class Timers:
-    def __init__(self, path: Path, ring: Callable[[str], None], clock: Callable[[], float] = time.time):
-        self.path, self.ring, self.clock = path, ring, clock
+    def __init__(self, path: Path, ring: Callable[[str], None], clock: Callable[[], float] = time.time,
+                 on_change: Callable[[list[dict]], None] | None = None):
+        self.path, self.ring, self.clock, self.on_change = path, ring, clock, on_change
         self._lock = threading.Lock()
         self._save_lock = threading.Lock()  # a timer firing and a new one being set may save at once
         self._items: dict[str, dict] = {}  # id -> {"id", "due": epoch s, "message", "length": s asked for}
@@ -122,3 +123,8 @@ class Timers:
                 os.replace(tmp, self.path)
             except OSError:
                 log.exception("saving timers")
+        if self.on_change is not None:  # the app's Home lists them
+            try:
+                self.on_change(self.pending())
+            except Exception:
+                log.exception("announcing timers")

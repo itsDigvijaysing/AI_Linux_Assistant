@@ -2,7 +2,8 @@
 
 app -> engine: {"cmd": "settings", "values": {...}} (first line, then on every change) · "listen_now" ·
   {"cmd": "ptt", "pressed": bool} · "cancel" · {"cmd": "text", "text": str} ·
-  {"cmd": "confirm_reply", "id": str, "allowed": bool} · {"cmd": "secrets", "values": {name: token}} · "quit"
+  {"cmd": "confirm_reply", "id": str, "allowed": bool} · {"cmd": "secrets", "values": {name: token}} ·
+  {"cmd": "cancel_timer", "id": str} · "quit"
 engine -> app: hello · state · level · turn · notice · confirm · followup · power · model · voice
 """
 
@@ -77,6 +78,8 @@ def main() -> int:
             engine.submit_text(str(msg.get("text") or ""))
         elif cmd == "name_test":
             engine.name_test_listen() if msg.get("on", True) else engine.name_test_stop()
+        elif cmd == "cancel_timer":
+            engine.cancel_timer(str(msg.get("id") or ""))
         elif cmd == "secrets":
             engine.set_secrets(msg.get("values") or {})
         elif cmd == "confirm_reply":

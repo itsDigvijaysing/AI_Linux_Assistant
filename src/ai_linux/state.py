@@ -94,6 +94,7 @@ class Bus(GObject.Object):
         "session-cleared": (GObject.SignalFlags.RUN_FIRST, None, ()),  # Home's New Session, or its undo
         "wake-missed": (GObject.SignalFlags.RUN_FIRST, None, ()),  # speech dropped for lacking the wake word
         "mcp-tools-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),  # the engine (re)started MCP servers
+        "timers-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),  # a timer was set, rang or was cancelled
     }
 
     def __init__(self):
@@ -106,6 +107,7 @@ class Bus(GObject.Object):
         self.followup_until: float | None = None  # monotonic deadline of the wake window
         self.live: tuple[str, int, bool] = ("", 0, True)  # last live-text, for widgets made later
         self.session_start = 0.0  # wall clock of the last New Session; Home shows only turns after it
+        self.timers: list[dict] = []  # pending timers ({id, due, message, length}), soonest first
         self.mcp_tools: dict[str, list[dict]] = {}  # server -> every tool it offers ({name, description})
 
     def set_state(self, state: AssistantState | str, detail: str = "") -> None:
@@ -157,6 +159,13 @@ class Bus(GObject.Object):
         """Undo of a deleted session: Home shows turns from ``start`` again."""
         self.session_start = float(start)
         self._main(self.emit, "session-cleared")
+
+    def set_timers(self, items: list) -> None:
+        self._main(self._set_timers, items)
+
+    def _set_timers(self, items: list) -> None:
+        self.timers = [it for it in items if isinstance(it, dict) and it.get("id")]
+        self.emit("timers-changed")
 
     def set_mcp_tools(self, servers: dict) -> None:
         self._main(self._set_mcp_tools, servers)

@@ -37,6 +37,10 @@ class Controller(GObject.Object):
             if self.engine is None:
                 client.close()
 
+    def cancel_timer(self, tid: str) -> None:
+        if self.engine is not None:
+            self.engine.cancel_timer(tid)
+
     def set_secret(self, name: str, value: str) -> None:
         """A token for the engine's tools; an empty value removes it."""
         if value:

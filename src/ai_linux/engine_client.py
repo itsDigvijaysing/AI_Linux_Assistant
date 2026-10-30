@@ -146,6 +146,9 @@ class EngineClient:
             except (BrokenPipeError, OSError, ValueError):
                 log.warning("engine is gone; dropped %s", obj.get("cmd"))
 
+    def cancel_timer(self, tid: str) -> None:
+        self._send({"cmd": "cancel_timer", "id": tid})
+
     def send_secret(self, name: str, value: str) -> None:
         self._send({"cmd": "secrets", "values": {name: value}})
 
@@ -232,6 +235,8 @@ class EngineClient:
             self.bus.knowledge_changed()
         elif ev == "notice":
             self.bus.notice(e.get("level", "info"), e.get("text", ""))
+        elif ev == "timers":
+            self.bus.set_timers(e.get("items") if isinstance(e.get("items"), list) else [])
         elif ev == "mcp_tools":
             self.bus.set_mcp_tools(e.get("servers") if isinstance(e.get("servers"), dict) else {})
         elif ev == "no_wake":

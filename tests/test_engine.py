@@ -723,6 +723,23 @@ class EngineSettingsTests(unittest.TestCase):
         e.set_secrets({"todoist": ""})
         self.assertIsNone(e._secrets.get("todoist"))
 
+class TimerEventTests(unittest.TestCase):
+    def test_timer_list_goes_to_the_app_and_one_can_be_cancelled(self):
+        from ai_linux.engine.service import Engine
+        from ai_linux.engine.timers import Timers
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        events = []
+        e = Engine(events.append, {})
+        e.timers = Timers(Path(tmp.name) / "t.json", lambda m: None, on_change=e._timers_changed)
+        self.addCleanup(e.timers.close)
+        item = e.timers.add(300, "stretch")
+        sent = [ev for ev in events if ev.get("ev") == "timers"]
+        self.assertEqual([it["message"] for it in sent[-1]["items"]], ["stretch"])
+        e.cancel_timer(item["id"])
+        self.assertEqual([ev for ev in events if ev.get("ev") == "timers"][-1]["items"], [])
+        e.cancel_timer("nope")  # unknown or already rung: nothing happens
+
 class NameTestEngineTests(unittest.TestCase):
     def make(self):
         from ai_linux.engine.service import Engine

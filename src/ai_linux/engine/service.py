@@ -127,7 +127,7 @@ class Engine:
         from ai_linux.engine.timers import Timers
         from ai_linux.paths import STATE_DIR
 
-        self.timers = Timers(STATE_DIR / "timers.json", self._ring)
+        self.timers = Timers(STATE_DIR / "timers.json", self._ring, on_change=self._timers_changed)
         env = Env(Executor(self.gate), confirm=self._confirm, set_voice=self._set_voice, sleep=self._sleep,
                   cue=self.cue, knowledge=Knowledge(on_change=lambda: self.emit({"ev": "knowledge"})),
                   setting=self.setting, timers=self.timers, secret=self._secrets.get)
@@ -254,6 +254,14 @@ class Engine:
             only_tools = self._servers_but_tools(old) == self._servers_but_tools(self.s)
             threading.Thread(target=self._filter_mcp if only_tools else self._load_mcp, name="MCP",
                              daemon=True).start()
+
+    def _timers_changed(self, items: list[dict]) -> None:
+        self.emit({"ev": "timers", "items": items})
+
+    def cancel_timer(self, tid: str) -> None:
+        """Home's Cancel button."""
+        if self.timers is not None:
+            self.timers.cancel([str(tid)])
 
     def set_secrets(self, values: dict) -> None:
         """Tokens the app read from the keyring; an empty value removes one. Never logged or saved."""
