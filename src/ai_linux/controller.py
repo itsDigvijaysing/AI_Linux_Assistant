@@ -26,14 +26,25 @@ class Controller(GObject.Object):
         self.engine = None
         self.demo: DemoDriver | None = None
         self.on_confirm = None  # (event dict, respond(bool)) -> None, set by the app
+        self.secrets: dict[str, str] = {}  # tokens from the keyring, re-sent whenever the engine starts
 
     def _ensure_engine(self) -> None:
         if self.engine is None:
             from ai_linux.engine_client import EngineClient
             client = EngineClient(self.settings, self.bus, on_confirm=self._confirm)
+            client.secrets = self.secrets
             self.engine = client if client.available else None
             if self.engine is None:
                 client.close()
+
+    def set_secret(self, name: str, value: str) -> None:
+        """A token for the engine's tools; an empty value removes it."""
+        if value:
+            self.secrets[name] = value
+        else:
+            self.secrets.pop(name, None)
+        if self.engine is not None:
+            self.engine.send_secret(name, value)
 
     def _confirm(self, event: dict, respond):
         if self.on_confirm is None:

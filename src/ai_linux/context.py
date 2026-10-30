@@ -17,5 +17,6 @@ class AppContext:
     tray: Any = None
     pill: Any = None
     hotkey: Any = None
+    todoist: Any = None  # ai_linux.todoist_link.TodoistLink
     screenshot_mode: bool = False  # headless screenshots: no tray, pill, hotkey or autostart writes
     extras: dict = field(default_factory=dict)

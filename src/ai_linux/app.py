@@ -86,8 +86,16 @@ class App(Adw.Application):
             bus.connect("turn-updated", lambda _b, t: self.ctx.history.update(t))
         self.ctx.ollama = _optional("ai_linux.ollama", "OllamaManager", self.ctx)
         self.ctx.controller.on_confirm = self._confirm_dialog
+        self.ctx.todoist = _optional("ai_linux.todoist_link", "TodoistLink", settings,
+                                     self.ctx.controller.set_secret)
+        GLib.idle_add(self._load_tokens)  # after the command line, so screenshot mode never opens the keyring
         self._add_actions()
         GLib.timeout_add_seconds(5, self._poll_power)
+
+    def _load_tokens(self) -> bool:
+        if self.ctx.todoist is not None and not self.ctx.screenshot_mode:
+            self.ctx.todoist.load()
+        return False
 
     def _poll_power(self) -> bool:
         """Auto profile: battery or charger settings follow the plug (a few sysfs reads)."""

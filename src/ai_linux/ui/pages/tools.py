@@ -100,9 +100,11 @@ class Page(Adw.NavigationPage):
         self._binds.connect(self.settings, "changed::actions_armed", lambda *_: self._sync_armed())
         self._binds.connect(self.settings, "changed::web_access", lambda *_: self._sync_web())
         self._binds.connect(self.settings, "changed::mcp_servers", lambda *_: self._reload_servers())
+        self._binds.connect(self.settings, "changed::todoist_connected", lambda *_: self._sync_todoist())
         self.connect("destroy", lambda *_: self._binds.clear())
         self._sync_armed()
         self._sync_web()
+        self._sync_todoist()
 
     # built-in tools
 
@@ -123,6 +125,10 @@ class Page(Adw.NavigationPage):
                 self._web_row = row
                 for extra in self._web_rows():
                     row.add_row(extra)
+            if key == "tasks":
+                self._todoist_row = row
+                for extra in self._todoist_rows():
+                    row.add_row(extra)
             for tool in tools:
                 row.add_row(self._tool_row(tool))
             group.add(row)
@@ -139,6 +145,55 @@ class Page(Adw.NavigationPage):
         city.set_text(str(self.settings.get("weather_city") or ""))
         city.connect("apply", lambda r: self._set("weather_city", r.get_text().strip()))
         return [switch, city]
+
+    # Todoist: the token goes to the keyring, never into the settings file
+
+    def _todoist_rows(self) -> list[Gtk.Widget]:
+        self._todoist_status = Adw.ActionRow(title="Not connected")
+        self._todoist_off = Gtk.Button(label="Disconnect", valign=Gtk.Align.CENTER)
+        self._todoist_off.connect("clicked", lambda *_: self._todoist_disconnect())
+        self._todoist_status.add_suffix(self._todoist_off)
+        self._todoist_entry = Adw.PasswordEntryRow(title="API token", show_apply_button=True)
+        self._todoist_entry.connect("apply", lambda r: self._todoist_save(r.get_text()))
+        help_row = Adw.ActionRow(title="Where to find it",
+                                 subtitle="In Todoist: Settings, Integrations, Developer, API token. It is kept "
+                                          "in your login keyring and checked with Todoist before it is saved.")
+        return [self._todoist_status, self._todoist_entry, help_row]
+
+    def _sync_todoist(self) -> None:
+        link = getattr(self.ctx, "todoist", None)
+        on = bool(self.settings.get("todoist_connected"))
+        busy = bool(link and link.busy)
+        if link is None:
+            self._todoist_status.set_title("Not available")
+            self._todoist_status.set_subtitle("The keyring helper didn't load; see the app log")
+        else:
+            self._todoist_status.set_title("Connected" if on else "Not connected")
+            self._todoist_status.set_subtitle("Ask “what's on my Todoist today?”" if on else
+                                              "Paste your API token below")
+        self._todoist_off.set_visible(on and link is not None)
+        self._todoist_off.set_sensitive(not busy)
+        self._todoist_entry.set_sensitive(link is not None and not busy)
+        blurb = CATEGORIES["tasks"][2]
+        self._todoist_row.set_subtitle(blurb if on else f"{blurb}. Not connected")
+
+    def _todoist_done(self, ok: bool, text: str) -> None:
+        if ok:
+            self._todoist_entry.set_text("")
+        self._toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text), timeout=4))
+        self._sync_todoist()
+
+    def _todoist_save(self, token: str) -> None:
+        link = getattr(self.ctx, "todoist", None)
+        if link is not None:
+            link.save(token, self._todoist_done)
+            self._sync_todoist()
+
+    def _todoist_disconnect(self) -> None:
+        link = getattr(self.ctx, "todoist", None)
+        if link is not None:
+            link.disconnect(self._todoist_done)
+            self._sync_todoist()
 
     def _set(self, key: str, value) -> None:
         if self.settings.get(key) == value:

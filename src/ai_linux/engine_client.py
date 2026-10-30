@@ -59,6 +59,7 @@ class EngineClient:
         self._stopping = False
         self._restarts = 0
         self._tail: deque[str] = deque(maxlen=20)
+        self.secrets: dict[str, str] = {}  # the controller's tokens, sent after the settings on every start
         self._handler = settings.connect("changed", self._on_setting)
 
     @property
@@ -106,6 +107,8 @@ class EngineClient:
         threading.Thread(target=self._read, args=(self.proc,), name="EngineOut", daemon=True).start()
         threading.Thread(target=self._log, args=(self.proc, err), name="EngineErr", daemon=True).start()
         self._send({"cmd": "settings", "values": self.snapshot()})
+        if self.secrets:
+            self._send({"cmd": "secrets", "values": dict(self.secrets)})
 
     def stop(self) -> None:
         self._stopping = True
@@ -142,6 +145,9 @@ class EngineClient:
                 p.stdin.flush()
             except (BrokenPipeError, OSError, ValueError):
                 log.warning("engine is gone; dropped %s", obj.get("cmd"))
+
+    def send_secret(self, name: str, value: str) -> None:
+        self._send({"cmd": "secrets", "values": {name: value}})
 
     def set_listen_mode(self, mode: str) -> None:
         pass  # the settings change already reached the engine
