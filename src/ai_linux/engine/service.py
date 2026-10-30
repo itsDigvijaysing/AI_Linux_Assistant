@@ -681,7 +681,7 @@ class Engine:
             return
         if kind != "text":
             self._emit_live(text, final=True)  # what was heard, shown while the assistant thinks
-        self.cancel = threading.Event()
+        cancel = self.cancel = threading.Event()
         self._false_barges = 0
         self.called = self.sleep_after = False
         self._think_detail = ""
@@ -696,17 +696,17 @@ class Engine:
         if marked is not None:  # "that's wrong": the app saves the earlier request's new status
             self.emit({"ev": "turn_update", "turn": marked})
         self.emit({"ev": "turn", "turn": turn})
-        self.say_q.put(("end", turn["id"]))
+        self.say_q.put(("end", turn["id"], cancel))
 
     # speaking
 
     def _say(self, text: str, shown: str = "") -> None:
         """Speak ``text``; the pill shows ``shown`` instead when given (a command too long to read out)."""
-        self.say_q.put(("say", text, shown or text))
+        self.say_q.put(("say", text, shown or text, self.cancel))  # tied to its turn: a later turn swaps cancel
 
     def _say_wait(self, text: str) -> None:
         """A short phrase while the user waits ("One moment."); the pill goes back to thinking after it."""
-        self.say_q.put(("wait", text, text))
+        self.say_q.put(("wait", text, text, self.cancel))
 
     def _speak_loop(self) -> None:
         while not self._stop.is_set():
@@ -720,10 +720,12 @@ class Engine:
                 if self.state == "speaking":
                     self.set_state("muted" if self.s.get("listen_mode") == "off" else "idle")
                 continue
+            # a cancelled turn's items can arrive after the queue was cleared and after the next turn began
+            cancel = item[-1] if isinstance(item[-1], threading.Event) else self.cancel
             if item[0] == "end":
                 self._held()
                 self.speaking = False
-                if self.cancel.is_set():
+                if cancel.is_set():
                     continue
                 if self.sleep_after or self.s.get("listen_mode") == "hotkey":
                     self.sleep_after = False
@@ -734,23 +736,24 @@ class Engine:
                     self.set_state("followup")
                     self.emit({"ev": "followup", "seconds": FOLLOWUP_S})
                 continue
-            if self.cancel.is_set():
+            if cancel.is_set():
                 continue
             try:
-                self._play(item[1], item[2] if len(item) > 2 else item[1])
+                self._play(item[1], item[2] if len(item) > 2 else item[1], cancel=cancel)
             except Exception as exc:
                 log.exception("speaking")
                 self.speaking = False
                 self.notice("error", f"Couldn't speak the reply: {exc}")
-            if item[0] == "wait" and self._busy and self.say_q.empty() and not self.cancel.is_set():
+            if item[0] == "wait" and self._busy and self.say_q.empty() and not cancel.is_set():
                 self.speaking = False
                 self.set_state("thinking", self._think_detail)  # the big model is still loading
 
-    def _play(self, text: str, shown: str = "", force: bool = False) -> None:
+    def _play(self, text: str, shown: str = "", force: bool = False, cancel: threading.Event | None = None) -> None:
         if not self.s.get("tts_enabled", True):
             return
+        cancel = cancel or self.cancel
         audio = self.tts.generate_speech_audio(text, speed=1.05 * float(self.s.get("tts_speed") or 1.0))
-        if audio.size == 0 or (self.cancel.is_set() and not force) or not self._held():
+        if audio.size == 0 or (cancel.is_set() and not force) or not self._held():
             return
         audio = np.clip(audio * float(self.s.get("tts_volume") or 1.0), -1.0, 1.0)
         sr = self.tts.sample_rate

@@ -743,7 +743,7 @@ class NameTestEngineTests(unittest.TestCase):
         e, events = self.make()
         long_cmd = "find ~/Downloads -name '*.tmp' -mtime +30 -print"
         e._say("Should I run this command? Say yes or no.", f"Run this? {long_cmd} Say yes or no.")
-        kind, spoken, shown = e.say_q.get_nowait()
+        kind, spoken, shown = e.say_q.get_nowait()[:3]
         self.assertNotIn(long_cmd, spoken)
         self.assertIn(long_cmd, shown)
 
@@ -977,3 +977,57 @@ class McpCleanupTests(unittest.TestCase):
                 t.join(3)
         self.assertEqual(len(made), 2)
         self.assertEqual([m for m in made if not m.closed], [e.mcp])
+
+
+class TurnOverlapTests(unittest.TestCase):
+    """A cancelled turn's leftovers must not reach the next turn (the speaker runs on its own thread)."""
+
+    def make(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "wake"})
+        e._play = mock.Mock()
+        e.brain = mock.Mock()
+        return e
+
+    def start_speaker(self, e):
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+
+    @staticmethod
+    def drain(e):
+        deadline = time.monotonic() + 2
+        while not e.say_q.empty() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.1)
+
+    def cancelled_first_turn(self, e):
+        def handle(text, source, cancel):
+            cancel.set()  # the user cancelled; this sentence was already on its way past the cleared queue
+            e._say("the rest of the old answer")
+            return {"id": "a", "latency": {}}
+        e.brain.handle.side_effect = handle
+        e._one("text", "first", 0.0)
+
+    def test_late_sentence_of_a_cancelled_turn_is_not_spoken_in_the_next(self):
+        e = self.make()
+        self.cancelled_first_turn(e)
+        e.brain.handle.side_effect = lambda text, source, cancel: (e._say("the new answer"),
+                                                                  {"id": "b", "latency": {}})[1]
+        e._one("text", "second", 0.0)
+        self.start_speaker(e)
+        self.drain(e)
+        self.assertEqual([c.args[0] for c in e._play.call_args_list], ["the new answer"])
+
+    def test_end_of_a_cancelled_turn_leaves_the_next_one_thinking(self):
+        e = self.make()
+        self.cancelled_first_turn(e)
+        seen = {}
+
+        def handle(text, source, cancel):
+            self.start_speaker(e)
+            self.drain(e)
+            seen["state"] = e.state
+            return {"id": "b", "latency": {}}
+        e.brain.handle.side_effect = handle
+        e._one("text", "second", 0.0)
+        self.assertEqual(seen["state"], "thinking")
