@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+import numpy as np
 import importlib.util  # noqa: E402
 if importlib.util.find_spec("numpy") is None:
     raise unittest.SkipTest("needs numpy (the engine's requirements)")
@@ -165,6 +166,16 @@ class BrainTests(unittest.TestCase):
         b._small, b._small_key = FakeJiwo(), (values["small_model"], values["small_device"])
         return b, said, cues
 
+    def test_missing_big_model_says_so(self):
+        b, said, _ = self.make({"none": 0.99})
+        with mock.patch.object(b, "_handle", side_effect=brain_mod.llm.LLMError("model 'qwen3.5:4b' not found")):
+            turn = b.handle("tell me a story", "text", threading.Event())
+        self.assertEqual(turn["status"], "failed")
+        self.assertIn("isn't downloaded", said[0])
+        with mock.patch.object(b, "_handle", side_effect=brain_mod.llm.LLMError("connection refused")):
+            b.handle("tell me a story", "text", threading.Event())
+        self.assertIn("can't reach", said[1])
+
     def test_confident_tool_runs_without_big_model(self):
         b, said, cues = self.make({"set_volume": 0.97, "none": 0.03})
         with mock.patch.object(brain_mod.llm, "chat", side_effect=AssertionError("big model called")):
@@ -213,6 +224,22 @@ class BrainTests(unittest.TestCase):
         self.assertTrue(said[1].startswith("Good morning"))
         self.assertIn("open apps", said[3])
 
+    def test_small_talk_answers_without_a_model(self):
+        b, said, cues = self.make({}, wake_word="nova")
+        talk = ("what are you doing?", "are you there?", "how are you feeling?", "hi, how are you", "who are you",
+                "I'm fine", "good job", "what are your thoughts")
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            for text in talk:
+                self.assertEqual(b.handle(text, "text", threading.Event())["route"], "rule", text)
+        self.assertEqual(len(said), len(talk))
+        self.assertIn("I'm Nova", said[4])
+
+    def test_questions_with_content_still_reach_the_models(self):
+        from ai_linux.engine.quick import quick
+        for text in ("what are your thoughts on electric cars", "what are you doing tomorrow at 5",
+                     "how are you able to open apps", "what is up with my wifi"):
+            self.assertIsNone(quick(text), text)
+
     def test_youtube_play_searches_youtube(self):
         b, said, cues = self.make({})
         with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
@@ -257,6 +284,46 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(said, ["It's sunny today.", "Enjoy it!"])
         self.assertEqual(cues, ["big"])
 
+    def test_unsure_action_asks_first(self):
+        for answer, ran in ((True, True), (False, False)):
+            b, said, cues = self.make({"set_volume": 0.6, "none": 0.4})
+            asked = []
+            b.env.confirm = lambda req: asked.append(req) or answer
+            with mock.patch.object(brain_mod.llm, "chat", side_effect=AssertionError("guessed with the big model")):
+                turn = b.handle("volume to 30", "text", threading.Event())
+            self.assertEqual(asked[0].detail, "Did you mean volume, 30?")
+            self.assertEqual(bool(turn["tools"]), ran)
+            self.assertEqual(turn["alts"], {"set_volume": 0.6, "none": 0.4})
+            if not ran:
+                self.assertEqual((turn["status"], said), ("declined", ["Okay, I won't."]))
+
+    def test_unclear_request_gets_no_action_tools(self):
+        b, said, cues = self.make({"set_volume": 0.4, "go_to_sleep": 0.35, "none": 0.25})
+        b.env.confirm = mock.Mock(return_value=True)
+        seen = []
+
+        def chat(base, model, msgs, tools=None, **kw):
+            seen.append(tools)
+            return iter([("text", "Sure, what would you like?"), ("done", {})])
+        with mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
+            turn = b.handle("please don't sleep on it", "text", threading.Event())
+        self.assertEqual((turn["tools"], seen), ([], [None]))  # no action tools offered
+        b.env.confirm.assert_not_called()
+
+    def test_thats_wrong_marks_the_previous_request(self):
+        b, said, cues = self.make({"set_volume": 0.97, "none": 0.03})
+        first = b.handle("volume to 25", "text", threading.Event())
+        turn = b.handle("that's wrong", "text", threading.Event())
+        self.assertIs(turn["marks"], first)
+        self.assertEqual((first["status"], turn["route"]), ("wrong", "rule"))
+        self.assertIn("noted", said[-1])
+
+    def test_dont_sleep_and_hello_question_are_rules(self):
+        from ai_linux.engine.quick import quick
+        self.assertEqual(quick("please don't sleep").say, "Okay, I'm still here.")
+        self.assertEqual(quick("please don't sleep").tool, "")  # never goes to sleep
+        self.assertTrue(quick("Hello?").say.startswith(("Hi", "Good")))
+
     def test_big_only_cues_when_asleep(self):
         b, said, cues = self.make({}, small_model="none")
         for loaded, want in ((True, []), (False, ["big"])):
@@ -287,7 +354,7 @@ class BrainTests(unittest.TestCase):
                 mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
                 mock.patch.object(brain_mod.llm, "chat", side_effect=chat):
             b.handle("is it late", "text", threading.Event())
-        self.assertEqual(seen, [{"get_time", "set_volume", "remember", "forget"}])  # unsure: the likely ones
+        self.assertEqual(seen, [set()])  # unsure and nobody to ask: answer, never guess an action
 
     def test_saving_a_fact_never_replaces_the_answer(self):
         b, said, cues = self.make({}, small_model="none")
@@ -749,3 +816,57 @@ class NameTestEngineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BargeInTests(unittest.TestCase):
+    def make(self, heard: str):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.asr = mock.Mock(transcribe=mock.Mock(return_value=heard))
+        e.audio = mock.Mock()
+        e._saying = "Droupadi Murmu is the current president of India."
+        e._pause_reply()
+        return e
+
+    def test_echo_words_are_not_the_user(self):
+        from ai_linux.engine.service import echo_of
+        said = "Droupadi Murmu is the current president of India."
+        self.assertTrue(echo_of("president of India", said))
+        self.assertTrue(echo_of("", said))
+        self.assertTrue(echo_of("Hmm.", said))
+        self.assertFalse(echo_of("Stop.", said))
+        self.assertFalse(echo_of("What is your name?", said))
+
+    def test_own_echo_resumes_the_reply(self):
+        e = self.make("the current president")
+        e._barge_verdict(np.zeros(16000, dtype=np.float32))
+        self.assertFalse(e._hold.is_set())
+        self.assertTrue(e._held())
+        self.assertFalse(e.cancel.is_set())
+        self.assertTrue(e.work.empty())
+        self.assertEqual(e._false_barges, 1)
+
+    def test_short_word_from_the_user_stops_the_reply(self):
+        e = self.make("Stop.")
+        e._barge_verdict(np.zeros(16000, dtype=np.float32))
+        self.assertTrue(e.cancel.is_set())
+        self.assertFalse(e._hold.is_set())
+        self.assertEqual(e.work.get_nowait(), ("heard", "Stop.", 0.0))
+
+    def test_paused_sentence_is_said_again_after_an_echo(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.tts = mock.Mock(sample_rate=16000, generate_speech_audio=mock.Mock(return_value=np.ones(1600, np.float32) * 0.1))
+        calls = []
+
+        def measure(n, sr):
+            calls.append(n)
+            if len(calls) == 1:  # the first play is cut by a barge-in that turns out to be our echo
+                e._pause_reply()
+                threading.Timer(0.05, lambda: (setattr(e, "_hold_resume", True), e._hold.clear())).start()
+                return True, 30
+            return False, 100
+
+        e.audio = mock.Mock(measure_percentage_spoken=measure)
+        e._play("Hello there.")
+        self.assertEqual(len(calls), 2)

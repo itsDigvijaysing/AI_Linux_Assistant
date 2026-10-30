@@ -60,5 +60,12 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(seen, [True])
 
 
+class TurnRecordTests(unittest.TestCase):
+    def test_keeps_router_guesses_and_ignores_unknown_fields(self):
+        t = Turn.from_dict({"heard": "volume", "alts": {"set_volume": 0.6}, "status": "wrong", "future": 1})
+        self.assertEqual((t.alts, t.status), ({"set_volume": 0.6}, "wrong"))
+        self.assertEqual(Turn.from_dict(t.to_dict()), t)
+
+
 if __name__ == "__main__":
     unittest.main()

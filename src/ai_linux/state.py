@@ -60,7 +60,8 @@ class Turn:
     confidence: float | None = None
     tools: list[ToolCall] = field(default_factory=list)
     latency: dict[str, float] = field(default_factory=dict)  # asr, route, llm, tts (seconds)
-    status: str = "ok"  # ok | failed | cancelled | partial
+    status: str = "ok"  # ok | failed | cancelled | partial | declined | wrong (the user said so)
+    alts: dict[str, float] = field(default_factory=dict)  # the router's top guesses, for reviewing mistakes
     source: str = "voice"  # voice | text
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: float = field(default_factory=time.time)
@@ -70,7 +71,7 @@ class Turn:
 
     @classmethod
     def from_dict(cls, d: dict) -> Turn:
-        d = dict(d)
+        d = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}  # newer engines may send more
         d["tools"] = [ToolCall(**t) for t in d.get("tools", [])]
         return cls(**d)
 

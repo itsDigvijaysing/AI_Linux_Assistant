@@ -1,25 +1,47 @@
-# Handoff: where Phoenix stands (2026-10-29)
+# Handoff: where Phoenix stands (2026-10-30)
 
 Start a new session with: "Read `HANDOFF.md`, then `src/ai_linux/ARCHITECTURE.md`." `CLAUDE.md` (rules, test commands)
 loads by itself. This file says what was done last, what is uncommitted and what is open; ARCHITECTURE.md has the
 details of each piece.
 
 ## State
-- Last commit `a6a1c9c` (v3.1.0). **Everything below is uncommitted** (four batches); `VERSION` says 3.1.1, 3.2.0
-  suggested. The user decides when to commit (ask each time; no AI attribution).
-- Tests: `/usr/bin/python3 -m unittest discover -s tests` gives 377 OK, 3 skipped (2026-10-29). Engine venv (101 OK):
+- Last commit `eed63fc` (the user committed the four 2026-10-29 batches; `VERSION` still 3.1.1). **2026-10-30 work
+  below is uncommitted**; 3.2.0 suggested. The user decides when to commit (ask each time; no AI attribution).
+- Tests: `/usr/bin/python3 -m unittest discover -s tests` gives 393 OK, 3 skipped (2026-10-30). Engine venv (108 OK):
   `~/.local/share/ai-linux/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools`
   (`test_knowledge` needs gi, so it runs on the system Python only).
-- An `ollama serve` started in an earlier session (log `~/.cache/ai-linux-bench/ollama-0.40.log`) is the server the
-  app uses; it is the user's to stop.
+- Ollama: Phoenix now starts its own server on 11435 (`ai-linux-ollama` user unit). The system `ollama.service`
+  (official installer, user `ollama`, empty store) keeps 11434; `ollama` on the command line talks to that one unless
+  `OLLAMA_HOST=127.0.0.1:11435`.
+- A manual `pw-metadata -n settings 0 clock.force-quantum 480` was set on 2026-10-30 while testing; the engine now
+  asks for 480 itself, so reset it to 0 after Phoenix restarts (it also resets on reboot).
 - **How the user wants replies:** short key-point bullets; clarify every doubt (AskUserQuestion) before coding.
+
+## Done on 2026-10-30 (uncommitted)
+| Change | Files |
+|---|---|
+| Not hearing after the first reply: PipeWire ran the WebRTC echo cancel at 256-sample cycles (its block is 480); one CPU spike desynced it for good and it passed 2 to 18 of ~140 speech frames. The module now forces 480 (`node.force-quantum`); live check passed | `engine/audio.py` (`AEC_QUANTUM`) |
+| Big model "not found" after reboot: the official installer's system `ollama.service` (empty store) took 11434. Phoenix's own server on 11435, auto-started by the app when down; "isn't downloaded yet" spoken for a missing model | `ollama.py` (`DEFAULT_URL`, `_maybe_autostart`), `schema.py`, `engine/brain.py` |
+| Small talk without the big model ("what are you doing", "how are you feeling", "are you there", "who are you", ...), "don't sleep", "Hello?" | `engine/quick.py` (`_CHAT`, `_AWAKE`) |
+| Wrong actions: below the 0.85 threshold the big model got 4 likely tools and called one on a guess. Now an unsure action (0.5 up to the threshold) asks "Did you mean ...?" (dialog or voice, Yes/No); lower answers with no action tools | `engine/brain.py` (`ASK_P`, `_ask_first`), `engine/service.py` (`detail` in confirm), `app.py` (`_confirm_finish`) |
+| Mistake log: top 3 router guesses per turn (`alts`), "that's wrong" marks the previous turn, export of marked and unsure turns to `bench/data/review.jsonl` (git-ignored) | `state.py` (`Turn.alts`, tolerant `from_dict`), `engine_client.py` (`turn_update`), `bench/router/export_history.py` |
+
+## Learned on 2026-10-30
+- Echo cancel: a fresh module passed 136 of 143 speech frames, the engine's passed 2; after a 15 s CPU load a fresh
+  one broke the same way; forcing 480 stopped the dropouts at once. Claude, OpenWhispr and whisper-flow use the raw
+  mic (no AEC) because they never speak; Phoenix needs AEC only for barge-in.
+- 2026-10-30 log: of 40 big-model routes, wrong tool choices sat below 0.65 (6 of 11); above it the tool was right and
+  misses were arguments or mishearing. Web check: ask-when-unsure is standard (Lex top-5 + disambiguation, conformal
+  clarification); hierarchical routing evidence is mixed (errors move to the family step), so it was not built.
+- Browser actions all ran but opened behind other windows: GNOME blocks raising without an xdg-activation token.
 
 ## Done on 2026-10-29, batch 4 (user-approved)
 | Change | Files |
 |---|---|
 | Chat no longer runs tools: the router's "none" decides first; action tools only when unsure (top 4), memory tools only for statements about the user; a memory call is saved quietly and a second stream answers | `engine/brain.py` (`CHAT_SURE`, `about_self`, `_note`, `_converse(tools)`) |
 | Not hearing after the first request: wake-free window judged at the utterance's start; a non-yes/no reply during a confirmation becomes a new request; mic opens after start-up even if the state changed | `engine/service.py` (`_wake_free(at)`, `("heard", ...)` work items, `_get_ready`) |
-| Barge-in: VAD 0.5 while speaking (AEC leaves our voice below 0.05), 8 of 12 frames window; logged per reply | `engine/service.py` (`BARGE_*`) |
+| Barge-in: 5 of 12 frames at VAD 0.3 pause the reply; speech stops it, our own echo resumes it (sentence said again, max 2 per turn) | `engine/service.py` (`BARGE_*`, `echo_of`, `_barge_verdict`) |
+| Reply caption: words fade before the card collapses (it cropped them on every side) | `ui/pill.py` (`_Caption._on_tick`) |
 | "One moment" keeps the thinking state and ember glow afterwards | `engine/service.py` (`_say_wait`), `engine/brain.py` |
 | Ultra-review: 14 of 15 findings valid and fixed, plus the 7 small items (timer parsing and cancel, switch/close safety, portal timeout, forget/merge in Knowledge, cached app list, tray redraw) | `engine/tools.py`, `engine/timers.py`, `engine/apps.py`, `knowledge.py`, `paste_portal.py`, `wake.py`, `tray.py` |
 | Models are one choice for battery and charger; per profile only Speed and "Small model picks commands" (old settings migrate) | `schema.py` (`SPEEDS`, `loading`, `SHARED_NOW`), `config.py` (`_migrate`), `engine_client.py` (`model_values`), `ollama.py`, `doctor.py` |
@@ -31,8 +53,8 @@ details of each piece.
 - Wrong answers came from offering 25 action tools on every chat turn; qwen3.5:4b's native tool calling picks a tool
   for 13 of 28 plain chat lines, its one-token letters only 2 of 28.
 - With "I'll remember that" in the history the model keeps calling `remember` instead of answering.
-- Echo cancelling measured: our own voice reaches the mic at VAD below 0.05, so a stricter barge-in threshold only
-  ignored the user.
+- Echo cancelling (2026-10-30): settled, our voice peaks at VAD 0.12; just after a restart it leaks (3 false barge-ins
+  at 0.96-0.99). During double talk it drops ~half the user's frames, so 0.5 / 8 of 12 missed most short phrases.
 - Not hearing: confirmations swallowed the next request, and the follow-up window was judged when a sentence ended.
 
 ## Done on 2026-10-29, batches 2 and 3 (user-approved)
@@ -111,6 +133,14 @@ details of each piece.
   not added.
 
 ## Open
+- **Restart Phoenix, then live-check (user):** an unsure request asking "Did you mean ...?", "that's wrong", small
+  talk, and reset the manual quantum (`pw-metadata -n settings 0 clock.force-quantum 0`).
+- **Browser hidden behind windows:** pass the GlobalShortcuts portal's activation token (portal 1.21.1) for hotkey
+  requests, plus a "Opened in Chrome" notification for wake-word ones; extension decision left to the user.
+- **Argument fixes:** "change your voice" picks the next voice, "default" = F1; YouTube rule accepts "can you" and
+  plays the first video with Web Access on; "play a song" with no player searches YouTube; a timer without a time asks.
+- **One-command installer** (`scripts/install.sh`): apt packages (sudo once), venv, launcher, user-only Ollama, models.
+- **Claude Code cloud review:** prompt drafted in the 2026-10-30 session (areas A-D, draft PRs on cloud/* branches).
 - **Live check on the desktop (user), batch 4:** talking over a reply (the log line `while speaking: voice up to`
   says what the mic heard), plain chat, a request right after a confirmation, the Home speed row, the Models page.
 - **Live check on the desktop (user):** sleep words ("Phoenix, that's all"), "Stop Phoenix", greetings, "One moment"

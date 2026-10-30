@@ -38,6 +38,7 @@ class PipeWireAudioIO:
 
     SAMPLE_RATE: int = 16000
     VAD_SIZE: int = 32          # ms per VAD frame -> 512 samples @ 16k
+    AEC_QUANTUM: int = 480      # WebRTC's 10 ms block at 48 kHz
     VAD_THRESHOLD: float = 0.8  # balance: catch the user's barge-in vs. ignore AEC residual (GLADOS_VAD_THRESHOLD tunes it)
 
     def __init__(self, vad_threshold: float | None = None) -> None:
@@ -87,11 +88,13 @@ class PipeWireAudioIO:
             self._aec_ok = True
             logger.info("AEC source '{}' already present, reusing it", self._src)
             return
+        # at PipeWire's 256 cycles one CPU spike desynced the 10 ms AEC and muted the user (2026-10-30)
+        q = f"node.force-quantum = {self.AEC_QUANTUM}"
         cmd = (
             "load-module libpipewire-module-echo-cancel "
             "{ library.name = aec/libspa-aec-webrtc "
-            f'source.props = {{ node.name = {self._src} node.description = "AI AEC Mic" }} '
-            f'sink.props = {{ node.name = {self._sink} node.description = "AI AEC Speaker" }} }}\n'
+            f'source.props = {{ node.name = {self._src} node.description = "AI AEC Mic" {q} }} '
+            f'sink.props = {{ node.name = {self._sink} node.description = "AI AEC Speaker" {q} }} }}\n'
         )
         try:
             # interactive pw-cli stays connected while stdin is open -> module stays loaded for our lifetime

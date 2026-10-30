@@ -32,13 +32,23 @@ END_SILENCE = 22  # silent frames that end an utterance (~0.7 s)
 MAX_FRAMES = 470  # ~15 s
 MIN_SPEECH = 8  # voiced frames for a real utterance (~0.25 s)
 LISTEN_VAD = 0.5  # voice probability that starts a recording while we are silent (Silero's default)
-BARGE_VAD = 0.5  # echo cancelling leaves our own voice below 0.05 (measured 2026-10-29), so no stricter value
-BARGE_WINDOW, BARGE_FRAMES = 12, 8  # 8 voiced of the last 12 frames (~0.4 s) interrupt; dips between words are fine
+BARGE_VAD = 0.3  # echo cancelling eats half the user's frames while we talk; our settled echo stays under 0.12
+BARGE_WINDOW, BARGE_FRAMES = 12, 5  # 5 voiced of the last 12 frames (~0.4 s) pause the reply (2026-10-30 tests)
+FALSE_BARGES = 2  # pauses that were only our own echo, per turn, before barge-in sits out the rest of the reply
 FOLLOWUP_S = 10.0  # after a reply, follow-ups need no wake word
 CONFIRM_S = 55.0  # a confirmation not answered by then is a no (the app's dialog gives up at the same time)
 LISTEN_NOW_S = 8.0  # hotkey: how long to wait for speech to start
 NAME_TEST_S = 20.0  # a name-test sentence must be heard within this
 JUNK = {"", "yeah", "yes", "mm", "hmm", "uh", "um", "ah", "oh", "okay", "ok", "you", "the", "a", "and", "so"}
+
+
+def echo_of(heard: str, said: str) -> bool:
+    """True when the words heard are only filler or words we were saying: our own voice leaking past echo cancelling."""
+    words = _words(heard)
+    if not words or " ".join(words) in JUNK:
+        return True
+    ours = set(_words(said))
+    return sum(w in ours for w in words) >= 0.7 * len(words)
 
 
 class Engine:
@@ -62,6 +72,10 @@ class Engine:
         self.quiet_until = 0.0  # half-duplex: ignore the mic until our own voice has died away
         self._confirms: dict[str, tuple[threading.Event, dict]] = {}
         self.confirming = False
+        self._hold = threading.Event()  # set while a barge-in has paused the reply and waits for its verdict
+        self._hold_resume = False  # the verdict: it was our own echo, the reply goes on
+        self._false_barges = 0
+        self._saying = ""  # the sentence being spoken: an echo of it is not the user
         self._busy = False  # a turn is running
         self._think_detail = ""  # what the big model is doing, restored after "One moment."
         self.mcp = None
@@ -352,6 +366,7 @@ class Engine:
 
     def cancel_turn(self) -> None:
         self.cancel.set()
+        self._hold.clear()  # a paused reply is dropped, not resumed
         for item in self._drain(self.say_q):
             if item[0] == "ring":  # a timer still rings after an interrupted reply
                 self.say_q.put(item)
@@ -405,6 +420,42 @@ class Engine:
         return (self.s.get("listen_mode") == "always" or self.ptt or now < self.armed_until
                 or now < self.followup_until)
 
+    def _pause_reply(self) -> None:
+        """Barge-in: silence the reply but keep it until the recording shows whether the user spoke."""
+        self._hold_resume = False
+        self._hold.set()
+        self.speaking = False
+        if self.audio is not None:
+            self.audio.stop_speaking()
+
+    def _barge_verdict(self, audio: np.ndarray) -> None:
+        """A paused reply's recording was short: the user if its words are not our own sentence leaking back."""
+        try:
+            with self._asr_lock:
+                heard = (self.asr.transcribe(audio) or "").strip() if self.asr is not None else ""
+        except Exception:
+            log.exception("transcribing a barge-in")
+            heard = ""
+        if not self._hold.is_set():  # settled meanwhile (the user kept talking, or a cancel)
+            return
+        if echo_of(heard, self._saying):
+            self._false_barges += 1
+            log.info("barge-in was our own voice (%r): the reply goes on", heard)
+            self._hold_resume = True
+            self._hold.clear()
+            return
+        log.info("barge-in heard %r: the reply stops", heard)
+        self.cancel_turn()
+        self.work.put(("heard", heard, 0.0))
+
+    def _held(self) -> bool:
+        """Waits out a paused reply; True when it goes on."""
+        if not self._hold.is_set():
+            return True
+        while self._hold.is_set() and not self._stop.is_set():
+            time.sleep(0.02)
+        return self._hold_resume
+
     def _listen_loop(self) -> None:
         pre = collections.deque(maxlen=PREROLL)
         rec: list[np.ndarray] = []
@@ -419,6 +470,8 @@ class Engine:
             if not self.capturing or self.audio is None:
                 time.sleep(0.05)
                 pre.clear()
+                if self._hold.is_set():
+                    self.cancel_turn()
                 if recording:
                     self._end_utterance()
                     self._clear_live()
@@ -447,7 +500,7 @@ class Engine:
                 barge_best, barge_peak = 0, 0.0
             was_speaking = self.speaking
             if self.speaking:
-                if not (aec and self.s.get("barge_in", True)):
+                if not (aec and self.s.get("barge_in", True)) or self._false_barges >= FALSE_BARGES:
                     continue  # half-duplex: the mic would hear our own voice
                 barge.append(vad)
                 barge_peak = max(barge_peak, float(prob))
@@ -461,7 +514,7 @@ class Engine:
                     self.audio.stop_speaking()
                     self.speaking = False
                 else:
-                    self.cancel_turn()
+                    self._pause_reply()
                     self.followup_until = time.monotonic() + FOLLOWUP_S
                 barge.clear()
                 vad = True  # the voice that interrupted starts the recording
@@ -483,6 +536,10 @@ class Engine:
             rec.append(frame)
             loudest = max(loudest, peak)
             voiced, silent = (voiced + 1, 0) if vad else (voiced, silent + 1)
+            if self._hold.is_set() and voiced >= MIN_SPEECH:  # still talking with our voice gone: the user
+                log.info("barge-in: the user kept talking, the reply stops")
+                self.cancel_turn()
+                self.set_state("listening")  # cancel_turn idles it, which hid the pill mid-sentence
             if self.state == "listening" and time.monotonic() - last_level > 0.03:
                 last_level = time.monotonic()
                 self.emit({"ev": "level", "v": round(float(np.sqrt(np.mean(frame ** 2))), 4), "src": "mic"})
@@ -495,9 +552,12 @@ class Engine:
                 self._end_utterance()
                 audio = np.concatenate(rec)
                 recording, rec, pre = False, [], collections.deque(maxlen=PREROLL)
+                held = self._hold.is_set()
                 log.info("recorded %.1fs, %d voiced frames, peak %.3f%s", len(audio) / 16000, voiced, loudest,
-                         "" if voiced >= MIN_SPEECH else ", too short: dropped")
-                if voiced >= MIN_SPEECH:
+                         "" if voiced >= MIN_SPEECH else ", short: checking the words" if held else ", too short: dropped")
+                if held:
+                    self._barge_verdict(audio)
+                elif voiced >= MIN_SPEECH:
                     self.work.put(("audio", audio, started))
                 elif self.state == "listening" and not self._wake_free():
                     self.set_state("idle")
@@ -620,6 +680,7 @@ class Engine:
         if kind != "text":
             self._emit_live(text, final=True)  # what was heard, shown while the assistant thinks
         self.cancel = threading.Event()
+        self._false_barges = 0
         self.called = self.sleep_after = False
         self._think_detail = ""
         self.set_state("thinking")
@@ -629,6 +690,9 @@ class Engine:
         finally:
             self._busy = False
         turn["latency"]["asr"] = round(asr_s, 3)
+        marked = turn.pop("marks", None)
+        if marked is not None:  # "that's wrong": the app saves the earlier request's new status
+            self.emit({"ev": "turn_update", "turn": marked})
         self.emit({"ev": "turn", "turn": turn})
         self.say_q.put(("end", turn["id"]))
 
@@ -655,6 +719,7 @@ class Engine:
                     self.set_state("muted" if self.s.get("listen_mode") == "off" else "idle")
                 continue
             if item[0] == "end":
+                self._held()
                 self.speaking = False
                 if self.cancel.is_set():
                     continue
@@ -683,13 +748,22 @@ class Engine:
         if not self.s.get("tts_enabled", True):
             return
         audio = self.tts.generate_speech_audio(text, speed=1.05 * float(self.s.get("tts_speed") or 1.0))
-        if audio.size == 0 or (self.cancel.is_set() and not force):
+        if audio.size == 0 or (self.cancel.is_set() and not force) or not self._held():
             return
         audio = np.clip(audio * float(self.s.get("tts_volume") or 1.0), -1.0, 1.0)
         sr = self.tts.sample_rate
         hop = int(sr * FRAME_S)
         levels = [float(np.sqrt(np.mean(audio[i:i + hop] ** 2))) for i in range(0, len(audio), hop)]
+        while True:
+            cut = self._play_once(audio, sr, text, shown, levels)
+            if not (cut and self._hold.is_set()) or not self._held():
+                return
+            log.info("saying the paused sentence again")
+
+    def _play_once(self, audio: np.ndarray, sr: int, text: str, shown: str, levels: list[float]) -> bool:
+        """Plays one sentence; True when a barge-in or cancel cut it short."""
         self.speaking = True
+        self._saying = text
         # the pill shows the reply as it is spoken, paging long ones over this many seconds
         self.emit({"ev": "saying", "text": shown or text, "seconds": round(len(audio) / sr, 2)})
         self.set_state("speaking")
@@ -707,11 +781,12 @@ class Engine:
         threading.Thread(target=meter, daemon=True).start()
         try:
             self.audio.start_speaking(audio, sr, text)
-            self.audio.measure_percentage_spoken(len(audio), sr)
+            result = self.audio.measure_percentage_spoken(len(audio), sr)
         finally:
             done.set()
             if not getattr(self.audio, "_aec_ok", False):
                 self.quiet_until = time.monotonic() + 0.3
+        return bool(isinstance(result, tuple) and result and result[0] is True)
 
     def _ping(self) -> None:
         if not self.s.get("start_ping", True) or self.audio is None:
@@ -726,7 +801,7 @@ class Engine:
         ev, box = threading.Event(), {"ok": False}
         self._confirms[cid] = (ev, box)
         self.emit({"ev": "confirm", "id": cid, "tool": request.tool_name, "args": request.args,
-                   "command": request.command})
+                   "command": request.command, "detail": request.detail})
         by_voice = (self.s.get("spoken_confirm", True) and self.audio is not None and self.asr is not None
                     and threading.current_thread().name == "Work")
         try:
@@ -742,8 +817,12 @@ class Engine:
 
     def _confirm_by_voice(self, request: ConfirmRequest, ev: threading.Event, box: dict) -> None:
         cmd = (request.command or "").strip()
-        question = f"Should I run {cmd}?" if cmd and len(cmd) <= 40 else "Should I run this command?"
-        self._say(f"{question} Say yes or no.", f"Run this? {cmd} Say yes or no." if cmd else "")
+        if request.detail:  # the router was unsure what was meant
+            question = request.detail
+            self._say(f"{question} Say yes or no.")
+        else:
+            question = f"Should I run {cmd}?" if cmd and len(cmd) <= 40 else "Should I run this command?"
+            self._say(f"{question} Say yes or no.", f"Run this? {cmd} Say yes or no." if cmd else "")
         self.confirming = True
         was_capturing = self.capturing
         self._capture(True)

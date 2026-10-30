@@ -215,6 +215,8 @@ class EngineClient:
                 self.bus.set_state(state, e.get("detail") or "")
         elif ev == "turn":
             self.bus.add_turn(Turn.from_dict(e["turn"]))
+        elif ev == "turn_update":
+            self.bus.update_turn(Turn.from_dict(e["turn"]))
         elif ev == "partial":
             self.bus.live_text(e.get("text") or "", e.get("stable") or 0, bool(e.get("final")))
         elif ev == "saying":

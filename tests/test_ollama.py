@@ -429,5 +429,46 @@ class LetterProbTests(unittest.TestCase):
         self.assertEqual(ollama.decision_from_reply(reply, 2)["letter"], "A")
 
 
+class AutoStartTests(unittest.TestCase):
+    """Phoenix starts its own server when it is down; tests and screenshots never do."""
+
+    def manager(self, ctx_extra):
+        settings = Settings(Path(tempfile.mkdtemp()) / "app.json")
+        with mock.patch.object(ollama.GLib, "idle_add"):  # no startup refresh
+            mgr = ollama.OllamaManager(SimpleNamespace(settings=settings, **ctx_extra))
+        mgr.start = mock.Mock()
+        return mgr
+
+    DOWN = {"running": False, "binary": "/usr/bin/ollama", "local": True}
+
+    def test_default_is_our_own_port(self):
+        from ai_linux.schema import DEFAULTS
+        self.assertEqual(DEFAULTS["ollama_url"], ollama.DEFAULT_URL)
+        self.assertTrue(ollama.DEFAULT_URL.endswith(":11435"))
+
+    def test_app_starts_a_server_that_is_down_once_a_minute(self):
+        mgr = self.manager({"app": object()})
+        mgr._maybe_autostart(self.DOWN)
+        mgr._maybe_autostart(self.DOWN)
+        mgr.start.assert_called_once()
+
+    def test_no_start_when_running_remote_missing_or_not_the_app(self):
+        mgr = self.manager({"app": object()})
+        for status in ({**self.DOWN, "running": True}, {**self.DOWN, "local": False}, {**self.DOWN, "binary": None}):
+            mgr._maybe_autostart(status)
+        mgr.start.assert_not_called()
+        for extra in ({}, {"app": object(), "screenshot_mode": True}):
+            self.manager(extra)._maybe_autostart(self.DOWN)
+        mgr.start.assert_not_called()
+
+    def test_user_stop_turns_auto_start_off(self):
+        mgr = self.manager({"app": object()})
+        with mock.patch.object(mgr, "_spawn"):
+            mgr.stop()
+        mgr._busy = None
+        mgr._maybe_autostart(self.DOWN)
+        mgr.start.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

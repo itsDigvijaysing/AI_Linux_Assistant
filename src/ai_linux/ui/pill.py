@@ -237,7 +237,7 @@ class _Caption(Gtk.Widget):
     def _sync(self) -> None:
         m, g, c = self.model, self._goal, self._cur
         if m.mode == "hidden":
-            g.update(self._rest, alpha=0.0)
+            g.update(self._rest, alpha=0.0, text=0.0)
             self._shown = None
             self._wake()
             return
@@ -317,12 +317,16 @@ class _Caption(Gtk.Widget):
         self._last = now
         c, g = self._cur, self._goal
         c["h"] = max(c["h"], g["h"])  # grow at once: a card smaller than its words clips the top and bottom lines
+        hiding = g["alpha"] <= 0
+        # never shrink under visible words: the collapsing card cropped them on every side (2026-10-30)
+        words_up = (self._old is not None and c["text"] < 0.5) or (hiding and c["text"] > 0.02)
         for key in ("w", "h", "x"):
-            c[key] = cm.approach(c[key], g[key], dt, cm.TAU_MOVE)
-        fade = cm.TAU_FADE_IN if g["alpha"] > 0 else cm.TAU_FADE_OUT
-        for key in ("alpha", "text"):
-            c[key] = cm.approach(c[key], g[key], dt, fade, snap=0.01)
-        if c["text"] >= g["text"]:
+            if not (words_up and key != "x" and g[key] < c[key]):
+                c[key] = cm.approach(c[key], g[key], dt, cm.TAU_MOVE)
+        c["text"] = cm.approach(c["text"], g["text"], dt, cm.TAU_FADE_IN, snap=0.01)
+        if not (hiding and words_up):  # the glass collapses once its words are gone
+            c["alpha"] = cm.approach(c["alpha"], g["alpha"], dt, cm.TAU_FADE_OUT if hiding else cm.TAU_FADE_IN, snap=0.01)
+        if c["text"] >= g["text"] or c["text"] >= 0.5:
             self._old = None
         self.queue_draw()
         if c != g:

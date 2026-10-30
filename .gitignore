@@ -36,3 +36,6 @@ MD/*
 
 # Ruff lint cache
 .ruff_cache/
+
+# personal requests exported from history.db (bench/router/export_history.py)
+bench/data/review.jsonl

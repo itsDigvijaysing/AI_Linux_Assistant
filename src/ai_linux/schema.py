@@ -48,7 +48,7 @@ DEFAULTS: dict[str, object] = {
     "escalate_threshold": 0.85,
     "think": False,
     "context_length": 8192,  # tokens the big model reads per request (history, tools, screenshot)
-    "ollama_url": "http://127.0.0.1:11434",
+    "ollama_url": "http://127.0.0.1:11435",  # Phoenix's own server (see ollama.DEFAULT_URL)
     "ollama_keep_alive": "2m",  # engine value, from speed
     # voice output
     "tts_enabled": True,

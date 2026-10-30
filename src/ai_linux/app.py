@@ -203,6 +203,13 @@ class App(Adw.Application):
         win = self.get_window()
         win.present()
         command = event.get("command") or ""
+        if event.get("detail"):  # not a risky action: the router wasn't sure what was meant
+            dialog = Adw.AlertDialog(heading=event["detail"], body="Phoenix wasn't sure what you meant.")
+            dialog.add_response("deny", "No")
+            dialog.add_response("allow", "Yes")
+            dialog.set_default_response("allow")
+            dialog.set_close_response("deny")
+            return self._confirm_finish(dialog, win, respond)
         dialog = Adw.AlertDialog(heading=f"Allow {title_for(event.get('tool', ''))}?",
                                  body="The assistant wants to run this on your computer:" if command else
                                  "The assistant wants to take this action.")
@@ -215,6 +222,10 @@ class App(Adw.Application):
         dialog.set_response_appearance("allow", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response("deny")
         dialog.set_close_response("deny")
+        return self._confirm_finish(dialog, win, respond)
+
+    @staticmethod
+    def _confirm_finish(dialog, win, respond):
         answered = {"done": False}
 
         def finish(allowed: bool) -> None:

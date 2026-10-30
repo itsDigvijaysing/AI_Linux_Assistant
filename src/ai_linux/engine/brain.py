@@ -6,7 +6,9 @@
    through the gate and speak its short reply. Shell and MCP output go back to the big model to be summarised.
 3. "none" (chat, questions): the big model answers with only the memory tools. Given every tool, it called one
    for half of plain chat ("hi" got the time, a joke became a web search; 2026-10-29 test, 14 of 28).
-4. Unsure: the big model answers with the router's likely tools only.
+4. Unsure about an action (ASK_P up to the threshold): ask "Did you mean ...?" and act only on a yes. Handing
+   the big model the likely tools made it call one on a guess ("don't sleep" slept, 2026-10-30 log).
+5. Unclear: the big model answers with no action tools.
 The router never authorises anything: every action still passes the gate, the denylist and confirmation.
 """
 
@@ -26,7 +28,9 @@ from pathlib import Path
 from ai_linux.engine import llm
 from ai_linux.engine.quick import quick
 from ai_linux.engine.tools import MEMORY_TOOLS, NONE, TOOLS, WEB_TOOLS, Env, Result, Tool, menu, parse_memory
+from ai_linux.safety.gate import ConfirmRequest
 from ai_linux.schema import BIG_WAKING, BIG_WORKING
+from ai_linux.tools_catalog import lookup as tool_info
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +59,8 @@ _YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "alright", "proceed",
 _NO = {"no", "nope", "nah", "cancel", "stop", "deny", "don't", "dont", "do not", "never mind", "not now",
        "no thanks", "leave it", "wait", "hold on"}
 CHAT_SURE = 0.5  # the big model routing: "none" at least this likely means plain chat
-CANDIDATE_P, CANDIDATES = 0.05, 4  # when unsure, the tools the router gave at least this much, at most this many
+ASK_P = 0.5  # an action this likely (but under the threshold) is asked about; wrong actions sat at 0.4-0.65
+ALTS = 3  # router guesses kept with each request, for reviewing mistakes
 MEMORY_NAMES = frozenset(t.name for t in MEMORY_TOOLS)
 _SELF = re.compile(r"(?i)\b(?:i|i'm|im|i've|i'd|i am|my|mine|myself)\b")
 _ASKS = re.compile(r"(?i)^(?:what|what's|whats|who|whom|whose|when|where|why|how|which|is|are|am|do|does|did|can|could|"
@@ -76,6 +81,7 @@ class Brain:
                  loaded: Callable[[str, str], None] | None = None, status: Callable[[str], None] | None = None):
         self.settings, self.env, self.speak = settings, env, speak
         self.speak_wait = speak_wait or speak  # "One moment.": the pill shows the model loading again after it
+        self.last_turn: dict | None = None  # "that's wrong" marks it
         self.session = 0  # New Session bumps it, so a turn still running isn't remembered into the new one
         self._loaded = loaded or (lambda what, detail: None)
         self._status = status or (lambda detail: None)  # what the big model is doing, for the pill
@@ -199,7 +205,10 @@ class Brain:
         except llm.LLMError as exc:
             log.warning("big model: %s", exc)
             turn["status"] = "failed"
-            self._say(turn, "I can't reach the language model right now.")
+            if "not found" in str(exc):
+                self._say(turn, "The big model isn't downloaded yet. You can get it on the Models page.")
+            else:
+                self._say(turn, "I can't reach the language model right now.")
         except Exception:
             log.exception("turn failed")
             turn["status"] = "failed"
@@ -208,6 +217,8 @@ class Brain:
             turn["status"] = "cancelled"
         if session == self.session:
             self._remember(text, turn["reply"])
+        if "marks" not in turn:
+            self.last_turn = turn
         return turn
 
     def _handle(self, text: str, turn: dict, cancel: threading.Event) -> None:
@@ -216,10 +227,12 @@ class Brain:
             turn["route"] = "rule"
             self._run_tools([rule], turn, cancel)
             return
-        q = quick(text)
+        q = quick(text, str(self.settings("wake_word") or "phoenix").title())
         if q is not None:  # sleep, greetings, thanks, help: no model to wake
             turn["route"] = "rule"
-            if q.tool:
+            if q.tool == "mark_wrong":
+                self._mark_wrong(turn)
+            elif q.tool:
                 self._run_tools([(q.tool, dict(q.args or {}))], turn, cancel)
             else:
                 self._say(turn, q.say)
@@ -228,10 +241,13 @@ class Brain:
         top, conf, router, probs = self.route(text)
         turn["latency"]["route"] = round(time.monotonic() - t0, 3)
         turn["model"], turn["confidence"] = router, round(conf, 3)
+        turn["alts"] = {n: round(p, 3) for n, p in sorted(probs.items(), key=lambda kv: -kv[1])[:ALTS] if p >= 0.01}
         threshold = float(self.settings("escalate_threshold"))
         if cancel.is_set():
             return
         tool = self.tool(top)
+        if tool is not None and ASK_P <= conf < threshold and self._ask_first(tool, text, turn, cancel):
+            return
         if tool is not None and conf >= threshold:
             t1 = time.monotonic()
             args, filler = self.fill(tool, text, cancel)
@@ -244,12 +260,7 @@ class Brain:
                 return
         turn["route"], turn["model"] = "big", self.big
         self._cue_big()
-        sure = CHAT_SURE if router == self.big else threshold
-        if top == NONE and conf >= sure:
-            tools = MEMORY_TOOLS if about_self(text) else ()  # plain chat: given tools, the model calls one anyway
-        else:
-            likely = sorted((n for n, p in probs.items() if n != NONE and p >= CANDIDATE_P), key=lambda n: -probs[n])
-            tools = (*(t for t in (self.tool(n) for n in likely[:CANDIDATES]) if t is not None), *MEMORY_TOOLS)
+        tools = MEMORY_TOOLS if about_self(text) else ()  # given action tools, the model calls one on a guess
         self._converse(text, turn, cancel, tools)
         if not turn["reply"] and not turn["tools"] and not cancel.is_set():
             self._cue("unclear")
@@ -292,6 +303,35 @@ class Brain:
             log.exception("addressed decision")
             return True
         return probs.get("other", 0.0) < 0.7
+
+    def _mark_wrong(self, turn: dict) -> None:
+        """'That's wrong': flag the previous request so mistakes can be reviewed and re-measured."""
+        last = self.last_turn
+        if last is None:
+            self._say(turn, "There's nothing to mark yet.")
+            return
+        last["status"] = "wrong"
+        turn["marks"] = last
+        self._say(turn, "Sorry about that. I've noted it.")
+
+    def _ask_first(self, tool: Tool, text: str, turn: dict, cancel: threading.Event) -> bool:
+        """Unsure about an action: confirm it before running. False leaves the request to the normal paths."""
+        info = tool_info(tool.name)
+        if self.env.confirm is None or info is None or info.family == "shell":  # shell and MCP show their command
+            return False
+        args, filler = self.fill(tool, text, cancel)
+        if args is None or cancel.is_set():
+            return False
+        title = info.title.lower()
+        value = next((str(v) for v in args.values() if isinstance(v, (str, int, float)) and str(v)), "")
+        question = f"Did you mean {title}{', ' + value if value else ''}?"
+        turn["route"] = "small" if turn["model"] != self.big and filler != self.big else "big"
+        if self.env.confirm(ConfirmRequest(tool.name, args, detail=question)):
+            self._run_tools([(tool.name, args)], turn, cancel)
+        else:
+            turn["status"] = "declined"
+            self._say(turn, "Okay, I won't.")
+        return True
 
     def route(self, text: str) -> tuple[str, float, str, dict[str, float]]:
         """(best option, its probability, who decided, every option's probability)."""

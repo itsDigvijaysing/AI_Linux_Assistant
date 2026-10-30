@@ -57,6 +57,10 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   speed full). The Voice page edits one profile through `ProfileView`; `ui/profile_group.py` switches it.
 - **Mute** is the global `muted` setting, not a profile value, so a charger switch never unmutes. The client sends the
   effective `listen_mode` ("off" when muted).
+- **Ollama:** Phoenix runs its own server on 127.0.0.1:11435 (`ollama_url` default) with the user's `~/.ollama`
+  models, and `OllamaManager` starts it whenever it is down (at most once a minute; never after a manual Stop, in
+  tests or screenshots). 11434 is often the official installer's system service (user `ollama`, empty store), which
+  won the port after a reboot on 2026-10-30. A missing model is spoken as "isn't downloaded yet".
 - **Models:** jiwo (OpenVINO int8, Intel iGPU) picks the tool; arguments come from the tool's code parser, then jiwo for
   a fixed choice, then the big model (qwen3.5:4b on NVIDIA). A device, model or context change unloads the old model;
   so does quitting (`Engine.stop()`, first, before MCP servers close), else Ollama keeps it for `keep_alive`.
@@ -69,7 +73,9 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   The Voice page's Sounds group previews each one (rendered to the runtime dir).
 - **Quick rules** (`engine/quick.py`, at most 9 words, before routing; `route` = "rule", chip "Quick reply", no model):
   sleep words (stop, that's all, go to sleep, never mind, bye, good night), greetings, thanks, "what can you do",
-  "play X on YouTube". Kept facts' rules run there too.
+  "play X on YouTube", small talk ("what are you doing", "how are you feeling", "are you there", "who are you": varied
+  replies, `_CHAT`), "don't sleep", "that's wrong". Anything with content ("thoughts on electric cars") still routes.
+  Kept facts' rules run there too.
 - **Sleep:** `go_to_sleep` sets `Engine.sleep_after`, so the end of the turn goes idle instead of reopening the
   follow-up window. `wake.strip_wake`: words before the name are the request ("Stop Phoenix" = "Stop") unless they
   are call words (`CALL_WORDS`: hey, hello, wake up, ...).
@@ -78,8 +84,13 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - **Chat or command** (`Brain.route`, 2026-10-29): offering the action tools to the big model on plain chat made it
   call them ("hi" ran `get_time`). Now the router's letters decide first: "none" at least `CHAT_SURE` (0.5, big model
   routing) or the escalation threshold (small model routing) answers with no action tools; memory tools only when
-  `about_self(text)` ("My sister lives in Pune"). Unsure: the router's likely tools (p at least 0.05, at most 4) plus
-  memory. A memory call is saved quietly (`_note`) and a second stream without tools answers; with "I'll remember
+  `about_self(text)` ("My sister lives in Pune"). Unsure about an action (`ASK_P` 0.5 up to the
+  threshold): "Did you mean volume, 30?" through the confirm dialog or by voice, acting only on a yes (`_ask_first`;
+  shell and MCP tools confirm their command anyway). Handing the model the likely tools made it guess ("don't sleep"
+  slept, "play any sound" set the volume; 2026-10-30 log: wrong tools sat at 0.4-0.65). Below that: an answer with no
+  action tools. Each turn keeps the router's top 3 guesses (`alts`); "that's wrong" marks the previous request
+  (`status` wrong, `turn_update` event); `bench/router/export_history.py` writes marked and unsure requests to
+  `bench/data/review.jsonl` (git-ignored) for relabelling into `eval.jsonl`. A memory call is saved quietly (`_note`) and a second stream without tools answers; with "I'll remember
   that" in its history the model kept saving instead of answering. Measured with fake actions: 17 of 18 multi-turn
   replies good, about 0.7 s; letters 26 of 28 chat and 24 of 24 tasks right, native tool calling 13 of 28 chat.
 - **Hearing** (`engine/service.py`): the wake-free window (hotkey, follow-up) is judged at the utterance's start
@@ -87,9 +98,15 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
   logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
-- **Barge-in:** VAD 0.5 while listening and while speaking: echo cancelling leaves our own voice below 0.05 (measured
-  2026-10-29), so the old 0.8 only missed the user. It interrupts on 8 voiced of the last 12 frames (~0.4 s), so dips
-  between words don't reset it. Each reply logs `while speaking: voice up to X, N of 12 frames`.
+- **Echo cancel** (`engine/audio.py`): the WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
+  10 ms block). At PipeWire's power-of-two 256 one CPU spike (start-up loading) desynced it for good: ~70 dropouts a
+  second and 2 to 18 of ~140 speech frames passed, so every sentence was "too short" (measured 2026-10-30).
+- **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
+  VAD 0.3 pause the reply (echo cancelling drops about half the user's frames during double talk; the settled echo
+  peaks at 0.12; a 1 s phrase over a reply now interrupts ~83 % of the time, was 32-51 % at 0.5 / 8). The reply is
+  held, not dropped: 8 voiced frames after the pause stop it; a shorter recording is transcribed and stops it only if
+  its words are not the sentence being said (`echo_of`), else the sentence is said again. After 2 echo pauses in one
+  turn barge-in sits out the rest of that reply. Each reply logs `while speaking: voice up to X, N of 12 frames`.
 - **Confirmations** show a dialog and, with audio, can be answered by voice (`spoken_confirm`); `confirm_done` closes it.
   The pill shows the whole command ("Run this? <cmd> Say yes or no.") while the voice says "this command"
   (`Engine._say(text, shown)`).

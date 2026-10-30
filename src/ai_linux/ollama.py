@@ -34,11 +34,12 @@ from ai_linux.config import CACHE_DIR, DATA_DIR, LOG_DIR, STATE_DIR
 log = logging.getLogger(__name__)
 
 UNIT = "ai-linux-ollama"
-DEFAULT_URL = "http://127.0.0.1:11434"
+DEFAULT_URL = "http://127.0.0.1:11435"  # our own server; 11434 is often a system service with an empty store
 MANAGED_DIR = DATA_DIR / "ollama"  # our own installs: <version>/bin/ollama
 PID_FILE = STATE_DIR / "ollama.pid"  # only for the no-systemd fallback
 START_TIMEOUT_S = 45  # first start on a hybrid laptop waits ~25 s for GPU discovery
 STOP_TIMEOUT_S = 20
+AUTO_START_GAP_S = 60  # a failing start isn't retried more often than this
 
 # Pinned official release, read from the GitHub release API on 2026-10-27.
 OLLAMA_PIN = "0.40.11"
@@ -275,6 +276,10 @@ class OllamaManager(GObject.Object):
         self._pollers = 0
         self._poll_source = 0
         self._proc: subprocess.Popen | None = None
+        # only the real app starts a server by itself (not tests or headless screenshots)
+        self._auto_ok = getattr(ctx, "app", None) is not None and not getattr(ctx, "screenshot_mode", False)
+        self._auto = self._auto_ok
+        self._auto_at = -AUTO_START_GAP_S
         GLib.idle_add(self._initial_refresh)
 
     # ---- settings and dispatch
@@ -344,6 +349,7 @@ class OllamaManager(GObject.Object):
         self._refreshing = False
         status = {**snap, "busy": self._busy, "error": self._error or snap.get("error")}
         self._publish(status)
+        self._maybe_autostart(status)
         callbacks, self._refresh_callbacks = self._refresh_callbacks, []
         for cb in callbacks:
             try:
@@ -392,6 +398,15 @@ class OllamaManager(GObject.Object):
             snap["version"] = binary_version(binary)
         snap["installed"] = bool(binary) or snap["running"]
         return snap
+
+    def _maybe_autostart(self, status: dict) -> None:
+        """The big model needs our server: start it when it is down, unless the user stopped it."""
+        if (not self._auto or status.get("running") or not status.get("binary") or not status.get("local")
+                or self._busy or time.monotonic() - self._auto_at < AUTO_START_GAP_S):
+            return
+        self._auto_at = time.monotonic()
+        log.info("Ollama isn't running on %s; starting it", self.url)
+        self.start()
 
     def start_polling(self, interval_s: int = 5) -> None:
         self._pollers += 1
@@ -442,6 +457,7 @@ class OllamaManager(GObject.Object):
         if self._busy:
             self._main(on_done, False, f"Ollama is busy ({self._busy})")
             return
+        self._auto = self._auto_ok
         self._set_busy("starting", clear_error=True)
         self._spawn("start", self._action_worker, self._start_sync, on_done)
 
@@ -454,6 +470,7 @@ class OllamaManager(GObject.Object):
         if self._busy:
             self._main(on_done, False, f"Ollama is busy ({self._busy})")
             return
+        self._auto = False  # stopped on purpose: don't start it again behind the user's back
         self._set_busy("stopping", clear_error=True)
         self._spawn("stop", self._action_worker, self._stop_sync, on_done)
 
