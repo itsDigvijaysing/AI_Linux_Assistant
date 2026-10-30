@@ -870,3 +870,57 @@ class BargeInTests(unittest.TestCase):
         e.audio = mock.Mock(measure_percentage_spoken=measure)
         e._play("Hello there.")
         self.assertEqual(len(calls), 2)
+
+
+
+
+class EchoCancelSetupTests(unittest.TestCase):
+    """PipeWire is faked: no pw-cli or pw-record runs."""
+
+    def make(self, exists, alive=True):
+        import contextlib
+        from ai_linux.engine import audio
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(mock.patch.object(audio, "VAD"))
+        stack.enter_context(mock.patch.object(audio.atexit, "register"))
+        proc = mock.Mock(poll=mock.Mock(return_value=None if alive else 0))
+        self.popen = stack.enter_context(mock.patch.object(audio.subprocess, "Popen", return_value=proc))
+        self.exists = stack.enter_context(mock.patch.object(audio.PipeWireAudioIO, "_node_exists",
+                                                            side_effect=exists))
+        self.sleep = stack.enter_context(mock.patch.object(audio.time, "sleep"))
+        io = audio.PipeWireAudioIO()
+        self.popen.reset_mock()
+        self.exists.reset_mock()
+        self.sleep.reset_mock()
+        return io, proc
+
+    def test_failed_echo_cancel_is_not_loaded_again_on_every_mic_open(self):
+        io, _ = self.make(exists=lambda name: False)
+        io._ensure_aec()  # what each start_listening does
+        self.popen.assert_not_called()  # was another pw-cli left running per mic open
+        self.assertEqual(self.sleep.call_count, 0)  # and 4 s of waiting in the caller's thread
+
+    def test_echo_cancel_that_came_up_late_is_used(self):
+        io, _ = self.make(exists=lambda name: False)
+        self.exists.side_effect = lambda name: True  # appeared after the 4 s wait
+        io._ensure_aec()
+        self.assertTrue(io._aec_ok)
+        self.popen.assert_not_called()
+
+    def test_working_echo_cancel_is_not_listed_again(self):
+        answers = iter([False, True])
+        io, _ = self.make(exists=lambda name: next(answers, True))
+        self.assertTrue(io._aec_ok)
+        io._ensure_aec()
+        self.popen.assert_not_called()
+        self.exists.assert_not_called()  # one pw-cli ls per mic open before
+
+    def test_echo_cancel_loads_again_after_pipewire_restarted(self):
+        answers = iter([False, True])
+        io, proc = self.make(exists=lambda name: next(answers, True))
+        proc.poll.return_value = 0  # our pw-cli ended with the old PipeWire, and the module with it
+        self.exists.side_effect = iter([False, True])
+        io._ensure_aec()
+        self.popen.assert_called_once()
+        self.assertTrue(io._aec_ok)
