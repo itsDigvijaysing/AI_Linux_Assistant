@@ -40,6 +40,9 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 | `autostart.py` | `is_enabled()`, `set_enabled(bool)` | XDG autostart entry with `--background` |
 | `desktop_entry.py` | `install()`, `uninstall()`; `python3 -m ai_linux.desktop_entry install` | app-grid launcher and icons under `~/.local/share`, no sudo |
 | `credits.py` | `CREDITS`, `KINDS`, `by_kind()`, `ref_dir()`, `gtk_licence()` | every open-source credit (code, models, libraries, references); read by the About window (one section per kind, featured first) and `scripts/sync_refs.py` |
+| `secret_store.py` | `lookup(name)`, `store(name, value, label)`, `clear(name)`, `available()` | the login keyring over the freedesktop Secret Service (Gio only; libsecret's typelib isn't on a default Ubuntu); blocking, so worker threads only |
+| `todoist_link.py` | `TodoistLink(settings, send_secret)`: `load`, `save(token, done)`, `disconnect(done)`, `.busy` | the Todoist token: checked with Todoist, kept in the keyring, handed to the engine; `ctx.todoist` |
+| `mcp_presets.py` | `PRESETS`, `Preset.server()`, `get(key)` | Files, Web page reader, Git: fill the Add Server form; only read-only tools start on |
 | `paste_portal.py` | `paste`, `authorize`, `detect`, `probe` (CLI); `PortalPaste`, `is_terminal()` | paste keys through the RemoteDesktop portal; system Python only |
 
 ## Rules
@@ -171,6 +174,10 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   system Python because the engine venv has no gi.
 - **MCP** (`engine/mcp_client.py`, stdlib stdio JSON-RPC): each server's tools join as `<server>_<tool>`, gated as
   `mcp.<server>.<tool>` and confirmed unless the server sets `confirm: false`; reloaded live on a settings change.
+  After starting them the engine sends `{"ev": "mcp_tools", "servers": {name: [{name, description}]}}` (`bus.mcp_tools`,
+  signal `mcp-tools-changed`); the Tools page lists each server's tools with a switch (`disabled_tools` in the server
+  entry). Only switched-on tools reach the menus, and a change to only `disabled_tools` re-filters them without
+  restarting the servers (`Engine._filter_mcp`). Presets: `mcp_presets.py`.
 - **Speech device** (`stt_device`, one value for both profiles; Voice page's first group and the Models page): Parakeet TDT's encoder runs on the Intel GPU through OpenVINO
   (`engine/asr/ov_encoder.py`), the decoder and joiner stay on the CPU. Input is padded to whole seconds (each new
   length costs ~0.6 s of compiling, cached in `~/.cache/ai-linux/openvino`, ~1.3 GB) and every length up to 15 s is
@@ -194,6 +201,13 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - **Web Access** (`web_access`, off by default; `weather_city`): `engine/web.py` (stdlib, 6 s timeout, fixed https
   hosts): weather from Open-Meteo, look-up from DuckDuckGo Instant Answer then Wikipedia. While off, `WEB_TOOLS` are
   left off every routing menu, so questions still reach the big model; called anyway they say how to turn it on.
+- **Todoist** (`engine/todoist.py`, API v1, stdlib, 8 s timeout; tool `todoist`, family assistant, not gated): add
+  with Quick Add (Todoist reads the date from the sentence, so the model only picks the tool), list today / tomorrow
+  / overdue / this week, complete after "Mark ... as done?" (`Tool.asks`, so an unsure router doesn't ask twice). On
+  the menus only while the engine holds a token. The token lives in the login keyring (`secret_store.py`); only the
+  `todoist_connected` flag is a setting, so the keyring is opened only for people who connected. The app sends it as
+  `{"cmd": "secrets"}` (engine memory only, re-sent to every new engine by `Controller.secrets`). Independent of
+  Web Access: saving a token is the opt-in.
 - **App tools** (`engine/apps.py`): `installed_apps` (all apps by group, or what one is for, from the .desktop
   Comment), `list_folder` (newest items of a known folder), `switch_to_app` (D-Bus Activate, else `gtk-launch`),
   `close_app` (D-Bus `quit` action, else `flatpak kill`, else `pkill -TERM -x` for this user; web apps refused).

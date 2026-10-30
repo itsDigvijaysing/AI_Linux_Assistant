@@ -17,6 +17,15 @@ details of each piece.
   asks for 480 itself, so reset it to 0 after Phoenix restarts (it also resets on reboot).
 - **How the user wants replies:** short key-point bullets; clarify every doubt (AskUserQuestion) before coding.
 
+## Done on 2026-10-30, cloud session (branch `cloud/project-review`, draft PR #1; VERSION 3.3.1)
+| Change | Files |
+|---|---|
+| 13 review fixes with failing-test-first proof (speech tied to its turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist `/home`, muted listen loop sleeps, ...) | see the PR table |
+| Volume and brightness accept "40%", "fifty" and floats from the big model (it said "Sorry, something went wrong") | `engine/tools.py` (`_level`) |
+| Todoist: add, read, finish tasks; token in the login keyring; Tools page section | `engine/todoist.py`, `engine/tools.py`, `secret_store.py`, `todoist_link.py`, `ui/pages/tools.py` |
+| MCP: a switch per tool (fewer tools on the menu), presets Files / Web page reader / Git | `engine/mcp_client.py`, `engine/service.py`, `mcp_presets.py`, `ui/pages/tools.py` |
+| Live checks still open: the keyring's unlock dialog (auto-login), a real Todoist token, a preset server started with npx/uvx, routing accuracy with Todoist and MCP tools on the menu | |
+
 ## Done on 2026-10-30 (uncommitted)
 | Change | Files |
 |---|---|
