@@ -216,13 +216,15 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   `phoenix-tray-*-symbolic.svg` (`scripts/gen_tray_icons.py`) so the shell paints them in the panel's text colour:
   solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
   when stopped. The pixmap is only a fallback, drawn once per state.
-- **Dictation** (`engine/dictation.py`, 2026-10-30): "Phoenix, dictate" (optionally followed by text) turns it on;
-  every sentence is cleaned (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question mark"),
-  its grammar fixed by the big model (`Brain.polish`, temperature 0, no tools) and typed at the cursor through
-  `paste_text`, never acted on. `dictation.pick` keeps the words as said when the rewrite is empty, much longer or
-  shorter, or turned a question into an answer; without the big model it types them as said. "Type what I say" /
-  "type exactly" skips the model. "Stop dictation", "done"
-  or `DICTATE_IDLE_S` (10 s) of silence ends it. Needs actions allowed (it types into other apps).
+- **Dictation** (`engine/dictation.py`, 2026-10-31): "Phoenix, dictate" / "start dictating" (optionally followed by
+  text) turns it on. What is said is collected (a pause ends a recording only after `DICTATE_END_SILENCE`, ~1.5 s,
+  not 0.7 s) until "stop dictating" (also at the end of a sentence) or `DICTATE_IDLE_S` (10 s) of silence; then the
+  whole text is cleaned once (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question
+  mark"), its grammar fixed in one call to the big model (`Brain.polish`, temperature 0, no tools) and typed once
+  through `paste_text`, never acted on. The silence end is queued to the Work thread (the model must not hold up the
+  mic). `dictation.pick` keeps the words as said when the rewrite is empty, much longer or shorter, or turned a
+  question into an answer; without the big model it types them as said. "Type what I say" / "type exactly" skips
+  the model. Cancel drops what was collected. Needs actions allowed (it types into other apps).
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)

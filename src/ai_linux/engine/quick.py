@@ -53,8 +53,8 @@ _YOUTUBE = re.compile(r"(?i)^(?:please )?(?:(?:open|go to|launch) youtube (?:and
 
 HELP = ("I can open apps, files and websites, search the web or YouTube, change the volume and brightness, "
         "control music, lock the screen, take screenshots, tell the time and battery level, read your screen, "
-        "write a reply for you, set timers, type what you say when you say dictate, and remember things you "
-        "tell me. Say my name, then ask.")
+        "write a reply for you, set timers, type what you say when you say dictate (stop dictating ends it), "
+        "and remember things you tell me. Say my name, then ask.")
 
 
 @dataclass(frozen=True)

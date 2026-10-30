@@ -766,32 +766,36 @@ class DictationEngineTests(unittest.TestCase):
         e.asr.transcribe.return_value = heard
         e._one("audio", object(), at or time.monotonic())
 
-    def test_dictation_types_each_sentence_without_the_model(self):
+    def test_dictation_collects_until_stop_and_types_once(self):
         e, events = self.make()
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
-            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Phoenix, start dictating.")
             self.assertTrue(e.dictating)
             self.say(e, "Um, hello Sam comma new line see you at five full stop")
-            self.say(e, "Stop dictation.")
-        self.assertEqual([c.args[1] for c in paste.call_args_list], ["Hello Sam,\nSee you at five. "])
+            self.say(e, "Done.")  # part of the text, not the end
+            paste.assert_not_called()  # a pause to think types nothing yet
+            self.say(e, "Phoenix, stop dictating.")
+        self.assertEqual([c.args[1] for c in paste.call_args_list], ["Hello Sam,\nSee you at five. Done. "])
         e.brain.handle.assert_not_called()
         self.assertFalse(e.dictating)
         self.assertEqual(e.state, "idle")
 
-    def test_dictate_lets_the_big_model_fix_the_grammar(self):
+    def test_dictate_sends_the_whole_text_to_the_big_model_once(self):
         e, events = self.make()
-        e.brain.polish.side_effect = lambda text: "I went to the shop and bought milk."
+        e.brain.polish.side_effect = lambda text: "I went to the shop and bought milk. It was cold."
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, dictate.")
             self.say(e, "I has went to the shop and buyed milk.")
-        e.brain.polish.assert_called_once_with("I has went to the shop and buyed milk.")
-        self.assertEqual(paste.call_args.args[1], "I went to the shop and bought milk. ")
+            self.say(e, "It were cold. Stop dictating.")
+        e.brain.polish.assert_called_once_with("I has went to the shop and buyed milk. It were cold.")
+        self.assertEqual(paste.call_args.args[1], "I went to the shop and bought milk. It was cold. ")
 
     def test_type_what_i_say_types_it_as_said(self):
         e, events = self.make()
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, type what I say.")
             self.say(e, "I has went to the shop.")
+            self.say(e, "Stop dictating.")
         e.brain.polish.assert_not_called()
         self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
 
@@ -802,23 +806,46 @@ class DictationEngineTests(unittest.TestCase):
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, dictate.")
             self.say(e, "I has went to the shop.")
+            self.say(e, "Stop dictating.")
         self.assertEqual(paste.call_args.args[1], "I has went to the shop. ")
         self.assertTrue(any(ev.get("ev") == "notice" for ev in events))
 
-    def test_text_after_the_start_word_is_typed_at_once(self):
+    def test_text_after_the_start_word_is_kept(self):
         e, events = self.make()
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, dictate meeting moved to Monday.")
+            self.say(e, "Stop dictating.")
         self.assertEqual(paste.call_args.args[1], "Meeting moved to Monday. ")
 
-    def test_silence_ends_dictation(self):
+    def test_silence_types_what_was_said_off_the_listen_thread(self):
         e, events = self.make()
-        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, dictate.")
-        e.followup_until = time.monotonic() - 1
-        e._check_followup()
+            self.say(e, "See you soon.")
+            e.followup_until = time.monotonic() - 1
+            e._check_followup()  # the Listen thread: no model call here
+            e._check_followup()  # once only
+            e.brain.polish.assert_not_called()
+            self.assertEqual(e.work.qsize(), 1)
+            e._one(*e.work.get())  # the Work thread
+        e.brain.polish.assert_called_once_with("See you soon.")
+        self.assertEqual(paste.call_args.args[1], "See you soon. ")
         self.assertFalse(e.dictating)
         self.assertEqual(e.state, "idle")
+
+    def test_cancel_drops_what_was_collected(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Secret words.")
+            e.cancel_turn()
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Stop dictating.")
+        paste.assert_not_called()
+
+    def test_dictation_waits_longer_for_a_pause(self):
+        from ai_linux.engine import service
+        self.assertGreater(service.DICTATE_END_SILENCE, service.END_SILENCE)
 
     def test_needs_actions_allowed(self):
         e, events = self.make(armed=False)
