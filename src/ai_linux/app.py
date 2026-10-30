@@ -208,8 +208,9 @@ class App(Adw.Application):
     def _confirm_dialog(self, event: dict, respond):
         """A risky action waits for an on-screen yes; no answer within 55 s means no."""
         from ai_linux.tools_catalog import title_for
-        win = self.get_window()
-        win.present()
+        win = self._dialog_parent(self.window)
+        if win is not None:
+            win.present()
         command = event.get("command") or ""
         if event.get("detail"):  # not a risky action: the router wasn't sure what was meant
             dialog = Adw.AlertDialog(heading=event["detail"], body="Phoenix wasn't sure what you meant.")
@@ -231,6 +232,14 @@ class App(Adw.Application):
         dialog.set_default_response("deny")
         dialog.set_close_response("deny")
         return self._confirm_finish(dialog, win, respond)
+
+    @staticmethod
+    def _dialog_parent(win):
+        """The main window if it is on screen, else None: Adw.Dialog.present(None) opens just the question."""
+        if win is None or not win.get_visible():
+            return None
+        suspended = getattr(win, "is_suspended", None)  # GTK 4.12+: minimised or on another workspace
+        return None if suspended is not None and suspended() else win
 
     @staticmethod
     def _confirm_finish(dialog, win, respond):

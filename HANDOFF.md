@@ -24,6 +24,7 @@ details of each piece.
 | Volume and brightness accept "40%", "fifty" and floats from the big model (it said "Sorry, something went wrong") | `engine/tools.py` (`_level`) |
 | Todoist: add, read, finish tasks; token in the login keyring; Tools page section | `engine/todoist.py`, `engine/tools.py`, `secret_store.py`, `todoist_link.py`, `ui/pages/tools.py` |
 | MCP: a switch per tool (fewer tools on the menu), presets Files / Git | `engine/mcp_client.py`, `engine/service.py`, `mcp_presets.py`, `ui/pages/tools.py` |
+| Yes/no questions open on their own when the window is closed or minimised (it no longer brings up the whole window) | `app.py` (`_dialog_parent`) |
 | Timers on Home with Cancel; dictation ("Phoenix, dictate" polished by the big model, "type what I say" as said); `SECURITY.md` for v3 | `ui/pages/home.py`, `engine/timers.py`, `engine/dictation.py`, `engine/brain.py` (`polish`), `SECURITY.md` |
 | Live checks still open (PR #1 list): the keyring's unlock dialog (auto-login), a real Todoist token, a preset server started with npx/uvx, dictation quality and delay, timers on Home, routing accuracy with Todoist and MCP tools on the menu, the browser opening behind windows | |
 
