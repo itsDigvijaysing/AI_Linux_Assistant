@@ -174,3 +174,20 @@ class TestDenylistEdges(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHomeOutsideSlashHome(unittest.TestCase):
+    """/home holds every user's data even when this user's home lives elsewhere (root, /var/home, /srv)."""
+
+    def test_home_parent_is_blocked_for_any_home(self):
+        import importlib
+        from unittest import mock
+
+        from ai_linux.safety import denylist
+        self.addCleanup(importlib.reload, denylist)
+        for home in ("/root", "/var/home/me"):
+            with self.subTest(home=home), mock.patch.dict(os.environ, {"HOME": home}):
+                mod = importlib.reload(denylist)
+                for cmd in ("rm -rf /home", "rm -rf /home/*", "chown -R nobody /home", "mv /home /tmp/x"):
+                    self.assertIsNotNone(mod.destructive_reason(cmd), cmd)
+                self.assertIsNone(mod.destructive_reason("rm -rf /home/me/project/build"))

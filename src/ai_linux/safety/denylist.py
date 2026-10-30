@@ -30,7 +30,7 @@ _HOME = os.path.expanduser("~")
 _HOME_PARENT = os.path.dirname(_HOME) or "/"  # usually /home; wiping it loses every user's data
 
 # A path that resolves to one of these is a top-level root (catastrophic to recursively delete).
-_ROOTS = frozenset({"/", _HOME_PARENT, _HOME, "__HOME_USER__"})
+_ROOTS = frozenset({"/", "/home", _HOME_PARENT, _HOME, "__HOME_USER__"})  # /home even when HOME is elsewhere
 
 # Interpreters that execute code read from stdin when a download/decoder is piped into them.
 _INTERPRETERS = frozenset(
