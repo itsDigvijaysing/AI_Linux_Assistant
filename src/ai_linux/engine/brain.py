@@ -329,6 +329,9 @@ class Brain:
         value = next((str(v) for v in args.values() if isinstance(v, (str, int, float)) and str(v)), "")
         question = f"Did you mean {title}{', ' + value if value else ''}?"
         turn["route"] = "small" if turn["model"] != self.big and filler != self.big else "big"
+        if tool.asks(args):  # its own question names the action; a second one would only repeat it
+            self._run_tools([(tool.name, args)], turn, cancel)
+            return True
         if self.env.confirm(ConfirmRequest(tool.name, args, detail=question)):
             self._run_tools([(tool.name, args)], turn, cancel)
         else:

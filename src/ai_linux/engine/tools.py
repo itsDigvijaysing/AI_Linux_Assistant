@@ -85,6 +85,7 @@ class Tool:
     needs_args: bool = True
     answers: bool = False  # its reply is the information asked for, so it is always spoken
     gate_id: str = ""  # MCP tools: mcp.<server>.<tool>
+    asks: Callable[[dict], bool] = lambda args: False  # it asks the user itself for these arguments
 
     @property
     def speaks(self) -> bool:
@@ -1278,7 +1279,8 @@ TOOLS: tuple[Tool, ...] = (
           "text": {"type": "string", "description": "for add: the task as the user said it, with any date"},
           "when": {"type": "string", "enum": ["today", "tomorrow", "overdue", "week"]},
           "task": {"type": "string", "description": "for complete: which task"}},
-         run_todoist, _p_todoist, family="assistant", answers=True, required=("action",)),
+         run_todoist, _p_todoist, family="assistant", answers=True, required=("action",),
+         asks=lambda a: str(a.get("action")) == "complete"),
 )
 TODOIST_TOOLS = frozenset({"todoist"})  # on the menus only while a token is saved
 

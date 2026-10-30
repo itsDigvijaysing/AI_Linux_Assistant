@@ -201,5 +201,22 @@ class MenuTests(unittest.TestCase):
         self.assertIn("todoist", [t.name for t in with_token.tools()])
 
 
+class UnsureRouterTests(unittest.TestCase):
+    def test_finishing_a_task_asks_once_when_the_router_was_unsure(self):
+        import threading
+        from ai_linux.engine import brain as B
+        fake = FakeTodoist()
+        self.addCleanup(fake.close)
+        asked = []
+        env = T.Env(None, confirm=lambda r: (asked.append(r.detail), True)[1], secret={"todoist": TOKEN}.get)
+        env.executor = mock.Mock(gate=mock.Mock(check=mock.Mock(return_value=mock.Mock(allowed=True))))
+        settings = {"escalate_threshold": 0.85, "action_feedback": "speech", "wake_word": "phoenix"}.get
+        b = B.Brain(settings, env, speak=lambda s: None)
+        with mock.patch.object(todoist, "API", fake.base), \
+                mock.patch.object(b, "route", return_value=("todoist", 0.6, "jiwo", {"todoist": 0.6})):
+            turn = b.handle("mark call mom as done", cancel=threading.Event())
+        self.assertEqual(asked, ["Mark Call mom as done?"])
+        self.assertEqual((turn["reply"], turn["route"]), ("Marked Call mom as done.", "small"))
+
 if __name__ == "__main__":
     unittest.main()
