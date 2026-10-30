@@ -17,14 +17,15 @@ details of each piece.
   asks for 480 itself, so reset it to 0 after Phoenix restarts (it also resets on reboot).
 - **How the user wants replies:** short key-point bullets; clarify every doubt (AskUserQuestion) before coding.
 
-## Done on 2026-10-30, cloud session (branch `cloud/project-review`, draft PR #1; VERSION 3.3.1)
+## Done on 2026-10-30, cloud session (branch `cloud/project-review`, draft PR #1; VERSION 3.6.0, ready to test)
 | Change | Files |
 |---|---|
 | 13 review fixes with failing-test-first proof (speech tied to its turn, cancel ends an on-screen confirm, echo cancel loaded once, MCP leaks, timers across suspend, denylist `/home`, muted listen loop sleeps, ...) | see the PR table |
 | Volume and brightness accept "40%", "fifty" and floats from the big model (it said "Sorry, something went wrong") | `engine/tools.py` (`_level`) |
 | Todoist: add, read, finish tasks; token in the login keyring; Tools page section | `engine/todoist.py`, `engine/tools.py`, `secret_store.py`, `todoist_link.py`, `ui/pages/tools.py` |
 | MCP: a switch per tool (fewer tools on the menu), presets Files / Git | `engine/mcp_client.py`, `engine/service.py`, `mcp_presets.py`, `ui/pages/tools.py` |
-| Live checks still open: the keyring's unlock dialog (auto-login), a real Todoist token, a preset server started with npx/uvx, routing accuracy with Todoist and MCP tools on the menu | |
+| Timers on Home with Cancel; dictation ("Phoenix, dictate" polished by the big model, "type what I say" as said); `SECURITY.md` for v3 | `ui/pages/home.py`, `engine/timers.py`, `engine/dictation.py`, `engine/brain.py` (`polish`), `SECURITY.md` |
+| Live checks still open (PR #1 list): the keyring's unlock dialog (auto-login), a real Todoist token, a preset server started with npx/uvx, dictation quality and delay, timers on Home, routing accuracy with Todoist and MCP tools on the menu, the browser opening behind windows | |
 
 ## Done on 2026-10-30 (uncommitted)
 | Change | Files |
@@ -163,7 +164,7 @@ details of each piece.
 - Voice-not-heard follow-ups not done yet: follow a changed default microphone (OpenWhispr does), retry an empty
   transcription once.
 - Close app: GNOME may show "is ready" instead of raising a window for Switch (focus-stealing rules); untested live.
-- **Dictation**: done on the PR branch ("Phoenix, dictate"); live check: type into a text editor and a browser field.
+- **Dictation**: done on the PR branch ("Phoenix, dictate" polished, "type what I say" as said); live check in a text editor and a browser field.
 - Laya: one full download check through the Models page.
 - `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package; `FUTURE_DIRECTION.md` predates
   v3.
