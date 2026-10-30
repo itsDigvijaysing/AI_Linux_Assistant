@@ -79,6 +79,7 @@ class Engine:
         self._busy = False  # a turn is running
         self._think_detail = ""  # what the big model is doing, restored after "One moment."
         self.mcp = None
+        self._mcp_lock = threading.Lock()  # two quick setting changes must not each keep a set of servers
         self.timers = None
         self._mic = mic_watch.SilenceWatch()
         self._mic_reopened = False  # one quiet re-open before warning
@@ -168,15 +169,16 @@ class Engine:
 
     def _load_mcp(self) -> None:
         from ai_linux.engine.mcp_client import McpTools
-        old, self.mcp = self.mcp, None
-        if old is not None:
-            old.close()
-        servers = [x for x in self.s.get("mcp_servers") or [] if isinstance(x, dict) and x.get("enabled", True)]
-        if not servers:
-            self.brain.extra_tools = []
-            return
-        self.mcp = McpTools(servers, notice=self.notice)
-        self.brain.extra_tools = self.mcp.tools()
+        with self._mcp_lock:
+            old, self.mcp = self.mcp, None
+            if old is not None:
+                old.close()
+            servers = [x for x in self.s.get("mcp_servers") or [] if isinstance(x, dict) and x.get("enabled", True)]
+            if not servers:
+                self.brain.extra_tools = []
+                return
+            self.mcp = McpTools(servers, notice=self.notice)
+            self.brain.extra_tools = self.mcp.tools()
 
     def stop(self) -> None:
         self._stop.set()

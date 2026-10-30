@@ -191,10 +191,13 @@ class McpTools:
         taken = {t.name for t in TOOLS}
 
         def start(spec: dict) -> None:
+            server = None
             try:
                 server = McpServer(spec)
                 infos = server.list_tools()
             except Exception as exc:
+                if server is not None:
+                    server.close()  # started but unusable: don't leave its process running
                 log.warning("mcp server %s: %s", spec.get("name"), exc)
                 notice("warning", f"The {spec.get('name')} server didn't start: {exc}")
                 return

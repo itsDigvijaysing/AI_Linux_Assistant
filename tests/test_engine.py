@@ -924,3 +924,56 @@ class EchoCancelSetupTests(unittest.TestCase):
         io._ensure_aec()
         self.popen.assert_called_once()
         self.assertTrue(io._aec_ok)
+
+
+class McpCleanupTests(unittest.TestCase):
+    SERVER = Path(__file__).with_name("fake_mcp_server.py")
+
+    def test_server_whose_tool_list_fails_is_stopped(self):
+        from ai_linux.engine import mcp_client
+        made = []
+
+        class Spy(mcp_client.McpServer):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                made.append(self)
+
+            def list_tools(self):
+                raise mcp_client.McpError("tools/list: no answer in 30 s")
+
+        with mock.patch.object(mcp_client, "McpServer", Spy):
+            tools = mcp_client.McpTools([{"name": "demo", "command": sys.executable, "args": [str(self.SERVER)]}])
+        self.assertEqual(tools.tools(), [])
+        try:
+            made[0].proc.wait(timeout=3)
+        except Exception:
+            made[0].close()
+            self.fail("the server was left running")
+
+    def test_reloading_mcp_twice_at_once_closes_every_old_server(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+
+        class Fake:
+            def __init__(self, specs, notice=None):
+                time.sleep(0.2)  # servers take a while to start
+                self.closed = False
+                made.append(self)
+
+            def tools(self):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        e = Engine(lambda ev: None, {"mcp_servers": [{"name": "a", "command": "x"}]})
+        e.brain = mock.Mock()
+        with mock.patch.object(mcp_client, "McpTools", Fake):
+            threads = [threading.Thread(target=e._load_mcp) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(3)
+        self.assertEqual(len(made), 2)
+        self.assertEqual([m for m in made if not m.closed], [e.mcp])
