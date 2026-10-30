@@ -13,6 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from ai_linux.mcp_presets import PRESETS, Preset  # noqa: E402
 from ai_linux.tools_catalog import CATEGORIES, ToolInfo, for_category  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class Page(Adw.NavigationPage):
         self.ctx = ctx
         self.settings = ctx.settings
         self._binds = _Bindings()
+        self._expanded: set[str] = set()  # server rows kept open across a reload
 
         view = Adw.ToolbarView()
         view.add_top_bar(Adw.HeaderBar())
@@ -101,6 +103,8 @@ class Page(Adw.NavigationPage):
         self._binds.connect(self.settings, "changed::web_access", lambda *_: self._sync_web())
         self._binds.connect(self.settings, "changed::mcp_servers", lambda *_: self._reload_servers())
         self._binds.connect(self.settings, "changed::todoist_connected", lambda *_: self._sync_todoist())
+        if getattr(ctx, "bus", None) is not None:
+            self._binds.connect(ctx.bus, "mcp-tools-changed", lambda *_: self._reload_servers())
         self.connect("destroy", lambda *_: self._binds.clear())
         self._sync_armed()
         self._sync_web()
@@ -279,22 +283,74 @@ class Page(Adw.NavigationPage):
         add = Adw.ButtonRow(title="Add Server", start_icon_name="list-add-symbolic")
         add.connect("activated", lambda *_: self.open_server_dialog())
         self._server_list.append(add)
+        preset = Adw.ButtonRow(title="Add from a Preset", start_icon_name="view-list-bullet-symbolic")
+        preset.connect("activated", lambda *_: self._open_presets())
+        self._server_list.append(preset)
 
-    def _server_row(self, index: int, server: dict) -> Adw.ActionRow:
+    def _server_row(self, index: int, server: dict) -> Adw.ExpanderRow:
         name = str(server.get("name") or "unnamed")
-        row = Adw.ActionRow(title=name, subtitle=summarize(server), use_markup=False,
-                            subtitle_lines=1, activatable=True, tooltip_text="Edit server")
+        enabled = server.get("enabled", True) is not False
+        row = Adw.ExpanderRow(title=name, subtitle=summarize(server), use_markup=False, subtitle_lines=1)
         row.add_prefix(_icon_tile("network-server-symbolic"))
-        switch = Gtk.Switch(active=server.get("enabled", True) is not False, valign=Gtk.Align.CENTER,
-                            tooltip_text="Use this server")
+        offered = getattr(getattr(self.ctx, "bus", None), "mcp_tools", {}).get(name) if enabled else None
+        off = {str(t) for t in server.get("disabled_tools") or []}
+        if offered:
+            on = sum(t["name"] not in off for t in offered)
+            row.add_suffix(_tag(f"{on} of {len(offered)} tools", "neutral"))
+        switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER, tooltip_text="Use this server")
         switch.connect("notify::active", lambda sw, _p: self._set_enabled(name, sw.get_active()))
+        edit = Gtk.Button(icon_name="document-edit-symbolic", valign=Gtk.Align.CENTER,
+                          tooltip_text="Edit server", css_classes=["flat", "circular"])
+        edit.connect("clicked", lambda *_: self.open_server_dialog(name))
         delete = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER,
                             tooltip_text="Remove server", css_classes=["flat", "circular"])
         delete.connect("clicked", lambda *_: self._remove(name))
-        row.add_suffix(switch)
-        row.add_suffix(delete)
-        row.connect("activated", lambda *_: self.open_server_dialog(name))
+        for widget in (switch, edit, delete):
+            row.add_suffix(widget)
+        if offered:
+            for tool in offered:
+                tool_row = Adw.SwitchRow(title=tool["name"], subtitle=str(tool.get("description") or ""),
+                                         use_markup=False, active=tool["name"] not in off)
+                tool_row.connect("notify::active",
+                                 lambda r, _p, t=tool["name"]: self._set_tool(name, t, r.get_active()))
+                row.add_row(tool_row)
+        else:
+            row.add_row(Adw.ActionRow(title="Its tools show here once it has started" if enabled else
+                                      "Turn it on to choose its tools", css_classes=["dim-label"]))
+        row.set_expanded(name in self._expanded)
+        row.connect("notify::expanded",
+                    lambda r, _p: (self._expanded.add if r.get_expanded() else self._expanded.discard)(name))
         return row
+
+    def _set_tool(self, name: str, tool: str, on: bool) -> None:
+        """Only switched-on tools reach the model's menu; fewer tools route more accurately."""
+        servers = self._servers()
+        i = self._find(servers, name)
+        if i < 0:
+            return
+        off = {str(t) for t in servers[i].get("disabled_tools") or []}
+        new = off - {tool} if on else off | {tool}
+        if new == off:
+            return
+        servers[i]["disabled_tools"] = sorted(new)
+        self._save_servers(servers)
+
+    def _open_presets(self) -> None:
+        try:
+            _PresetDialog(self).present(self)
+        except Exception:
+            log.exception("preset dialog")
+
+    def open_preset(self, preset: Preset) -> None:
+        server = preset.server()
+        name, n = server["name"], 2
+        while name in self.taken_names(None):  # a second Files server gets files-2
+            name, n = f"{server['name']}-{n}", n + 1
+        server["name"] = name
+        try:
+            _ServerDialog(self, server, editing=False).present(self)
+        except Exception:
+            log.exception("server dialog")
 
     def _find(self, servers: list[dict], name: str) -> int:
         return next((i for i, s in enumerate(servers) if s.get("name") == name), -1)
@@ -357,13 +413,36 @@ class Page(Adw.NavigationPage):
         return {str(s.get("name")) for s in self._servers() if s.get("name") != except_name} | _RESERVED
 
 
+class _PresetDialog(Adw.Dialog):
+    """Known servers; picking one opens the Add Server form filled in."""
+
+    def __init__(self, page: Page):
+        super().__init__(title="Add from a Preset", content_width=460)
+        group = Adw.PreferencesGroup(description="Each needs its program installed. Only read-only tools "
+                                                 "start on; you can switch others on after it starts.")
+        for preset in PRESETS:
+            ok = preset.available()
+            row = Adw.ActionRow(title=preset.title, use_markup=False, activatable=True,
+                                subtitle=preset.blurb if ok else f"{preset.blurb} Needs {preset.needs}, "
+                                                                 "which isn't installed.")
+            row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+            row.connect("activated", lambda *_, p=preset: (self.close(), page.open_preset(p)))
+            group.add(row)
+        prefs = Adw.PreferencesPage()
+        prefs.add(group)
+        view = Adw.ToolbarView(content=prefs)
+        view.add_top_bar(Adw.HeaderBar())
+        self.set_child(view)
+
+
 class _ServerDialog(Adw.Dialog):
-    def __init__(self, page: Page, server: dict | None):
-        editing = server is not None
+    def __init__(self, page: Page, server: dict | None, editing: bool | None = None):
+        editing = server is not None if editing is None else editing
         super().__init__(title="Edit Server" if editing else "Add Server", content_width=460)
         self._page = page
         self._original = server.get("name") if editing else None
         server = server or {}
+        self._extra = {} if editing else {k: server[k] for k in ("disabled_tools",) if k in server}
 
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda *_: self.close())
@@ -453,5 +532,5 @@ class _ServerDialog(Adw.Dialog):
         server = self._validate()
         if server is None:
             return
-        self._page._commit_server(self._original, server)
+        self._page._commit_server(self._original, {**server, **self._extra})
         self.close()

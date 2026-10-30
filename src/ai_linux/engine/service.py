@@ -178,13 +178,30 @@ class Engine:
             servers = [x for x in self.s.get("mcp_servers") or [] if isinstance(x, dict) and x.get("enabled", True)]
             if not servers:
                 self.brain.extra_tools = []
+                self.emit({"ev": "mcp_tools", "servers": {}})
                 return
             tools = McpTools(servers, notice=self.notice)
             if self._stop.is_set():  # quit while they started: their own session outlives the engine's group
                 tools.close()
                 return
             self.mcp = tools
-            self.brain.extra_tools = tools.tools()
+            self.brain.extra_tools = tools.tools(self._mcp_disabled())
+            self.emit({"ev": "mcp_tools", "servers": tools.catalog})
+
+    def _mcp_disabled(self) -> dict[str, set[str]]:
+        return {str(x.get("name")): set(x.get("disabled_tools") or []) for x in self.s.get("mcp_servers") or []
+                if isinstance(x, dict)}
+
+    def _filter_mcp(self) -> None:
+        """Only tool switches changed: the same servers keep running, the menus change."""
+        with self._mcp_lock:
+            if self.mcp is not None and self.brain is not None:
+                self.brain.extra_tools = self.mcp.tools(self._mcp_disabled())
+
+    @staticmethod
+    def _servers_but_tools(s: dict) -> list:
+        return [{k: v for k, v in x.items() if k != "disabled_tools"} if isinstance(x, dict) else x
+                for x in s.get("mcp_servers") or []]
 
     def stop(self) -> None:
         self._stop.set()
@@ -234,7 +251,9 @@ class Engine:
                 self.brain.drop_small()
             threading.Thread(target=self.brain.warm, name="Warm", daemon=True).start()
         if "mcp_servers" in changed:
-            threading.Thread(target=self._load_mcp, name="MCP", daemon=True).start()
+            only_tools = self._servers_but_tools(old) == self._servers_but_tools(self.s)
+            threading.Thread(target=self._filter_mcp if only_tools else self._load_mcp, name="MCP",
+                             daemon=True).start()
 
     def set_secrets(self, values: dict) -> None:
         """Tokens the app read from the keyring; an empty value removes one. Never logged or saved."""

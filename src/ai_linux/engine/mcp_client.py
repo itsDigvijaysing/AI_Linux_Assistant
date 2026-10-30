@@ -185,7 +185,8 @@ class McpTools:
 
     def __init__(self, specs: list[dict], notice=None):
         self.servers: list[McpServer] = []
-        self._tools: list[Tool] = []
+        self._tools: list[tuple[str, str, Tool]] = []  # (server, its own tool name, the tool)
+        self.catalog: dict[str, list[dict]] = {}  # every tool each server offers, for the Tools page switches
         self._lock = threading.Lock()
         notice = notice or (lambda level, text: None)
         taken = {t.name for t in TOOLS}
@@ -203,12 +204,15 @@ class McpTools:
                 return
             with self._lock:
                 self.servers.append(server)
+                listed = []
                 for info in infos:
                     tool = make_tool(server, spec, info)
                     if tool.name in taken:
                         continue
                     taken.add(tool.name)
-                    self._tools.append(tool)
+                    self._tools.append((server.name, str(info["name"]), tool))
+                    listed.append({"name": str(info["name"]), "description": tool.description[:200]})
+                self.catalog[server.name] = listed
             log.info("mcp server %s: %d tools", server.name, len(infos))
 
         threads = [threading.Thread(target=start, args=(s,), daemon=True) for s in specs
@@ -218,9 +222,11 @@ class McpTools:
         for t in threads:
             t.join(START_S + 15)
 
-    def tools(self) -> list[Tool]:
+    def tools(self, disabled: dict[str, set[str]] | None = None) -> list[Tool]:
+        """The tools to offer the models, leaving out the ones the user turned off per server."""
+        disabled = disabled or {}
         with self._lock:
-            return list(self._tools)
+            return [t for server, raw, t in self._tools if raw not in disabled.get(server, ())]
 
     def close(self) -> None:
         for server in self.servers:

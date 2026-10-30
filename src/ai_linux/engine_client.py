@@ -232,6 +232,8 @@ class EngineClient:
             self.bus.knowledge_changed()
         elif ev == "notice":
             self.bus.notice(e.get("level", "info"), e.get("text", ""))
+        elif ev == "mcp_tools":
+            self.bus.set_mcp_tools(e.get("servers") if isinstance(e.get("servers"), dict) else {})
         elif ev == "no_wake":
             self.bus.wake_missed()
         elif ev == "followup":

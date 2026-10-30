@@ -598,6 +598,55 @@ class McpTests(unittest.TestCase):
         self.assertIn("nope", notes[0])
 
 
+class McpToolChoiceTests(unittest.TestCase):
+    """Per-tool on/off: a big server must not flood the routing menu (fake MCP server, no network)."""
+    SERVER = Path(__file__).with_name("fake_mcp_server.py")
+
+    def spec(self, **kw):
+        return {"name": "demo", "command": sys.executable, "args": [str(self.SERVER)], "confirm": False, **kw}
+
+    def test_catalog_lists_every_tool_and_tools_skips_the_disabled(self):
+        from ai_linux.engine import mcp_client
+        tools = mcp_client.McpTools([self.spec()])
+        self.addCleanup(tools.close)
+        self.assertEqual([t["name"] for t in tools.catalog["demo"]], ["echo", "fail"])
+        self.assertEqual(tools.catalog["demo"][0]["description"], "Repeat the text.")
+        self.assertEqual([t.name for t in tools.tools({"demo": {"fail"}})], ["demo_echo"])
+        self.assertEqual([t.name for t in tools.tools()], ["demo_echo", "demo_fail"])
+
+    def test_engine_menu_follows_disabled_tools_and_reports_the_catalog(self):
+        from ai_linux.engine.service import Engine
+        events = []
+        e = Engine(events.append, {"mcp_servers": [self.spec(disabled_tools=["fail"])]})
+        e.brain = mock.Mock(extra_tools=[])
+        e._load_mcp()
+        self.addCleanup(e.mcp.close)
+        self.assertEqual([t.name for t in e.brain.extra_tools], ["demo_echo"])
+        sent = [ev for ev in events if ev.get("ev") == "mcp_tools"]
+        self.assertEqual([t["name"] for t in sent[-1]["servers"]["demo"]], ["echo", "fail"])
+
+    def test_turning_a_tool_off_does_not_restart_the_servers(self):
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        made = []
+        real = mcp_client.McpTools
+
+        def counting(*a, **k):
+            made.append(1)
+            return real(*a, **k)
+
+        e = Engine(lambda ev: None, {"mcp_servers": [self.spec()]})
+        e.brain = mock.Mock(extra_tools=[])
+        with mock.patch.object(mcp_client, "McpTools", counting):
+            e._load_mcp()
+            self.addCleanup(e.mcp.close)
+            e.update_settings({"mcp_servers": [self.spec(disabled_tools=["echo"])]})
+            deadline = time.monotonic() + 2
+            while [t.name for t in e.brain.extra_tools] != ["demo_fail"] and time.monotonic() < deadline:
+                time.sleep(0.02)
+        self.assertEqual([t.name for t in e.brain.extra_tools], ["demo_fail"])
+        self.assertEqual(len(made), 1)  # the same running servers
+
 class QuitAndMicTests(unittest.TestCase):
     def test_quit_frees_the_graphics_card(self):
         from ai_linux.engine.service import Engine
@@ -984,7 +1033,9 @@ class McpCleanupTests(unittest.TestCase):
                 self.closed = False
                 made.append(self)
 
-            def tools(self):
+            catalog: dict = {}
+
+            def tools(self, *disabled):
                 return []
 
             def close(self):
@@ -1012,7 +1063,9 @@ class McpCleanupTests(unittest.TestCase):
                 self.closed = False
                 made.append(self)
 
-            def tools(self):
+            catalog: dict = {}
+
+            def tools(self, *disabled):
                 return []
 
             def close(self):
