@@ -72,7 +72,8 @@ class Turn:
     @classmethod
     def from_dict(cls, d: dict) -> Turn:
         d = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}  # newer engines may send more
-        d["tools"] = [ToolCall(**t) for t in d.get("tools", [])]
+        known = ToolCall.__dataclass_fields__
+        d["tools"] = [ToolCall(**{k: v for k, v in t.items() if k in known}) for t in d.get("tools", [])]
         return cls(**d)
 
 

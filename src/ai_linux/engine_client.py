@@ -99,6 +99,7 @@ class EngineClient:
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
                                          cwd=str(Path.home()), text=True, bufsize=1, start_new_session=True)
         except OSError as exc:
+            err.close()
             self.bus.set_state(AssistantState.ERROR, f"Speech engine failed to start: {exc}")
             return
         self.bus.set_state(AssistantState.LOADING, "Starting the speech engine")
