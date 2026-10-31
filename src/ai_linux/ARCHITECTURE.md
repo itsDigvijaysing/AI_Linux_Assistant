@@ -69,7 +69,7 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   so does quitting (`Engine.stop()`, first, before MCP servers close), else Ollama keeps it for `keep_alive`.
   Small models load through `engine/small_models.py` (`jiwo.py`, `laya.py`: both torch-free, `ask(state, question,
   options)`); downloadable OpenVINO models are listed in `downloads.OPENVINO_MODELS`.
-- **Cues** (`engine/sounds.py`, pure Python, pw-play through the echo-cancel sink): listen, ok, fail, unclear, big
+- **Cues** (`engine/sounds.py`, pure Python, pw-play; each is also given to the echo canceller): listen, ok, fail, unclear, big
   (a swell and a soft flame), sleep, timer. A finished action chimes instead of speaking (`action_feedback`; a tool's
   `Result.cue` can pick another sound); failures and answers are spoken. Called and then nothing said: the sleep
   sound when the follow-up window closes (`Engine.called`, `_check_followup`); spoken but no words heard: unclear.
@@ -82,7 +82,7 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
 - **Sleep:** `go_to_sleep` sets `Engine.sleep_after`, so the end of the turn goes idle instead of reopening the
   follow-up window. `wake.strip_wake`: words before the name are the request ("Stop Phoenix" = "Stop") unless they
   are call words (`CALL_WORDS`: hey, hello, wake up, ...).
-- **Cold big model:** when it isn't in memory, it says "One moment." before loading (~8 s) and plays the big sound
+- **Cold big model:** when it isn't in memory, it says "Waking up the big model." before loading (~8 s) and plays the big sound
   (`Brain._cue_big`). The line goes out as a "wait" item, so the state returns to thinking (ember glow) after it.
 - **Chat or command** (`Brain.route`, 2026-10-29): offering the action tools to the big model on plain chat made it
   call them ("hi" ran `get_time`). Now the router's letters decide first: "none" at least `CHAT_SURE` (0.5, big model
@@ -101,16 +101,20 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
   logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
-- **Echo cancel** (`engine/audio.py`): loaded once per engine (the held `pw-cli` is reused on every mic open; a
-  PipeWire restart loads it again). The WebRTC module forces 480-sample graph cycles (`node.force-quantum`, its
-  10 ms block). At PipeWire's power-of-two 256 one CPU spike (start-up loading) desynced it for good: ~70 dropouts a
-  second and 2 to 18 of ~140 speech frames passed, so every sentence was "too short" (measured 2026-10-30).
+- **Echo cancel** (`engine/echo.py`, 2026-10-31; numbers in `bench/README.md`): nothing is loaded into PipeWire and no
+  quantum is forced. The mic is the plain default source. While we make a sound the reader thread runs each frame
+  through WebRTC's AEC3 (pywebrtc-audio) with that exact sound as the reference, in lock-step 10 ms blocks, plus 0.5 s
+  after it ends; otherwise the frame passes untouched, so this can't deafen the mic. The reference is fed just before
+  `pw-play` starts, so it leads the echo (measured lag 118-180 ms) and AEC3 finds the delay. Cues and the Voice page's
+  samples are references too. Library missing or broken: `_aec_ok` is False and Phoenix doesn't listen while speaking.
+  PipeWire's `module-echo-cancel` was dropped: in power saver it lost most near speech even with nothing playing.
 - **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
-  VAD 0.3 pause the reply (echo cancelling drops about half the user's frames during double talk; the settled echo
-  peaks at 0.12; a 1 s phrase over a reply now interrupts ~83 % of the time, was 32-51 % at 0.5 / 8). The reply is
-  held, not dropped: 8 voiced frames after the pause stop it; a shorter recording is transcribed and stops it only if
-  its words are not the sentence being said (`echo_of`), else the sentence is said again. After 2 echo pauses in one
-  turn barge-in sits out the rest of that reply. Each reply logs `while speaking: voice up to X, N of 12 frames`.
+  VAD 0.3 pause the reply. The reply is held, not dropped: every recording made during a hold is transcribed, however
+  long, and stops the reply only if its words aren't our last two sentences (`echo_of`, `_recent_speech`), else the
+  sentence is said again. The old "8 voiced frames means the user" shortcut skipped that check, and our own words
+  became requests. After 2 echo pauses in one turn barge-in sits out the rest of that reply. A recording that starts
+  within `ECHO_TAIL_S` of our last word is dropped if it is our own words (`own_words`). Each reply logs
+  `while speaking: voice up to X, N of 12 frames`.
 - **Confirmations** show a dialog and, with audio, can be answered by voice (`spoken_confirm`); `confirm_done` closes it.
   The pill shows the whole command ("Run this? <cmd> Say yes or no.") while the voice says "this command"
   (`Engine._say(text, shown)`).
@@ -216,15 +220,42 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   `phoenix-tray-*-symbolic.svg` (`scripts/gen_tray_icons.py`) so the shell paints them in the panel's text colour:
   solid while working (a wave cycling at 5 fps while listening, thinking, speaking), faint while waiting, flat dots
   when stopped. The pixmap is only a fallback, drawn once per state.
-- **Dictation** (`engine/dictation.py`, 2026-10-31): "Phoenix, dictate" / "start dictating" (optionally followed by
-  text) turns it on. What is said is collected (a pause ends a recording only after `DICTATE_END_SILENCE`, ~1.5 s,
-  not 0.7 s) until "stop dictating" (also at the end of a sentence) or `DICTATE_IDLE_S` (10 s) of silence; then the
-  whole text is cleaned once (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question
-  mark"), its grammar fixed in one call to the big model (`Brain.polish`, temperature 0, no tools) and typed once
-  through `paste_text`, never acted on. The silence end is queued to the Work thread (the model must not hold up the
-  mic). `dictation.pick` keeps the words as said when the rewrite is empty, much longer or shorter, or turned a
-  question into an answer; without the big model it types them as said. "Type what I say" / "type exactly" skips
-  the model. Cancel drops what was collected. Needs actions allowed (it types into other apps).
+- **Dictation** (`engine/dictation.py`, 2026-10-31): "Phoenix, dictate" (optionally followed by text), "start
+  dictating", "let's dictate", "can you dictate", "I want to dictate" and the like, with fillers before them, turn it on
+  with a chime and no model reply. A sentence that only talks about it ("dictate is not working", "can you dictate this
+  letter") does not. A short one gets a fixed how-to from `engine/quick.py`, never the model, which once answered "I am
+  ready to listen" with dictation off. What is said is collected (a pause ends a recording only after
+  `DICTATE_END_SILENCE`, ~1.5 s, not 0.7 s) until "stop dictating" ("stop the dictation", "end dictation", "done
+  dictating", the mishearing "stop dictated"; also at the end of a sentence). `DICTATE_IDLE_S` (5 min of silence) only
+  ends a forgotten one, with a notice; the mic closing ends it at once. Past ~10 s a recording ends at the next ~0.25 s
+  pause (`DICTATE_CUT_FRAMES`), so the 15 s stop rarely cuts a word. Words said over a timer's ring stay dictation. Typing
+  "stop dictating" ends it too. Then the whole text is cleaned once (fillers out; spoken "comma", "full stop", "new line", "new paragraph", "question
+  mark"), rewritten in one call to the big model (`Brain.polish`, temperature 0, no tools; grammar, fillers, false starts,
+  self-corrections and rambling, with a prompt adapted from OpenWhispr's and the words sent as a transcript) and typed once
+  through `paste_text`, never acted on. While it is on, speech skips wake-word stripping, so "Phoenix" in a sentence
+  stays text; only "stop dictating" (with the name, "please" or "thanks" around it) and the name alone are not typed.
+  The limit's end is queued to the Work thread (the model must not hold up the mic) and survives short noises and a
+  timer ringing. `dictation.pick` keeps the words as said when the rewrite is empty, much longer or shorter, lost a
+  question or changed the line breaks (a "?" on the same words is a fix, and dashes become commas); without the big model
+  it types them as said.
+  "Type what I say" / "type exactly" skips the model. Only Cancel drops what was collected, stops the model and types
+  nothing; the hotkey during the wording fix lets it finish. Speech begun while dictating is never a request, even
+  when dictation ended before it was transcribed (`_dictation_over`). Needs actions allowed (it types into other apps).
+- **Short recordings** (`engine/service.py`, 2026-10-31): while waiting for the name, 2 voiced frames (`MIN_NAME`) are
+  enough to transcribe, since only the name can act on the words. On the plain mic a quick "Phoenix" scored 3, 6 and 7
+  frames: live words recognised it, the state lit up, then the old limit of 8 threw it away (0 such drops in 18 bare
+  names on the old chain, 3 in 5 on the new; why it scores lower isn't traced, recordings aren't saved). In a window, or
+  always on, `MIN_SPEECH` (8) stays, because there any words go to the model.
+- **Names that sound alike** (`wake.py`, 2026-10-31): a name also matches when it is spelled differently but said the
+  same (`_sound`: ph, oe, ee), since a bare "Phoenix" came back from Parakeet as "Fenix." and was ignored. Spelling
+  distance stays as it was, so "Felix" doesn't wake it.
+- **Mic and state after a turn** (`engine/service.py`, 2026-10-31): `_rest` gives the mic and state the listen mode
+  asks for (hotkey and off close the mic; off says muted). `_settle` goes back to what is still going on (the hotkey
+  or hold-to-talk, a window, else `_rest`): after a timer's ring, a noise or filler, the mic closing mid-sentence, or
+  the end of dictation. A follow-up window closing, Cancel, a failed turn and refused dictation use `_rest`; Cancel
+  also closes the no-name window. `listen_now` running out now works with frames flowing (it used to be checked only
+  on an empty queue, which a live mic never has), and releasing hold-to-talk keeps what was recorded wake-free
+  (`PTT_END_S`; it was dropped unless the name was said).
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)
@@ -234,15 +265,14 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   starting and big-model effects, colour blends, New Session, the Phoenix rename, the bare-wake-word and shortcut-text
   fixes, and the 2026-10-29 Home row, Speed and Battery, Delete This Session, About and Tools changes, and batches 2 and 3: sleep and quick rules, sounds, pill
   paging, new tools, Web Access, Tools categories, voices, top-bar icons, Models overview; and batch 4: chat or
-  command, hearing and barge-in fixes, 14 review fixes, Speed per profile with one model choice, Models page redesign). `VERSION` still says 3.1.1; 3.2.0 suggested. Ask before committing.
+  command, hearing and barge-in fixes, 14 review fixes, Speed per profile with one model choice, Models page redesign). Ask before committing.
 - Laya: uploaded to `itsDigvijaysing/laya-typed-decisions-openvino` (commit `c1014fc`, pinned); one full download
   check through the Models page is still to do (it was cut off by a weak connection).
-- `SECURITY.md` still describes v2; `pyproject.toml` is still the v2 `glados` package.
+- `pyproject.toml` is still the v2 `glados` package.
 - User-only: a live voice run on the real desktop (including the name test), and a look at the new pieces live:
   the pill while starting and with the big model's glow, the colour blends, Home's row, Mute, New Session and
   Delete This Session (with Undo), the Speed row on Home and the Models page, the About window's credits, the
-  Knowledge dialog (remember/forget by voice), and everything in `HANDOFF.md`'s Open list. The pill capsule is anchored to the window's edge (`_column` valign
+  Knowledge dialog (remember/forget by voice), and everything in the Open list of `MD/HANDOFF.md` (local only). The pill capsule is anchored to the window's edge (`_column` valign
   END/START), so a growing caption should not move it; check that live too.
 - GLaDOS upstream (`ea018f5`) compared on 2026-10-28: ASR and VAD changed only in ONNX backend choice (see
   `REFERENCES.md`). Upstream's routing tree (area, server, tool) isn't ported; v3 routes over one flat menu.
-- `FUTURE_DIRECTION.md` predates v3 (it still says "keep the vendored GLaDOS").

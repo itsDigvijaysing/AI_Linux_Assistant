@@ -21,7 +21,6 @@ from ai_linux.ui.profile_group import ProfileGroup  # noqa: E402
 log = logging.getLogger(__name__)
 
 SAMPLES_DIR = ASSETS_DIR / "samples"
-AEC_SINK = "ai_aec_sink"  # the engine's echo-cancel output (engine/audio.py)
 TOGGLE_COMMAND = "ai-linux-app --toggle"
 
 LISTEN_MODES = (
@@ -55,7 +54,7 @@ VOICES = (  # every SuperTonic voice; numbers match the voice ids, so "male voic
 )
 CUES = (  # engine/sounds.py kinds, in the order they happen
     ("listen", "Listening", "You said the name; it waits for your request"),
-    ("big", "Big model waking", "The request needs the big model; it says “One moment” while it loads"),
+    ("big", "Big model waking", "The request needs the big model; it says “Waking up the big model” while it loads"),
     ("ok", "Done", "An action finished"),
     ("fail", "Failed", "An action didn't work; the reason is spoken"),
     ("unclear", "Didn't catch that", "You spoke, but no words came through"),
@@ -601,8 +600,8 @@ class Page(Adw.NavigationPage):
             self._toast("No sample for this voice")
             return
         try:
-            # Through the engine's echo-cancel sink (default output if it isn't there), so the mic doesn't hear it.
-            media = Gio.Subprocess.new(["pw-play", "--target", AEC_SINK, "--volume",
+            self.ctx.controller.playing_sample(str(path))  # so the mic doesn't take it for a request
+            media = Gio.Subprocess.new(["pw-play", "--volume",
                                         f"{float(self.settings.get('tts_volume')):.2f}", str(path)],
                                        Gio.SubprocessFlags.STDERR_SILENCE)
             media.wait_check_async(None, self._on_preview_done, vid)
@@ -628,6 +627,8 @@ class Page(Adw.NavigationPage):
     def _stop_preview(self) -> None:
         media, vid = self._media, self._playing
         self._media, self._playing = None, None
+        if media is not None:
+            self.ctx.controller.playing_sample("")
         if media is not None:
             try:
                 media.force_exit()

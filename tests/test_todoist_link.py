@@ -115,6 +115,39 @@ class LinkTests(unittest.TestCase):
         self.assertFalse(self.wait()[0])
         self.assertFalse(self.settings["todoist_connected"])
 
+    def test_a_keyring_that_fails_at_start_is_reported(self):
+        link = self.make(connected=True, token="dummy-token")
+        changed = []
+        link.on_change = lambda: changed.append(link.busy)
+
+        def locked(name):
+            raise RuntimeError("the keyring stayed locked")
+        self.keyring.lookup = locked
+        link.load(self.done)
+        self.assertFalse(self.wait()[0])
+        self.assertIn("the keyring stayed locked", link.problem)
+        self.assertEqual(self.sent, [])
+        self.assertTrue(self.settings["todoist_connected"])  # the token is still there: the next start tries again
+        self.assertEqual(changed, [False])  # the Tools page redraws, with its controls back on
+
+    def test_a_good_load_or_save_clears_the_problem(self):
+        link = self.make(connected=True, token="dummy-token")
+        link.problem = "old"
+        link.load(self.done)
+        self.wait()
+        self.assertEqual(link.problem, "")
+        link.problem, self.result = "old", None
+        link.save("dummy-token", self.done)
+        self.wait()
+        self.assertEqual(link.problem, "")
+
+    def test_disconnect_clears_the_problem(self):
+        link = self.make(connected=True, token="dummy-token")
+        link.problem = "old"
+        link.disconnect(self.done)
+        self.wait()
+        self.assertEqual(link.problem, "")
+
     def test_disconnect_forgets_everywhere(self):
         link = self.make(connected=True, token="dummy-token")
         link.disconnect(self.done)

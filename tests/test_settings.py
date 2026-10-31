@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ai_linux.config import ProfileView, Settings  # noqa: E402
+from ai_linux.config import ProfileView, Settings, stopped_note  # noqa: E402
 
 
 class ProfileTests(unittest.TestCase):
@@ -37,6 +37,21 @@ class ProfileTests(unittest.TestCase):
         s.set_on_ac(True)
         self.assertEqual((s.active_profile(), s.get("speed"), s.get("small_on")), ("charger", "auto", False))
         self.assertEqual(s.get("small_model"), "jiwo-0.8b")  # one choice for both
+
+    def test_a_listen_mode_set_to_off_names_the_power_source(self):
+        s = self.make(on_ac=False)
+        self.assertEqual(stopped_note(s), "")
+        s.set("listen_mode", "off")
+        self.assertEqual(stopped_note(s), "Listening is off on battery")
+        s.set_on_ac(True)
+        self.assertEqual(stopped_note(s), "")  # the charger's own setting
+        s.set("listen_mode", "off")
+        self.assertEqual(stopped_note(s), "Listening is off on the charger")
+
+    def test_muting_is_not_a_power_source_setting(self):
+        s = self.make(on_ac=False)
+        s.set("muted", True)
+        self.assertEqual(stopped_note(s), "")
 
     def test_set_writes_the_active_profile_only(self):
         s = self.make(on_ac=False)

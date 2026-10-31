@@ -28,7 +28,7 @@ class CatalogTests(unittest.TestCase):
         for t in tools_catalog.TOOLS:
             self.assertTrue(t.title and t.description and t.family in tools_catalog.FAMILIES)
             self.assertIn(t.category, tools_catalog.CATEGORIES)
-            self.assertNotIn("—", t.title + t.description)
+            self.assertNotIn("\u2014", t.title + t.description)
 
     def test_every_category_has_tools(self):
         for key in tools_catalog.CATEGORIES:

@@ -262,12 +262,12 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube"})
         self.assertIn("youtube.com/results?search_query=Believer", b.env.executor.calls[0][-1])
 
-    def test_cold_big_model_says_one_moment(self):
+    def test_cold_big_model_says_it_is_waking(self):
         b, said, cues = self.make({"none": 0.99})
         with mock.patch.object(brain_mod.llm, "loaded", return_value=False), \
                 mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Sure."), ("done", {})])):
             b.handle("tell me a joke", "text", threading.Event())
-        self.assertEqual(said, ["One moment.", "Sure."])
+        self.assertEqual(said, ["Waking up the big model.", "Sure."])
         said.clear()
         with mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
                 mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Sure."), ("done", {})])):
@@ -424,7 +424,7 @@ class BrainTests(unittest.TestCase):
         with mock.patch.object(brain_mod.llm, "loaded", return_value=False), \
                 mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi."), ("done", {})])):
             b.handle("tell me a joke", "text", threading.Event())
-        self.assertEqual(status, ["Waking the big model", "The big model is answering"])
+        self.assertEqual(status, ["Waking up the big model", "The big model is answering"])
         status.clear()
         with mock.patch.object(brain_mod.llm, "loaded", return_value=True), \
                 mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi."), ("done", {})])):
@@ -751,20 +751,327 @@ class TimerEventTests(unittest.TestCase):
         e.cancel_timer("nope")  # unknown or already rung: nothing happens
 
 class DictationEngineTests(unittest.TestCase):
-    def make(self, armed=True):
+    def make(self, armed=True, **settings):
         from ai_linux.engine.service import Engine
         events = []
-        e = Engine(events.append, {"listen_mode": "wake", "wake_word": "phoenix"})
+        e = Engine(events.append, {"listen_mode": "wake", "wake_word": "phoenix", **settings})
         e.asr = mock.Mock()
         e.brain = mock.Mock()
         e.brain.env.executor.gate = ActionGate(armed=armed)
-        e.brain.polish.side_effect = lambda text: text  # the big model's rewrite, faked
+        e.brain.polish.side_effect = lambda text, cancel=None: text  # the big model's rewrite, faked
         e.cue = mock.Mock()
         return e, events
 
     def say(self, e, heard, at=None):
         e.asr.transcribe.return_value = heard
         e._one("audio", object(), at or time.monotonic())
+
+    def dictating_by_hotkey(self, mode):
+        e, events = self.make(listen_mode=mode)
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.listen_now()
+        self.say(e, "dictate")
+        self.assertTrue(e.dictating)
+        self.assertTrue(e.capturing)
+        return e
+
+    def test_the_name_inside_dictated_text_is_kept(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "The city of Phoenix is hot.")
+            self.say(e, "We flew to Phoenix.")
+            self.say(e, "Stop dictating.")
+        self.assertEqual([c.args[1] for c in paste.call_args_list],
+                         ["The city of Phoenix is hot. We flew to Phoenix. "])
+
+    def test_only_the_name_while_dictating_is_not_typed(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Buy milk.")
+            self.say(e, "Phoenix.")
+            self.say(e, "Stop dictating.")
+        self.assertEqual(paste.call_args.args[1], "Buy milk. ")
+
+    def test_start_words_during_dictation_are_text(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Dictate a letter to John.")
+            self.say(e, "Type exactly as the form says.")
+            self.say(e, "Stop dictating.")
+        self.assertEqual(e.brain.polish.call_args.args[0], "Dictate a letter to John. Type exactly as the form says.")
+        self.assertEqual(paste.call_args.args[1], "Dictate a letter to John. Type exactly as the form says. ")
+
+    def test_a_line_break_at_the_end_is_typed_without_a_stray_space(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "Hello there new paragraph")
+            self.say(e, "Stop dictating.")
+        self.assertEqual(paste.call_args.args[1], "Hello there\n\n")
+
+    def test_cancel_while_the_model_works_types_nothing(self):
+        e, events = self.make()
+        seen = {}
+
+        def polish(text, cancel=None):
+            seen["cancel"] = cancel
+            e.cancel_turn()  # pressed during "Fixing the wording"
+            return text
+        e.brain.polish.side_effect = polish
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "My secret words.")
+            self.say(e, "Stop dictating.")
+        paste.assert_not_called()
+        self.assertTrue(seen["cancel"].is_set())  # the model stops generating too
+        self.assertEqual(e.state, "idle")
+
+    def _hotkey_during_the_wording_fix(self, press):
+        e, events = self.make(listen_mode="hotkey", start_ping=False)
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        pressed = []
+
+        def polish(text, cancel=None):
+            press(e)
+            pressed.append(time.monotonic())
+            return text
+        e.brain.polish.side_effect = polish
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            e.listen_now()
+            self.say(e, "dictate")
+            self.say(e, "Buy milk.")
+            self.say(e, "Stop dictating.")
+        return e, paste, pressed[0]
+
+    def test_the_hotkey_during_the_wording_fix_keeps_the_words(self):
+        for press in (lambda e: e.listen_now(), lambda e: e.push_to_talk(True)):
+            e, paste, _at = self._hotkey_during_the_wording_fix(press)
+            self.assertEqual([c.args[1] for c in paste.call_args_list], ["Buy milk. "])
+            self.assertEqual(e.state, "listening")
+            self.assertTrue(e.capturing)
+
+    def test_speaking_after_the_hotkey_during_the_wording_fix_is_a_request(self):
+        e, _paste, at = self._hotkey_during_the_wording_fix(lambda e: e.listen_now())
+        self.say(e, "what time is it", at=at)
+        e.brain.handle.assert_called_once()
+
+    def test_speech_begun_while_dictating_is_never_a_request(self):
+        e, events = self.make(listen_mode="always")
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        self.say(e, "Dictate.")
+        began = time.monotonic() - 1  # the sentence was under way when Cancel came
+        e.cancel_turn()
+        self.say(e, "delete the downloads folder", at=began)
+        e.brain.handle.assert_not_called()
+        self.assertTrue([ev for ev in events if ev.get("ev") == "notice"])
+
+    def test_speech_after_cancelling_dictation_is_heard_as_usual(self):
+        e, events = self.make(listen_mode="always")
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        self.say(e, "Dictate.")
+        e.cancel_turn()
+        self.say(e, "what time is it")
+        e.brain.handle.assert_called_once()
+
+    def test_cancel_after_a_reply_needs_the_name_again(self):
+        e, events = self.make()
+        e.audio = mock.Mock()
+        e.followup_until = time.monotonic() + 10
+        e.set_state("followup")
+        e.cancel_turn()
+        self.assertEqual(e.state, "idle")
+        self.assertFalse(e._wake_free())
+
+    def test_polish_hands_the_words_over_as_a_transcript_not_a_request(self):
+        b = brain_mod.Brain({"escalate_threshold": 0.85}.get, T.Env(None), speak=lambda s: None)
+        with mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "<transcript>Hi.</transcript>")])) as chat:
+            self.assertEqual(b.polish("hi"), "Hi.")  # a small model can echo the tags
+        msgs = chat.call_args.args[2]
+        self.assertEqual(msgs[1]["content"], "<transcript>\nhi\n</transcript>")
+        self.assertIn("never talking to you", msgs[0]["content"])
+
+    def test_polish_hands_cancel_to_the_model_call(self):
+        b = brain_mod.Brain({"escalate_threshold": 0.85}.get, T.Env(None), speak=lambda s: None)
+        ev = threading.Event()
+        with mock.patch.object(brain_mod.llm, "chat", return_value=iter([("text", "Hi.")])) as chat:
+            self.assertEqual(b.polish("hi", ev), "Hi.")
+        self.assertIs(chat.call_args.kwargs["cancel"], ev)
+
+    def test_cancel_closes_the_mic_the_hotkey_opened(self):
+        for mode, state in (("hotkey", "idle"), ("off", "muted")):
+            e = self.dictating_by_hotkey(mode)
+            e.cancel_turn()
+            self.assertFalse(e.capturing, mode)
+            self.assertEqual(e.state, state)
+
+    def test_only_filler_after_the_hotkey_closes_the_mic(self):
+        for mode, state in (("hotkey", "idle"), ("off", "muted")):
+            e, events = self.make(listen_mode=mode)
+            e.audio = mock.Mock()
+            e.state = "idle"
+            e.listen_now()
+            self.say(e, "Um.")
+            self.assertFalse(e.capturing, mode)
+            self.assertEqual(e.state, state)
+
+    def test_the_hotkey_running_out_during_a_typed_request_keeps_the_state(self):
+        e, events = self.make(listen_mode="off")
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.listen_now()
+        e.state = "thinking"  # a request typed on Home, answered while the hotkey's wait ran out
+        e._end_listen_now()
+        self.assertEqual(e.state, "thinking")
+
+    def test_the_end_of_a_reply_closes_the_mic_in_hotkey_mode(self):
+        e, events = self.make(listen_mode="hotkey")
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.listen_now()
+        e.state = "thinking"  # a typed request: nothing closed the mic the hotkey opened
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e.say_q.put(("end", "t", threading.Event()))
+        deadline = time.monotonic() + 3
+        while e.capturing:
+            self.assertLess(time.monotonic(), deadline, "the mic stayed open")
+            time.sleep(0.005)
+        self.assertEqual(e.state, "idle")
+
+    def test_refused_dictation_closes_the_mic(self):
+        e, events = self.make(armed=False, listen_mode="hotkey")
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.listen_now()
+        self.say(e, "dictate")
+        self.assertFalse(e.dictating)
+        self.assertFalse(e.capturing)
+
+    def test_a_turn_that_fails_closes_the_mic(self):
+        e, events = self.make(listen_mode="off")
+        e.audio = mock.Mock()
+        e.state = "idle"
+        e.listen_now()
+        e.asr.transcribe.return_value = "what time is it"
+        e.brain.handle.side_effect = RuntimeError("boom")
+        threading.Thread(target=e._work_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.work.put(("text", "", 0.0))))
+        e.work.put(("audio", object(), time.monotonic()))
+        deadline = time.monotonic() + 3
+        while e.capturing:
+            self.assertLess(time.monotonic(), deadline, "the mic stayed open")
+            time.sleep(0.005)
+        self.assertEqual(e.state, "muted")
+
+    def test_cancel_in_wake_mode_leaves_the_mic_listening(self):
+        e, events = self.make()
+        e.audio = mock.Mock()
+        e._capture(True)
+        self.say(e, "Phoenix, dictate.")
+        e.cancel_turn()
+        self.assertTrue(e.capturing)
+        self.assertEqual(e.state, "idle")
+
+    def test_after_cancelling_dictation_the_name_is_needed_again(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            self.say(e, "Phoenix, dictate.")
+            e.cancel_turn()
+            self.say(e, "Open the files.")
+        e.brain.handle.assert_not_called()
+
+    def test_interrupting_a_reply_keeps_the_mic_open(self):
+        e, events = self.make(listen_mode="hotkey")
+        e.audio = mock.Mock()
+        e.state = "speaking"
+        e._capture(True)
+        e.speaking = True
+        e.listen_now()
+        e.audio.stop_listening.assert_not_called()
+        self.assertTrue(e.capturing)
+
+    def test_always_on_room_speech_does_not_start_dictation(self):
+        e, events = self.make(listen_mode="always", addressed_check=True)
+        e.brain.addressed.return_value = False
+        self.say(e, "Dictate the report by Friday.")
+        self.assertFalse(e.dictating)
+
+    def test_always_on_speech_for_it_starts_dictation(self):
+        e, events = self.make(listen_mode="always", addressed_check=True)
+        e.brain.addressed.return_value = True
+        self.say(e, "Dictate the report by Friday.")
+        self.assertEqual(e.dictating, "polish")
+
+    def test_a_long_pause_to_think_does_not_end_it(self):
+        from ai_linux.engine.service import DICTATE_IDLE_S
+        self.assertGreaterEqual(DICTATE_IDLE_S, 120)  # 2026-10-31: only "stop dictating" should normally end it
+
+    def test_the_safety_limit_says_it_ended(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "See you soon.")
+            e.followup_until = time.monotonic() - 1
+            e._check_followup()
+            e._one(*e.work.get())
+        paste.assert_called_once()
+        self.assertTrue(any(ev.get("ev") == "notice" and "silence" in ev["text"] for ev in events), events)
+
+    def test_stopping_by_voice_gives_no_notice(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "See you soon. Stop dictating.")
+        self.assertFalse(any(ev.get("ev") == "notice" for ev in events), events)
+
+    def test_speech_after_the_silence_ran_out_keeps_it_going(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
+            self.say(e, "Phoenix, dictate.")
+            self.say(e, "One more thing.")  # transcribed after the end was queued: the window is open again
+            e._one("dictated", "sleep", 0.0)
+        paste.assert_not_called()
+        self.assertTrue(e.dictating)
+
+    def test_a_timer_during_dictation_does_not_strand_it(self):
+        e, events = self.make()
+        e._play = mock.Mock(side_effect=lambda *a, **k: e.set_state("speaking"))
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        self.say(e, "Phoenix, dictate.")
+        self.say(e, "Buy milk.")
+        e.say_q.put(("ring", "Time to stretch."))
+        deadline = time.monotonic() + 2
+        while not e._play.called or e.state == "speaking":
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.005)
+        e.followup_until = time.monotonic() - 1
+        e._check_followup()
+        self.assertEqual(e.work.qsize(), 1)
+
+    def test_live_words_while_dictating_keep_the_name(self):
+        e, events = self.make()
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            self.say(e, "Phoenix, dictate.")
+        e._live_open, e._utt = True, 1
+        e._on_live(1, "The city of Phoenix is hot")
+        self.assertEqual([ev["text"] for ev in events if ev.get("ev") == "partial"][-1], "The city of Phoenix is hot")
+
+    def test_live_words_keep_coming_when_a_sentence_outlasts_the_window(self):
+        for settings in ({"listen_mode": "wake"}, {"listen_mode": "always", "addressed_check": True}):
+            e, events = self.make(**settings)
+            self.say(e, "Phoenix, dictate.")
+            e.followup_until = time.monotonic() - 1  # the sentence began in time and goes on
+            e._live_open, e._utt = True, 1
+            e._on_live(1, "The city of Phoenix is hot")
+            self.assertEqual([ev["text"] for ev in events if ev.get("ev") == "partial"][-1],
+                             "The city of Phoenix is hot", settings)
 
     def test_dictation_collects_until_stop_and_types_once(self):
         e, events = self.make()
@@ -782,12 +1089,13 @@ class DictationEngineTests(unittest.TestCase):
 
     def test_dictate_sends_the_whole_text_to_the_big_model_once(self):
         e, events = self.make()
-        e.brain.polish.side_effect = lambda text: "I went to the shop and bought milk. It was cold."
+        e.brain.polish.side_effect = lambda text, cancel=None: "I went to the shop and bought milk. It was cold."
         with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")) as paste:
             self.say(e, "Phoenix, dictate.")
             self.say(e, "I has went to the shop and buyed milk.")
             self.say(e, "It were cold. Stop dictating.")
-        e.brain.polish.assert_called_once_with("I has went to the shop and buyed milk. It were cold.")
+        e.brain.polish.assert_called_once()
+        self.assertEqual(e.brain.polish.call_args.args[0], "I has went to the shop and buyed milk. It were cold.")
         self.assertEqual(paste.call_args.args[1], "I went to the shop and bought milk. It was cold. ")
 
     def test_type_what_i_say_types_it_as_said(self):
@@ -828,7 +1136,8 @@ class DictationEngineTests(unittest.TestCase):
             e.brain.polish.assert_not_called()
             self.assertEqual(e.work.qsize(), 1)
             e._one(*e.work.get())  # the Work thread
-        e.brain.polish.assert_called_once_with("See you soon.")
+        e.brain.polish.assert_called_once()
+        self.assertEqual(e.brain.polish.call_args.args[0], "See you soon.")
         self.assertEqual(paste.call_args.args[1], "See you soon. ")
         self.assertFalse(e.dictating)
         self.assertEqual(e.state, "idle")
@@ -1003,17 +1312,17 @@ class NameTestEngineTests(unittest.TestCase):
         e._get_ready()
         e._capture.assert_called_with(True)
 
-    def test_one_moment_goes_back_to_thinking(self):
+    def test_the_waking_phrase_goes_back_to_thinking(self):
         e, events = self.make()
         e._play = mock.Mock()
-        e._busy, e._think_detail = True, "Waking the big model"
-        e._say_wait("One moment.")
+        e._busy, e._think_detail = True, "Waking up the big model"
+        e._say_wait("Waking up the big model.")
         threading.Thread(target=e._speak_loop, daemon=True).start()
         deadline = time.monotonic() + 2
         while e.state != "thinking" and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual(e.state, "thinking")
-        self.assertIn({"ev": "state", "state": "thinking", "detail": "Waking the big model"}, events)
+        self.assertIn({"ev": "state", "state": "thinking", "detail": "Waking up the big model"}, events)
         e._stop.set()
         e.say_q.put(("end", "x"))
 
@@ -1070,6 +1379,25 @@ class BargeInTests(unittest.TestCase):
         self.assertFalse(e._hold.is_set())
         self.assertEqual(e.work.get_nowait(), ("heard", "Stop.", 0.0))
 
+    def test_words_of_the_sentence_before_are_our_voice_too(self):
+        e = self.make("I hear you")
+        e._said_before = "I hear you are struggling."
+        e._barge_verdict(np.zeros(16000, dtype=np.float32))
+        self.assertFalse(e.cancel.is_set())
+        self.assertTrue(e.work.empty())
+
+    def test_a_voice_sample_the_app_plays_is_our_own_sound(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.audio = mock.Mock()
+        stereo = mock.Mock(read=mock.Mock(return_value=(np.zeros((800, 2), np.float32), 16000)))
+        with mock.patch.dict(sys.modules, {"soundfile": stereo}):
+            e.playing_sample("sample.ogg")
+        sound, rate = e.audio.hear_own.call_args.args
+        self.assertEqual((sound.shape, rate), ((800,), 16000))
+        e.playing_sample("")
+        e.audio.stop_own.assert_called_once()
+
     def test_paused_sentence_is_said_again_after_an_echo(self):
         from ai_linux.engine.service import Engine
         e = Engine(lambda ev: None, {})
@@ -1091,60 +1419,157 @@ class BargeInTests(unittest.TestCase):
 
 
 @unittest.skipIf(importlib.util.find_spec("onnxruntime") is None, "the VAD needs the engine's onnxruntime")
-class EchoCancelSetupTests(unittest.TestCase):
-    """PipeWire is faked: no pw-cli or pw-record runs."""
+class AudioIoTests(unittest.TestCase):
+    """PipeWire is faked: no pw-record or pw-play runs."""
 
-    def make(self, exists, alive=True):
+    def make(self, canceller=None):
         import contextlib
         from ai_linux.engine import audio
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
-        stack.enter_context(mock.patch.object(audio, "VAD"))
-        stack.enter_context(mock.patch.object(audio.atexit, "register"))
-        proc = mock.Mock(poll=mock.Mock(return_value=None if alive else 0))
-        self.popen = stack.enter_context(mock.patch.object(audio.subprocess, "Popen", return_value=proc))
-        self.exists = stack.enter_context(mock.patch.object(audio.PipeWireAudioIO, "_node_exists",
-                                                            side_effect=exists))
-        self.sleep = stack.enter_context(mock.patch.object(audio.time, "sleep"))
-        io = audio.PipeWireAudioIO()
-        self.popen.reset_mock()
-        self.exists.reset_mock()
-        self.sleep.reset_mock()
-        return io, proc
+        self.vad = stack.enter_context(mock.patch.object(audio, "VAD")).return_value
+        self.vad.return_value = 0.5
+        self.canceller = canceller if canceller is not None else mock.Mock(ok=True, clean=lambda f: f * 0)
+        stack.enter_context(mock.patch.object(audio.echo, "load", return_value=self.canceller))
+        self.popen = stack.enter_context(mock.patch.object(audio.subprocess, "Popen"))
+        self.popen.return_value.poll.return_value = 0
+        self.popen.return_value.returncode = 0
+        self.popen.return_value.stdout.read.return_value = b""
+        return audio.PipeWireAudioIO()
 
-    def test_failed_echo_cancel_is_not_loaded_again_on_every_mic_open(self):
-        io, _ = self.make(exists=lambda name: False)
-        io._ensure_aec()  # what each start_listening does
-        self.popen.assert_not_called()  # was another pw-cli left running per mic open
-        self.assertEqual(self.sleep.call_count, 0)  # and 4 s of waiting in the caller's thread
+    def test_setting_up_changes_nothing_in_pipewire(self):
+        self.make()
+        self.popen.assert_not_called()  # was a held pw-cli with the echo-cancel module and a forced 480 quantum
 
-    def test_echo_cancel_that_came_up_late_is_used(self):
-        io, _ = self.make(exists=lambda name: False)
-        self.exists.side_effect = lambda name: True  # appeared after the 4 s wait
-        io._ensure_aec()
-        self.assertTrue(io._aec_ok)
-        self.popen.assert_not_called()
+    def test_the_mic_is_the_plain_default_source(self):
+        io = self.make()
+        io.start_listening()
+        self.addCleanup(io.stop_listening)
+        cmd = self.popen.call_args.args[0]
+        self.assertEqual(cmd[0], "pw-record")
+        self.assertNotIn("--target", cmd)
 
-    def test_working_echo_cancel_is_not_listed_again(self):
-        answers = iter([False, True])
-        io, _ = self.make(exists=lambda name: next(answers, True))
-        self.assertTrue(io._aec_ok)
-        io._ensure_aec()
-        self.popen.assert_not_called()
-        self.exists.assert_not_called()  # one pw-cli ls per mic open before
+    def test_the_engine_can_stop_with_the_real_audio_class(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.audio = self.make()
+        e.stop()  # 2026-10-31: raised AttributeError on a removed method, so quitting skipped os._exit
 
-    def test_echo_cancel_loads_again_after_pipewire_restarted(self):
-        answers = iter([False, True])
-        io, proc = self.make(exists=lambda name: next(answers, True))
-        proc.poll.return_value = 0  # our pw-cli ended with the old PipeWire, and the module with it
-        self.exists.side_effect = iter([False, True])
-        io._ensure_aec()
-        self.popen.assert_called_once()
-        self.assertTrue(io._aec_ok)
+    def test_a_sound_under_way_when_the_mic_opens_is_the_reference(self):
+        io = self.make()
+        self.addCleanup(io.stop_listening)
+        io.hear_own(np.zeros(16000, np.float32), 16000)
+        self.canceller.feed.assert_not_called()
+        io.start_listening()
+        fed = self.canceller.feed.call_args.args[0]
+        self.assertTrue(8000 < len(fed) <= 16000, len(fed))  # what is left of it, not all of it
+
+    def test_a_sound_that_ended_before_the_mic_opened_is_not(self):
+        io = self.make()
+        self.addCleanup(io.stop_listening)
+        io.hear_own(np.zeros(1600, np.float32), 16000)
+        io.stop_own()
+        io.start_listening()
+        self.canceller.feed.assert_not_called()
+
+    def test_opening_the_mic_forgets_any_sound_left_over(self):
+        io = self.make()
+        self.addCleanup(io.stop_listening)
+        io.stop_own()  # a sound ended while the mic was closed, which sets the room's tail
+        self.canceller.reset.reset_mock()
+        io.start_listening()
+        self.canceller.reset.assert_called()
+
+    def test_voice_detection_sees_the_cleaned_frame(self):
+        import io as stdio
+        io = self.make()
+        io._rec_proc = mock.Mock(stdout=stdio.BytesIO(np.full(512, 1000, np.int16).tobytes()))
+        io._read_loop()
+        frame, prob = io.get_sample_queue().get_nowait()
+        self.assertEqual(float(np.abs(frame).max()), 0.0)
+        self.assertEqual(float(np.abs(self.vad.call_args.args[0]).max()), 0.0)
+
+    def test_the_reply_is_the_reference_from_before_it_plays_until_it_ends(self):
+        order = []
+        c = mock.Mock(ok=True)
+        c.feed.side_effect = lambda *a: order.append("feed")
+        c.stop.side_effect = lambda: order.append("stop")
+        io = self.make(c)
+        io._rec_proc = mock.Mock()  # the mic is open
+        self.popen.side_effect = lambda *a, **k: (order.append("play"), self.popen.return_value)[1]
+        audio_data = np.zeros(1600, np.float32)
+        io.start_speaking(audio_data, 16000)
+        io.measure_percentage_spoken(1600, 16000)
+        self.assertEqual(order, ["feed", "play", "stop"])
+        self.assertNotIn("--target", self.popen.call_args.args[0])
+
+    def test_without_the_canceller_there_is_no_barge_in(self):
+        from ai_linux.engine import audio
+        with mock.patch.object(audio, "VAD"), mock.patch.object(audio.echo, "load", return_value=None):
+            self.assertFalse(audio.PipeWireAudioIO()._aec_ok)
+
+    def test_a_canceller_that_broke_ends_barge_in(self):
+        c = mock.Mock(ok=False)
+        self.assertFalse(self.make(c)._aec_ok)
+
+    def test_own_sound_is_the_reference_only_while_the_mic_is_open(self):
+        c = mock.Mock(ok=True)
+        io = self.make(c)
+        io.hear_own(np.zeros(100, np.float32), 24000)
+        c.feed.assert_not_called()  # with no frames to pace it, it would still be there when the mic opens
+        time.sleep(0.01)  # over by then
+        io.start_listening()
+        self.addCleanup(io.stop_listening)
+        io.hear_own(np.zeros(100, np.float32), 24000)
+        c.feed.assert_called_once()
+
+    def test_closing_the_mic_forgets_the_reference(self):
+        c = mock.Mock(ok=True)
+        io = self.make(c)
+        io.start_listening()
+        io.stop_listening()
+        c.reset.assert_called()
 
 
 class McpCleanupTests(unittest.TestCase):
     SERVER = Path(__file__).with_name("fake_mcp_server.py")
+
+    @staticmethod
+    def slow_pair():
+        both = threading.Barrier(2, timeout=1)
+        late = []
+
+        class Slow:
+            def close(self):
+                try:
+                    both.wait()
+                except threading.BrokenBarrierError:
+                    late.append(self)
+        return [Slow(), Slow()], late
+
+    def test_quit_closes_every_server_at_once(self):
+        from ai_linux.engine import mcp_client
+        servers, late = self.slow_pair()
+        with mock.patch.object(mcp_client, "_running", set(servers)):
+            mcp_client.close_all()
+        self.assertEqual(late, [])
+
+    def test_closing_a_tool_set_closes_its_servers_at_once(self):
+        from ai_linux.engine import mcp_client
+        servers, late = self.slow_pair()
+        tools = mcp_client.McpTools([])
+        tools.servers = servers
+        tools.close()
+        self.assertEqual(late, [])
+
+    def test_quit_closes_servers_while_the_model_unloads(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.brain = mock.Mock(base="http://127.0.0.1:11434", big="qwen3.5:4b")
+        both = threading.Barrier(2, timeout=1)
+        e.mcp = mock.Mock(close=mock.Mock(side_effect=both.wait))
+        with mock.patch("ai_linux.engine.llm.unload", side_effect=lambda *a, **k: both.wait()):
+            e.stop()
 
     def test_server_whose_tool_list_fails_is_stopped(self):
         from ai_linux.engine import mcp_client
@@ -1225,6 +1650,53 @@ class McpCleanupTests(unittest.TestCase):
             e.stop()  # the app quits; servers live in their own session, so nothing else ends them
             t.join(2)
         self.assertTrue(made and made[0].closed)
+
+    def test_quit_ends_a_server_that_has_not_answered_yet(self):
+        import subprocess
+        from ai_linux.engine import mcp_client
+        from ai_linux.engine.service import Engine
+        procs, real = [], subprocess.Popen
+
+        def spy(*a, **k):
+            procs.append(real(*a, **k))
+            return procs[-1]
+        spec = {"name": "slow", "command": sys.executable, "args": ["-c", "import time; time.sleep(30)"]}
+        e = Engine(lambda ev: None, {"mcp_servers": [spec]})
+        e.brain = mock.Mock()
+        with mock.patch.object(mcp_client.subprocess, "Popen", spy), mock.patch("ai_linux.engine.llm.unload"):
+            threading.Thread(target=e._load_mcp, daemon=True).start()
+            deadline = time.monotonic() + 3
+            while not procs:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            self.addCleanup(procs[0].kill)
+            e.stop()  # __main__ calls os._exit right after this: the loading thread gets no further
+            self.assertIsNotNone(procs[0].poll(), "still running when stop() returned")
+
+    def test_a_server_that_answers_after_close_is_stopped(self):
+        from ai_linux.engine import mcp_client
+        release, made = threading.Event(), []
+
+        class Late:
+            def __init__(self, spec):
+                self.name, self.closed = spec["name"], False
+                made.append(self)
+                release.wait(5)
+
+            def list_tools(self):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch.object(mcp_client, "McpServer", Late), mock.patch.object(mcp_client, "START_S", -14.9):
+            tools = mcp_client.McpTools([{"name": "late", "command": "x"}])  # gave up waiting after 0.1 s
+        tools.close()  # settings changed: the servers are reloaded
+        release.set()
+        deadline = time.monotonic() + 3
+        while not made[0].closed:
+            self.assertLess(time.monotonic(), deadline, "left running")
+            time.sleep(0.01)
 
 
 class TurnOverlapTests(unittest.TestCase):
@@ -1308,6 +1780,324 @@ class EngineReviewTests(unittest.TestCase):
         e.update_settings({"listen_mode": "always"})
         self.assertEqual(e.state, "loading")  # _get_ready opens the mic once the models are warm
         e._capture.assert_not_called()
+
+
+class ListenLoopStateTests(unittest.TestCase):
+    """The real listen loop, fed as the mic feeds it: a steady stream of frames, so the queue is never empty."""
+
+    def make(self, mode="wake"):
+        import queue
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": mode, "wake_word": "phoenix", "start_ping": False})
+        e.asr, e.brain, e.cue = mock.Mock(), mock.Mock(), mock.Mock()
+        e.brain.env.executor.gate = ActionGate(armed=True)
+        frames = queue.Queue()
+        e.audio = mock.Mock(get_sample_queue=mock.Mock(return_value=frames), _aec_ok=False)
+        e.state = "idle"
+        e._capture(True)
+        self.voiced = 0
+        done = threading.Event()
+        frame = np.full(512, 0.01, np.float32)
+
+        def feed():
+            while not done.is_set():
+                prob = 0.9 if self.voiced > 0 else 0.0
+                self.voiced = max(0, self.voiced - 1)
+                frames.put((frame, prob))
+                time.sleep(0.002)
+        threading.Thread(target=feed, daemon=True).start()
+        threading.Thread(target=e._listen_loop, daemon=True).start()
+        self.addCleanup(lambda: (done.set(), e._stop.set()))
+        return e
+
+    def say(self, e, heard):
+        e.asr.transcribe.return_value = heard
+        e._one("audio", object(), time.monotonic())
+
+    def until(self, check, what):
+        deadline = time.monotonic() + 3
+        while not check():
+            self.assertLess(time.monotonic(), deadline, what)
+            time.sleep(0.005)
+
+    def barge(self, e, heard):
+        """Our sentence is playing and voice comes in, long enough that it isn't a short noise."""
+        e.audio._aec_ok = True
+        e.asr.transcribe.return_value = heard
+        e._saying = "I hear you are struggling to breathe."
+        e.speaking = True
+        e.set_state("speaking")
+        self.voiced = 30
+        self.until(lambda: e._hold.is_set() or e.cancel.is_set(), "no barge-in")
+
+    def test_a_long_stretch_of_our_own_voice_is_not_a_request(self):
+        e = self.make()
+        self.barge(e, "I hear you")  # 2026-10-31: this became a request and the model answered itself
+        self.until(lambda: not e._hold.is_set(), "no verdict")
+        self.assertTrue(e._hold_resume)
+        self.assertFalse(e.cancel.is_set())
+        self.assertTrue(e.work.empty())
+
+    def test_a_long_interruption_with_new_words_stops_the_reply(self):
+        e = self.make()
+        self.barge(e, "What is the weather in Paris")
+        self.until(lambda: e.work.qsize() == 1, "no request")
+        self.assertEqual(e.work.get_nowait(), ("heard", "What is the weather in Paris", 0.0))
+        self.assertTrue(e.cancel.is_set())
+
+    def test_the_pill_shows_listening_during_a_long_interruption(self):
+        e = self.make()
+        self.barge(e, "What is the weather in Paris")
+        self.until(lambda: e.state == "listening", "stayed on speaking")
+
+    def test_our_last_words_heard_just_after_the_reply_are_dropped(self):
+        from ai_linux.engine.service import FRAME_S, PREROLL
+        e = self.make("always")
+        e._saying, e._spoke_until = "I can browse the web for you.", time.monotonic()
+        e.asr.transcribe.return_value = "browse the web"
+        e._one("audio", object(), time.monotonic() - PREROLL * FRAME_S)
+        e.brain.handle.assert_not_called()
+
+    def test_a_request_with_new_words_just_after_the_reply_is_taken(self):
+        from ai_linux.engine.service import FRAME_S, PREROLL
+        e = self.make("always")
+        e.brain.addressed.return_value = True
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e._saying, e._spoke_until = "I can browse the web for you.", time.monotonic()
+        e.asr.transcribe.return_value = "open the calculator please"
+        e._one("audio", object(), time.monotonic() - PREROLL * FRAME_S)
+        e.brain.handle.assert_called_once()
+
+    def test_the_same_words_said_later_are_a_request(self):
+        from ai_linux.engine.service import ECHO_TAIL_S
+        e = self.make("always")
+        e.brain.addressed.return_value = True
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e._saying, e._spoke_until = "I can browse the web for you.", time.monotonic() - 2 * ECHO_TAIL_S - 2
+        e.asr.transcribe.return_value = "browse the web"
+        e._one("audio", object(), time.monotonic())
+        e.brain.handle.assert_called_once()
+
+    def test_a_quick_name_is_not_too_short(self):
+        e = self.make()
+        self.voiced = 3  # 2026-10-31: "Phoenix" scored 3, 6 and 7, and was thrown away after lighting up
+        self.until(lambda: e.work.qsize() == 1, "dropped")
+
+    def test_the_shortest_name_heard_is_not_too_short(self):
+        e = self.make()
+        self.voiced = 2
+        self.until(lambda: e.work.qsize() == 1, "dropped")
+
+    def test_a_single_click_while_waiting_for_the_name_is_not_transcribed(self):
+        e = self.make()
+        self.voiced = 1
+        time.sleep(0.2)
+        self.assertTrue(e.work.empty())
+
+    def test_a_reply_with_listening_off_goes_back_to_muted(self):
+        e = self.make("off")
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        e.set_state("speaking")
+        e.say_q.put(("end", "t", threading.Event()))
+        self.until(lambda: e.state == "muted", f"stayed on {e.state}")  # the closed mic can't end a window
+
+    def test_a_cough_in_a_window_is_still_too_short(self):
+        e = self.make()
+        e.followup_until = time.monotonic() + 5
+        e.set_state("followup")
+        self.voiced = 5  # any words here would go to the model, with no name to filter them
+        self.until(lambda: e.state == "listening", "the cough opened a recording")
+        self.until(lambda: e.state != "listening", "stayed on listening")
+        self.assertTrue(e.work.empty())
+
+    def test_a_cough_while_always_on_is_still_too_short(self):
+        e = self.make("always")
+        self.voiced = 5
+        self.until(lambda: e.state == "listening", "the cough opened a recording")
+        self.until(lambda: e.state != "listening", "stayed on listening")
+        self.assertTrue(e.work.empty())
+
+    def test_talking_over_a_timer_while_dictating_stays_dictation(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        e.audio._aec_ok, window = True, e.followup_until
+        e.speaking = True  # a timer ringing
+        self.voiced = 30
+        self.until(lambda: e.work.qsize() == 1, "not recorded")
+        self.assertFalse(e._hold.is_set())
+        self.assertFalse(e.cancel.is_set())
+        self.assertEqual((e.dictating, e.followup_until), ("polish", window))
+
+    def test_a_long_dictated_stretch_is_cut_at_a_short_pause(self):
+        from ai_linux.engine import service
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        with mock.patch.object(service, "DICTATE_CUT_FRAMES", 40):
+            self.voiced = 60
+            self.until(lambda: e.work.qsize() == 1, "still recording")
+        self.assertLess(service.DICTATE_CUT_FRAMES + 8, service.MAX_FRAMES)
+        self.assertLess(len(e.work.get_nowait()[1]) / 512, 60 + service.DICTATE_END_SILENCE)  # no 1.5 s wait
+
+    def test_a_short_pause_early_in_dictation_does_not_cut_it(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        self.voiced = 20  # far under the cut: only the ~1.5 s silence ends this one
+        self.until(lambda: e.work.qsize() == 1, "still recording")
+        from ai_linux.engine import service
+        self.assertGreaterEqual(len(e.work.get_nowait()[1]) / 512, 20 + service.DICTATE_END_SILENCE)
+
+    def test_words_from_the_reply_said_with_the_hotkey_are_a_request(self):
+        from ai_linux.engine.service import FRAME_S, PREROLL, PTT_END_S
+        e = self.make("hotkey")
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e._saying, e._spoke_until = "Should I turn off the lights?", time.monotonic()
+        e.armed_until = time.monotonic() + PTT_END_S  # hold-to-talk just released
+        e.asr.transcribe.return_value = "turn off the lights"
+        e._one("audio", object(), time.monotonic() - PREROLL * FRAME_S)
+        e.brain.handle.assert_called_once()
+
+    def test_typing_stop_dictating_ends_it(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        with mock.patch("ai_linux.engine.tools.paste_text", return_value=T.Result(True, "")):
+            e._one("text", "Stop dictating.", 0.0)
+        self.assertFalse(e.dictating)
+        e.brain.handle.assert_not_called()
+
+    def test_a_cough_in_a_dictation_pause_does_not_strand_it(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        self.say(e, "Buy milk.")
+        e.followup_until = time.monotonic() + 0.4
+        self.voiced = 5  # under MIN_SPEECH
+        self.until(lambda: e.state == "listening", "the cough opened a recording")
+        self.until(lambda: e.work.qsize() == 1, "the silence end never came")
+
+    def test_a_cough_that_outlasts_the_dictation_window_does_not_strand_it(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        self.say(e, "Buy milk.")
+        e.followup_until = time.monotonic() + 0.03
+        self.voiced = 5
+        self.until(lambda: e.work.qsize() == 1, "the silence end never came")
+
+    def test_a_cough_in_a_follow_up_window_ends_in_idle(self):
+        e = self.make()
+        e.followup_until = time.monotonic() + 0.4
+        e.set_state("followup")
+        self.voiced = 5
+        self.until(lambda: e.state == "listening", "the cough opened a recording")
+        self.until(lambda: e.state == "idle", "stayed on listening")
+
+    def test_a_cough_while_always_on_ends_in_idle(self):
+        e = self.make("always")
+        self.voiced = 5
+        self.until(lambda: e.state == "listening", "the cough opened a recording")
+        self.until(lambda: e.state == "idle", "stayed on listening")
+
+    def test_nothing_said_after_the_hotkey_ends_listening(self):
+        from ai_linux.engine import service
+        for mode, state, mic in (("hotkey", "idle", False), ("off", "muted", False), ("wake", "idle", True)):
+            e = self.make(mode)
+            with mock.patch.object(service, "LISTEN_NOW_S", 0.1):
+                e.listen_now()
+            self.until(lambda: e.state == state, f"{mode}: stayed on {e.state}")
+            self.until(lambda: e.capturing == mic, f"{mode}: mic")
+
+    def test_a_request_being_transcribed_is_not_nothing_said(self):
+        from ai_linux.engine import service
+        e = self.make("hotkey")
+        with mock.patch.object(service, "LISTEN_NOW_S", 0.05):
+            e.listen_now()
+            self.voiced = 100  # still talking when the 0.05 s are up
+        self.until(lambda: e.work.qsize() == 1, "no recording")
+        time.sleep(0.05)
+        self.assertTrue(e.capturing)
+
+    def test_the_name_test_waits_its_whole_time(self):
+        from ai_linux.engine import service
+        e = self.make("hotkey")
+        with mock.patch.object(service, "LISTEN_NOW_S", 0.05):
+            e.name_test_listen()
+            time.sleep(0.3)
+        self.assertTrue(e.capturing)
+
+    def test_the_end_of_a_follow_up_window_closes_the_mic_when_off(self):
+        e = self.make("off")
+        e.followup_until = time.monotonic() + 0.1
+        e.set_state("followup")
+        self.until(lambda: e.state == "muted", "stayed on followup")
+        self.until(lambda: not e.capturing, "the mic stayed open")
+
+    def test_a_short_tap_on_hold_to_talk_closes_the_mic(self):
+        e = self.make("hotkey")
+        e.push_to_talk(True)
+        self.until(lambda: e.state == "listening", "no state")
+        e.push_to_talk(False)
+        self.until(lambda: not e.capturing, "the mic stayed open")
+        self.assertEqual(e.state, "idle")
+
+    def test_hold_to_talk_needs_no_name(self):
+        e = self.make("hotkey")
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e.push_to_talk(True)
+        started = time.monotonic()
+        e.push_to_talk(False)
+        e.asr.transcribe.return_value = "what time is it"
+        e._one("audio", object(), started)
+        e.brain.handle.assert_called_once()
+
+    def test_dictation_ends_after_the_listen_mode_closed_the_mic(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        self.say(e, "Buy milk.")
+        e.followup_until = time.monotonic() + 0.1
+        e.s["listen_mode"] = "off"
+        e.apply_listen_mode()
+        self.until(lambda: e.work.qsize() == 1, "the words were stranded")
+
+    def test_dictation_ends_when_the_mic_closes_mid_sentence(self):
+        e = self.make()
+        self.say(e, "Phoenix, dictate.")
+        self.say(e, "Buy milk.")
+        e.followup_until = time.monotonic() + 0.2
+        self.voiced = 100000
+        self.until(lambda: e.state == "listening", "no recording")
+        e.s["listen_mode"] = "hotkey"
+        e.apply_listen_mode()
+        self.until(lambda: e.work.qsize() == 1, "the words were stranded")
+
+    def test_the_mic_closing_mid_sentence_leaves_listening(self):
+        e = self.make("always")
+        self.voiced = 100000
+        self.until(lambda: e.state == "listening", "no recording")
+        e.s["listen_mode"] = "hotkey"
+        e.apply_listen_mode()
+        self.until(lambda: e.state == "idle", "stayed on listening with the mic closed")
+
+    def ring_during(self, e):
+        e._play = mock.Mock(side_effect=lambda *a, **k: e.set_state("speaking"))
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e.say_q.put(("ring", "Time to stretch."))
+        self.until(lambda: e._play.called, "no ring")
+
+    def test_a_timer_inside_the_hotkey_window_still_closes_the_mic(self):
+        from ai_linux.engine import service
+        e = self.make("hotkey")
+        with mock.patch.object(service, "LISTEN_NOW_S", 0.3):
+            e.listen_now()
+        self.ring_during(e)
+        self.until(lambda: not e.capturing, "the mic stayed open")
+        self.assertEqual(e.state, "idle")
+
+    def test_a_timer_in_a_follow_up_window_still_closes_the_mic_when_off(self):
+        e = self.make("off")
+        e.followup_until = time.monotonic() + 0.3
+        e.set_state("followup")
+        self.ring_during(e)
+        self.until(lambda: not e.capturing, "the mic stayed open")
+        self.assertEqual(e.state, "muted")
 
 
 class ListenLoopIdleTests(unittest.TestCase):

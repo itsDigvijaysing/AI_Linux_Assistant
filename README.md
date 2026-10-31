@@ -54,8 +54,8 @@ How they were chosen, with every measurement: [bench/README.md](bench/README.md)
 ## Quick start
 
 ```bash
-git clone https://github.com/itsDigvijaysing/AI_Voice_Assistant.git
-cd AI_Voice_Assistant
+git clone https://github.com/itsDigvijaysing/AI_Linux_Assistant.git
+cd AI_Linux_Assistant
 
 # the speech engine's own environment (the GTK app itself uses system Python)
 python3 -m venv ~/.local/share/ai-linux/venv
@@ -97,9 +97,9 @@ GTK4 app (system Python)                    engine child process (venv)
 ## Status
 
 v3 is a full rewrite as one desktop app. Working and tested: the app, engine, profiles, models, safety gate, MCP
-tools, history, knowledge and health checks. Work in progress and open items: `HANDOFF.md`. Still to do: a long live voice run on the real desktop, and an installer.
+tools, history, knowledge and health checks. Still to do: a long live voice run on the real desktop, and an installer.
 
 ## License
 
 MIT. See [LICENSE](LICENSE). The models keep their own licences (Apache-2.0 for Qwen3.5, Gemma 4, jiwo and Laya;
-CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on.
+CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on. Copied code keeps its own licence: see [LICENSES/](LICENSES).

@@ -120,7 +120,7 @@ class LoadModes(unittest.TestCase):
         self.assertEqual(loading("full"), {"big_model_policy": "instant", "ollama_keep_alive": "30m"})
 
     def test_is_big(self):
-        self.assertTrue(is_big("Waking the big model"))
+        self.assertTrue(is_big("Waking up the big model"))
         self.assertFalse(is_big(""))
 
 

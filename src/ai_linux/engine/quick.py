@@ -10,6 +10,8 @@ import random
 import re
 from dataclasses import dataclass
 
+from ai_linux.engine import dictation
+
 _FILL = r"(?:(?:okay|ok|alright|all right|right|thanks|thank you|please|now|you can|you may|can you)[, ]+)*"
 _END = r"(?:[, ]+(?:now|please|for now|then|thanks|thank you|for a while|for a bit))*[.!?]*"
 _SLEEP = re.compile(
@@ -93,6 +95,11 @@ def quick(text: str, name: str = "Phoenix") -> Quick | None:
         return Quick(say="You're welcome.")
     if _HELP.match(t):
         return Quick(say=HELP)
+    if dictation.split_stop(t)[1]:
+        return Quick(say="Dictation isn't on.")
+    if dictation.about(t):  # the model once answered "I am ready to listen" with dictation off
+        return Quick(say=f"To dictate, say: {name}, dictate. Then talk for as long as you like, and say stop dictating "
+                         "when you're done.")
     m = _YOUTUBE.match(t)
     if m and ("youtube" in t.lower()):
         q = re.sub(r"(?i)\s+(?:video|videos)$", "", m.group(1)).strip()

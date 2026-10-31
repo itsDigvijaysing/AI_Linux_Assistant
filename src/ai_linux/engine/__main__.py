@@ -68,6 +68,8 @@ def main() -> int:
             continue
         elif cmd == "listen_now":
             engine.listen_now()
+        elif cmd == "playing_sample":
+            engine.playing_sample(str(msg.get("path") or ""))
         elif cmd == "ptt":
             engine.push_to_talk(bool(msg.get("pressed")))
         elif cmd == "cancel":

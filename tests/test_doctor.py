@@ -46,6 +46,24 @@ def _fake_pci(root: Path, slot: str, cls: str, vendor: str, device: str, driver:
         os.symlink(target, dev / "driver")
 
 
+class EchoCheckTest(unittest.TestCase):
+    def check(self, returncode, python="/venv/bin/python"):
+        with (mock.patch("ai_linux.engine_client.find_python", return_value=python),
+              mock.patch.object(doctor.subprocess, "run", return_value=SimpleNamespace(returncode=returncode))):
+            return doctor.check_aec(None)
+
+    def test_the_library_in_the_engines_python_is_what_counts(self):
+        self.assertEqual(self.check(0).status, "ok")
+
+    def test_without_it_the_page_says_what_that_means(self):
+        row = self.check(1)
+        self.assertEqual(row.status, "warn")
+        self.assertIn("doesn't listen while it speaks", row.detail)
+
+    def test_no_engine_python_is_no_library(self):
+        self.assertEqual(self.check(0, python=None).status, "warn")
+
+
 class RunnerTest(unittest.TestCase):
     def test_every_check_returns_valid_rows(self):
         with mock.patch.object(doctor, "_http_json", side_effect=OSError("refused")):
@@ -104,6 +122,11 @@ class ReportTest(unittest.TestCase):
         self.assertLess(text.index("Models"), text.index("About this system"))
         self.assertIn("1 item(s) need attention", text)
         self.assertIn(doctor.__version__, text)
+
+
+class VersionTest(unittest.TestCase):
+    def test_the_app_shows_the_version_in_the_version_file(self):
+        self.assertEqual(doctor.__version__, (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip())
 
 
 class OllamaTest(unittest.TestCase):

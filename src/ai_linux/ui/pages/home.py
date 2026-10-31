@@ -8,6 +8,7 @@ import threading
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
+from ai_linux.config import stopped_note
 from ai_linux.engine.timers import spoken_span
 from ai_linux.paths import APP_NAME
 from ai_linux.schema import BIG_WAKING, SPEEDS
@@ -488,9 +489,10 @@ class Page(Adw.NavigationPage):
                 "hotkey": f"Press {hotkey_label(self.ctx.settings.get('hotkey'))} to talk",
                 "always": "Listening for requests",
             }.get(mode, "")
+        note = stopped_note(self.ctx.settings)
         return {
             AssistantState.FOLLOWUP: "Go ahead, no wake word needed",
-            AssistantState.MUTED: "Press Start to listen again",
+            AssistantState.MUTED: f"{note}. Press Start to listen" if note else "Press Start to listen again",
             AssistantState.LOADING: "Getting ready",
             AssistantState.OFF: "The assistant is not running",
             AssistantState.ERROR: "Something went wrong",
@@ -519,7 +521,7 @@ class Page(Adw.NavigationPage):
             "wake": f"Say “{wake}” or press {keys}",
             "hotkey": f"Press {keys} or type below",
             "always": "Just start talking, or type below",
-            "off": "Listening is stopped. Press Start, or type below",
+            "off": f"{stopped_note(s) or 'Listening is stopped'}. Press Start, or type below",
         }.get(mode, "Type a request below")))
         self._on_state(self.ctx.bus.state.value, self.ctx.bus.detail)
 

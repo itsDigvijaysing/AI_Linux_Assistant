@@ -1,7 +1,7 @@
 """jiwo-0.8b decision model (eljiwo/jiwo-0.8b, Apache-2.0) as our 8-bit OpenVINO export.
 
 Picks one option from a menu given at request time and returns a calibrated probability per option.
-The prompt follows jiwo's prompting.py (Apache-2.0, github.com/jiwidi/jiwo). Needs only openvino,
+The prompt follows jiwo's prompting.py (MIT, LICENSES/jiwo.txt). Needs only openvino,
 tokenizers and numpy. Conversion: bench/router/jiwo_lite.py::convert_dynamic.
 """
 

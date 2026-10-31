@@ -106,6 +106,8 @@ class Page(Adw.NavigationPage):
         if getattr(ctx, "bus", None) is not None:
             self._binds.connect(ctx.bus, "mcp-tools-changed", lambda *_: self._reload_servers())
         self.connect("destroy", lambda *_: self._binds.clear())
+        if getattr(ctx, "todoist", None) is not None:
+            ctx.todoist.on_change = self._sync_todoist
         self._sync_armed()
         self._sync_web()
         self._sync_todoist()
@@ -171,6 +173,10 @@ class Page(Adw.NavigationPage):
         if link is None:
             self._todoist_status.set_title("Not available")
             self._todoist_status.set_subtitle("The keyring helper didn't load; see the app log")
+        elif link.problem:
+            self._todoist_status.set_title("Todoist is off")
+            self._todoist_status.set_subtitle(GLib.markup_escape_text(f"{link.problem} Restart Phoenix after unlocking "
+                                                                      "the keyring, or paste the token below."))
         else:
             self._todoist_status.set_title("Connected" if on else "Not connected")
             self._todoist_status.set_subtitle("Ask “what's on my Todoist today?”" if on else

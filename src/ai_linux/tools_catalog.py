@@ -122,7 +122,8 @@ TOOLS: tuple[ToolInfo, ...] = (
        "assistant", False, "edit-clear-symbolic", "assistant"),
     # Todoist (on the menus only once a token is saved)
     _t("todoist", "Todoist", "“Add buy milk tomorrow to Todoist”, “what's on my Todoist today”, “mark buy milk as "
-       "done” (it asks first). Uses the internet with your token, whatever Web Access says.",
+       "done” (it asks first). Adding or finishing a task needs actions allowed. Uses the internet with your token, "
+       "whatever Web Access says.",
        "assistant", False, "object-select-symbolic", "tasks"),
 )
 

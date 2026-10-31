@@ -23,6 +23,21 @@ def words(text: str) -> list[str]:
 CALL_WORDS = {"hey", "hi", "hello", "okay", "ok", "yo", "so", "um", "uh", "oh", "and", "wake", "up", "dear", "hiya"}
 
 
+def _sound(text: str) -> str:
+    return text.replace("ph", "f").replace("oe", "e").replace("ee", "e")
+
+
+def _same_name(heard: str, name: str) -> bool:
+    """Close in spelling, or spelled differently but said the same: "Fenix" is far from "phoenix" on paper."""
+    return difflib.SequenceMatcher(None, heard, name).ratio() >= MATCH or _sound(heard) == _sound(name)
+
+
+def is_name(text: str, wake: str) -> bool:
+    """Only the name was said, however close strip_wake would accept it."""
+    name, said = words(wake), words(text)
+    return bool(name) and len(said) == len(name) and _same_name(" ".join(said), " ".join(name))
+
+
 def strip_wake(text: str, wake: str) -> str | None:
     """The command after the wake word (or a short one before it, as in "stop Phoenix"), "" if only the wake word
     was said, None if it wasn't said."""
@@ -34,7 +49,7 @@ def strip_wake(text: str, wake: str) -> str | None:
     n = len(wake_w)
     for i in range(min(len(heard) - n + 1, SEARCH_WORDS)):
         end = None
-        if difflib.SequenceMatcher(None, " ".join(heard[i:i + n]), " ".join(wake_w)).ratio() >= MATCH:
+        if _same_name(" ".join(heard[i:i + n]), " ".join(wake_w)):
             end = i + n - 1
         else:
             # speech recognition sometimes splits an unusual name in two ("Dora Emon"); same length only

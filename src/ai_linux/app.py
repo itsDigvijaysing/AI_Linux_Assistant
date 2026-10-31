@@ -15,6 +15,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from ai_linux import __version__  # noqa: E402
 from ai_linux.config import APP_ID, APP_NAME, HISTORY_DB, ICON_NAME, LOG_DIR, get_settings  # noqa: E402
+from ai_linux.paths import REPO_URL  # noqa: E402
 from ai_linux.context import AppContext  # noqa: E402
 from ai_linux.schema import on_ac_power  # noqa: E402
 from ai_linux.controller import Controller  # noqa: E402
@@ -94,7 +95,7 @@ class App(Adw.Application):
 
     def _load_tokens(self) -> bool:
         if self.ctx.todoist is not None and not self.ctx.screenshot_mode:
-            self.ctx.todoist.load()
+            self.ctx.todoist.load(lambda ok, text: ok or self.ctx.bus.notice("warning", f"Todoist is off. {text}"))
         return False
 
     def _poll_power(self) -> bool:
@@ -192,8 +193,8 @@ class App(Adw.Application):
     def _about(self) -> None:
         about = Adw.AboutDialog(
             application_name=APP_NAME, application_icon=ICON_NAME, version=__version__,
-            developer_name="Digvijaysing", license_type=Gtk.License.MIT_X11,
-            comments="Local-first voice assistant for the Linux desktop.",
+            developer_name=REPO_URL.removeprefix("https://"), website=REPO_URL,  # no comments: they hide the link in Details
+            license_type=Gtk.License.MIT_X11,
         )
         from ai_linux import credits
         for c in credits.by_kind("code"):  # their code ships with ours, so their licences are listed in full

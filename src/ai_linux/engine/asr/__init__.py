@@ -1,4 +1,7 @@
-"""Parakeet speech-to-text (ONNX; the TDT encoder can use the Intel GPU). Adapted from GLaDOS (MIT): LICENSE.GLaDOS."""
+"""Parakeet speech-to-text (ONNX; the TDT encoder can use the Intel GPU).
+
+Adapted from GLaDOS (MIT): LICENSES/GLaDOS.txt.
+"""
 
 from __future__ import annotations
 

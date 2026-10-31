@@ -27,6 +27,8 @@ class TodoistLink:
         self.settings, self.send_secret = settings, send_secret
         self.store, self.api = store, api
         self.busy = False
+        self.problem = ""  # why the saved token couldn't be loaded, for the Tools page
+        self.on_change: Callable[[], None] | None = None  # the Tools page redraws: busy or problem changed
 
     @property
     def connected(self) -> bool:
@@ -45,6 +47,8 @@ class TodoistLink:
             self.busy = False
             if done is not None:
                 done(ok, text)
+            if self.on_change is not None:
+                self.on_change()
             return False
         self.busy = True
         threading.Thread(target=run, name="Todoist", daemon=True).start()
@@ -55,13 +59,22 @@ class TodoistLink:
             return
 
         def fn():
-            token = self.store.lookup(NAME)
+            try:
+                token = self.store.lookup(NAME)
+            except Exception as exc:  # locked, dismissed, or no keyring running: the token may still be there
+                log.warning("reading the Todoist token: %s", exc)
+                return False, f"Couldn't read the token from your keyring: {exc}"
             if not token:
                 GLib.idle_add(lambda: self.settings.set("todoist_connected", False) and False)
                 return False, "The token is no longer in your keyring. Add it again."
             GLib.idle_add(lambda: self.send_secret(NAME, token) and False)
             return True, "Connected"
-        self._work(fn, done)
+
+        def loaded(ok, text):
+            self.problem = "" if ok else text
+            if done is not None:
+                done(ok, text)
+        self._work(fn, loaded)
 
     def save(self, token: str, done: Done | None = None) -> None:
         """Checks the token with Todoist, then keeps it in the keyring and hands it to the engine."""
@@ -81,6 +94,7 @@ class TodoistLink:
             self.store.store(NAME, token, LABEL)
 
             def apply():
+                self.problem = ""
                 self.settings.set("todoist_connected", True)
                 self.send_secret(NAME, token)
                 return False
@@ -90,6 +104,7 @@ class TodoistLink:
 
     def disconnect(self, done: Done | None = None) -> None:
         """Forgets the token: the engine first, then the keyring."""
+        self.problem = ""
         self.send_secret(NAME, "")
         self.settings.set("todoist_connected", False)
 

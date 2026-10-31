@@ -218,5 +218,31 @@ class UnsureRouterTests(unittest.TestCase):
         self.assertEqual(asked, ["Mark Call mom as done?"])
         self.assertEqual((turn["reply"], turn["route"]), ("Marked Call mom as done.", "small"))
 
+    def run_with_actions(self, armed, args):
+        import threading
+        from types import SimpleNamespace
+        from ai_linux.engine import brain as B
+        from ai_linux.safety import ActionGate
+        fake = FakeTodoist()
+        self.addCleanup(fake.close)
+        env = T.Env(SimpleNamespace(gate=ActionGate(armed=armed, confirm_globs=[])), confirm=lambda r: True,
+                    secret={"todoist": TOKEN}.get)
+        b = B.Brain({"escalate_threshold": 0.85, "wake_word": "phoenix"}.get, env, speak=lambda s: None)
+        turn = {"tools": [], "heard": "x", "latency": {}}
+        with mock.patch.object(todoist, "API", fake.base):
+            res = b._run_tools([("todoist", args)], turn, threading.Event(), speak=False)[0]
+        return res, turn["tools"][0]["verdict"], [c for c in fake.calls if c[0] == "POST"]
+
+    def test_actions_off_stop_changes_but_not_reading(self):
+        for args in ({"action": "add", "text": "buy milk"}, {"action": "complete", "task": "call mom"}):
+            res, verdict, posted = self.run_with_actions(False, args)
+            self.assertEqual((res.ok, verdict, posted), (False, "denied", []), args)
+        res, verdict, _ = self.run_with_actions(False, {"action": "list"})
+        self.assertEqual((res.ok, verdict), (True, "ran"))
+
+    def test_actions_on_allow_changes(self):
+        res, verdict, posted = self.run_with_actions(True, {"action": "add", "text": "buy milk"})
+        self.assertEqual((res.ok, verdict, len(posted)), (True, "ran", 1))
+
 if __name__ == "__main__":
     unittest.main()

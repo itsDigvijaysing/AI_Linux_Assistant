@@ -1,7 +1,7 @@
 """Words while you speak: the utterance so far is decoded again in the background, one decode at a time.
 
 Pacing is OpenWhispr's dictation preview (never two decodes at once, skip quiet audio); which words have settled
-is whisper-flow's common prefix (MIT, LICENSE.whisper-flow). Commands stop at 15 s, so the whole utterance is
+is whisper-flow's common prefix (MIT, LICENSES/whisper-flow.txt). Commands stop at 15 s, so the whole utterance is
 decoded each time instead of whisper-flow's committed window.
 """
 

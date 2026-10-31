@@ -28,7 +28,7 @@ class Credit:
     url: str
     kind: str
     owner: str = ""
-    licence_file: str = ""  # full text bundled at the repo root
+    licence_file: str = ""  # full text bundled under LICENSES/
     git: str = ""  # cloned into refs/ for study
     featured: bool = False  # listed first in its About section
 
@@ -36,19 +36,22 @@ class Credit:
 CREDITS: tuple[Credit, ...] = (
     # code
     Credit("GLaDOS", "Speech recognition and voice detection code; the safety checks grew from it", "MIT",
-           "https://github.com/dnhkng/GLaDOS", "code", "David Ng", "LICENSE.GLaDOS",
+           "https://github.com/dnhkng/GLaDOS", "code", "David Ng", "LICENSES/GLaDOS.txt",
            "https://github.com/dnhkng/GLaDOS.git", featured=True),
     Credit("OpenWhispr", "Pasting at the cursor through the desktop portal; reopening a silent microphone; "
-           "pacing of the words shown while you speak", "MIT",
-           "https://github.com/OpenWhispr/openwhispr", "code", "OpenWhispr Team", "LICENSE.OpenWhispr",
+           "pacing of the words shown while you speak; the dictation clean-up prompt", "MIT",
+           "https://github.com/OpenWhispr/openwhispr", "code", "OpenWhispr Team", "LICENSES/OpenWhispr.txt",
            "https://github.com/OpenWhispr/openwhispr.git"),
     Credit("whisper-flow", "Which words shown while you speak have settled", "MIT",
-           "https://github.com/dimastatz/whisper-flow", "code", "Dima Statz", "LICENSE.whisper-flow",
+           "https://github.com/dimastatz/whisper-flow", "code", "Dima Statz", "LICENSES/whisper-flow.txt",
            "https://github.com/dimastatz/whisper-flow.git"),
     Credit("Laya", "Prompt layout and calibration of the optional small decision model", "Apache-2.0",
-           "https://huggingface.co/convaiinnovations/laya", "code", "Convai Innovations", "LICENSE.Laya"),
+           "https://huggingface.co/convaiinnovations/laya", "code", "Convai Innovations", "LICENSES/Laya.txt"),
+    Credit("jiwo", "The prompt of the small model that picks the right tool on battery", "MIT",
+           "https://github.com/jiwidi/jiwo", "code", "jiwidi", "LICENSES/jiwo.txt",
+           "https://github.com/jiwidi/jiwo.git"),
     Credit("computer-use-linux", "Screenshots through the screen-capture portal; window control", "MIT",
-           "https://github.com/agent-sh/computer-use-linux", "code", "Avi Fenesh", "LICENSE.computer-use-linux",
+           "https://github.com/agent-sh/computer-use-linux", "code", "Avi Fenesh", "LICENSES/computer-use-linux.txt",
            "https://github.com/agent-sh/computer-use-linux.git"),
     # models
     Credit("Parakeet TDT 0.6B v3", "Speech recognition", "CC-BY-4.0",
@@ -70,8 +73,10 @@ CREDITS: tuple[Credit, ...] = (
            "https://pygobject.gnome.org/", "library", "The PyGObject authors"),
     Credit("Ollama", "Runs the big model", "MIT", "https://github.com/ollama/ollama", "library", "Ollama",
            featured=True),
-    Credit("PipeWire", "Microphone, speakers and echo cancelling", "MIT", "https://pipewire.org/", "library",
+    Credit("PipeWire", "Microphone and speakers", "MIT", "https://pipewire.org/", "library",
            "The PipeWire authors"),
+    Credit("pywebrtc-audio", "Takes the assistant's own voice out of the microphone while it speaks", "Apache-2.0",
+           "https://github.com/strands-labs/pywebrtc-audio", "library", "Strands Labs"),
     Credit("ONNX Runtime", "Runs speech recognition, voice detection and the voices", "MIT",
            "https://onnxruntime.ai/", "library", "Microsoft"),
     Credit("OpenVINO", "Runs the small models on the Intel GPU", "Apache-2.0",

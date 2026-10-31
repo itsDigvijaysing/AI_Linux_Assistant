@@ -10,5 +10,6 @@ pydantic==2.13.4
 PyYAML==6.0.3
 threadpoolctl==3.6.0
 soundfile==0.14.0
+pywebrtc-audio==0.2.0     # takes our own voice out of the mic while we speak (WebRTC AEC3)
 supertonic==1.3.1         # SuperTonic-3 voices
 huggingface_hub==1.21.0   # SuperTonic fetches its weights on first use

@@ -2,7 +2,7 @@
 """Paste the clipboard at the cursor through the RemoteDesktop portal: no uinput, no ydotool daemon, no sudo.
 
 Ported from OpenWhispr's resources/linux-fast-paste.c (portal paste and AT-SPI terminal check; MIT, see
-LICENSE.OpenWhispr). Needs the system Python with python3-gi, so the engine runs it as a short helper, one paste
+LICENSES/OpenWhispr.txt). Needs the system Python with python3-gi, so the engine runs it as a short helper, one paste
 per run. The portal asks once; its restore token is kept in --token-file so later pastes run silently.
 
     paste_portal.py paste [--mode auto|ctrl-v|ctrl-shift-v|shift-insert] [--token-file PATH]

@@ -28,7 +28,8 @@ code that does it, so it can be checked.
 
 ## How actions are controlled
 1. **Action gate** (`safety/gate.py`). Tools that change the computer (`desktop.*`, `shell.run_command`, and
-   every MCP tool, `mcp.*`) run only while actions are allowed (Safety page, `actions_armed`). Unattended
+   every MCP tool, `mcp.*`), and adding or finishing a Todoist task (reading your tasks stays on), run only
+   while actions are allowed (Safety page, `actions_armed`). Unattended
    automation can never run them (`autonomy` hard floor).
 2. **You confirm the risky ones.** A shell command is always shown in full and needs a yes, on screen or by
    voice (`confirm_shell`). Each MCP server asks before every use unless you turn that off for it. Finishing a

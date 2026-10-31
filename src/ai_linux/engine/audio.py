@@ -1,24 +1,12 @@
-"""PipeWire audio backend with WebRTC echo cancellation (AI_Linux, real full-duplex barge-in).
+"""PipeWire audio for the engine: the plain default mic through pw-record, sound through pw-play.
 
-Why this exists: conda's PortAudio is ALSA-`hw:`-only and cannot see PipeWire virtual nodes, so it
-can't use PipeWire's WebRTC `module-echo-cancel`. Without echo cancellation, an open mic transcribes
-the assistant's own TTS, which is why the default (sounddevice) backend is half-duplex. This backend
-routes audio through PipeWire instead, capturing from an echo-cancelled source and playing to the
-echo-cancel sink (the AEC reference), so the mic the engine hears has the assistant's voice removed.
-That is the local equivalent of how LightSpeak/RealtimeVoiceChat get full-duplex (browser WebRTC AEC).
-
-Proven on this box: `libspa-aec-webrtc.so` present; `module-echo-cancel` creates `ai_aec_source`/
-`ai_aec_sink`; `pw-record --target ai_aec_source` yields echo-cancelled audio. The module is loaded via
-a held-open `pw-cli` whose lifetime == this process, so it is fully reversible (no config files, no
-service restart, no apt). If the user has already set up persistent AEC nodes, those are reused.
-
-Enabled by ``audio_io: "pipewire"`` (the ai-linux ``--barge-in`` flag sets it via GLADOS_AUDIO_BACKEND),
-which also turns on ``interruptible`` so the user can talk over the assistant.
+Nothing is loaded into PipeWire. Our own voice is taken out inside the engine (``echo.py``), only while we speak. The
+echo-cancel module this replaced put all listening behind a 10 ms real-time chain; in power saver that chain lost most
+of what was said even with nothing playing (2026-10-31, bench/README.md).
 """
 
 from __future__ import annotations
 
-import atexit
 import os
 import queue
 import secrets
@@ -30,15 +18,15 @@ from ai_linux.engine.log import logger
 import numpy as np
 from numpy.typing import NDArray
 
+from ai_linux.engine import echo
 from ai_linux.engine.vad import VAD
 
 
 class PipeWireAudioIO:
-    """AudioProtocol backend over PipeWire (pw-record / pw-cat) with WebRTC echo cancellation."""
+    """AudioProtocol backend over PipeWire (pw-record / pw-play)."""
 
     SAMPLE_RATE: int = 16000
     VAD_SIZE: int = 32          # ms per VAD frame -> 512 samples @ 16k
-    AEC_QUANTUM: int = 480      # WebRTC's 10 ms block at 48 kHz
     VAD_THRESHOLD: float = 0.8  # balance: catch the user's barge-in vs. ignore AEC residual (GLADOS_VAD_THRESHOLD tunes it)
 
     def __init__(self, vad_threshold: float | None = None) -> None:
@@ -52,8 +40,8 @@ class PipeWireAudioIO:
         self.vad_threshold = self.VAD_THRESHOLD if vad_threshold is None else vad_threshold
         self._sample_queue: queue.Queue[tuple[NDArray[np.float32], bool]] = queue.Queue()
 
-        self._src = os.environ.get("GLADOS_AEC_SOURCE", "ai_aec_source")
-        self._sink = os.environ.get("GLADOS_AEC_SINK", "ai_aec_sink")
+        self._echo = echo.load()
+        self._late: tuple | None = None  # a sound that started with the mic closed: (samples, rate, when)
 
         # capture state: `input_stream` mirrors the sounddevice attr the overlay bridge checks for "listening"
         self.input_stream: object | None = None
@@ -68,69 +56,34 @@ class PipeWireAudioIO:
         self._stop_event = threading.Event()
         self._play_proc: subprocess.Popen | None = None
 
-        self._aec_proc: subprocess.Popen | None = None  # held-open pw-cli keeping the module loaded
-        self._aec_owned = False
-        self._aec_ok = False  # True once ai_aec_source/sink exist; else fall back to default devices
         self._tmpdir = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-        atexit.register(self._teardown_aec)
-        self._ensure_aec()  # eager: AEC source/sink ready before the first capture or announcement
 
-    def _node_exists(self, name: str) -> bool:
-        try:
-            out = subprocess.run(["pw-cli", "ls", "Node"], capture_output=True, text=True, timeout=4).stdout
-        except Exception:  # noqa: BLE001
-            return False
-        return f'"{name}"' in out or f"node.name = {name}" in out
+    @property
+    def _aec_ok(self) -> bool:
+        """False means no barge-in: the engine doesn't listen while it speaks."""
+        return self._echo is not None and self._echo.ok
 
-    def _ensure_aec(self) -> None:
-        """Load WebRTC module-echo-cancel (named ai_aec_*) unless those nodes already exist. Reversible."""
-        if self._aec_proc is not None and self._aec_proc.poll() is None:
-            # our pw-cli still holds the module; another would only stack up and block for 4 s
-            if not self._aec_ok and self._node_exists(self._src):
-                self._aec_ok = True  # it came up after the first wait
+    def hear_own(self, sound: NDArray[np.float32], rate: int) -> None:
+        """A sound of ours starts now. With the mic closed nothing would pace it, so only what is left when it opens."""
+        if self._echo is None:
             return
-        if self._aec_ok and not self._aec_owned:
-            return  # the user's own persistent nodes
-        self._aec_proc, self._aec_ok, self._aec_owned = None, False, False  # PipeWire restarted: load it again
-        if self._node_exists(self._src):
-            self._aec_ok = True
-            logger.info("AEC source '{}' already present, reusing it", self._src)
+        if self._rec_proc is None:
+            self._late = (sound, rate, time.monotonic())
             return
-        # at PipeWire's 256 cycles one CPU spike desynced the 10 ms AEC and muted the user (2026-10-30)
-        q = f"node.force-quantum = {self.AEC_QUANTUM}"
-        cmd = (
-            "load-module libpipewire-module-echo-cancel "
-            "{ library.name = aec/libspa-aec-webrtc "
-            f'source.props = {{ node.name = {self._src} node.description = "AI AEC Mic" {q} }} '
-            f'sink.props = {{ node.name = {self._sink} node.description = "AI AEC Speaker" {q} }} }}\n'
-        )
-        try:
-            # interactive pw-cli stays connected while stdin is open -> module stays loaded for our lifetime
-            self._aec_proc = subprocess.Popen(
-                ["pw-cli"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-            self._aec_proc.stdin.write(cmd.encode())  # type: ignore[union-attr]
-            self._aec_proc.stdin.flush()  # type: ignore[union-attr]
-            self._aec_owned = True
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("AEC load failed ({}); falling back to non-cancelled capture", exc)
-            return
-        for _ in range(40):  # wait up to ~4s for the node to register
-            if self._node_exists(self._src):
-                self._aec_ok = True
-                logger.success("WebRTC echo-cancel loaded ({} / {})", self._src, self._sink)
-                return
-            time.sleep(0.1)
-        logger.warning("AEC node '{}' did not appear in time; using default devices (no echo cancel)", self._src)
+        self._echo.feed(sound, rate)
 
-    def _teardown_aec(self) -> None:
-        if self._aec_proc is not None:
-            try:
-                self._aec_proc.stdin.close()  # type: ignore[union-attr]
-                self._aec_proc.terminate()
-            except Exception:  # noqa: BLE001
-                pass
-            self._aec_proc = None
+    def stop_own(self) -> None:
+        self._late = None
+        if self._echo is not None:
+            self._echo.stop()
+
+    def _feed_late(self) -> None:
+        late, self._late = self._late, None
+        if late is not None and self._echo is not None:
+            sound, rate, began = late
+            left = sound[int((time.monotonic() - began) * rate):]
+            if left.size:
+                self._echo.feed(left, rate)
 
     def get_sample_queue(self) -> queue.Queue[tuple[NDArray[np.float32], bool]]:
         return self._sample_queue
@@ -138,26 +91,26 @@ class PipeWireAudioIO:
     def start_listening(self) -> None:
         if self._rec_proc is not None or (self._reader is not None and self._reader.is_alive()):
             self.stop_listening()
-        self._ensure_aec()
         self._stop_rec.clear()
+        if self._echo is not None:
+            self._echo.reset()  # a sound that ended while the mic was closed left its tail behind
         while True:  # drop stale frames captured before the last stop so they can't leak into this session
             try:
                 self._sample_queue.get_nowait()
             except queue.Empty:
                 break
-        # --container raw -> headerless PCM on stdout; target the AEC'd source when available
-        cmd = ["pw-record", "--container", "raw"]
-        if self._aec_ok:
-            cmd += ["--target", self._src]
-        cmd += ["--rate", str(self.SAMPLE_RATE), "--channels", "1", "--format", "s16", "-"]
+        # --container raw -> headerless PCM on stdout
+        cmd = ["pw-record", "--container", "raw", "--rate", str(self.SAMPLE_RATE), "--channels", "1", "--format", "s16",
+               "-"]
         try:
             self._rec_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         except FileNotFoundError as exc:
             raise RuntimeError(f"pw-record not found ({exc}); install pipewire utils") from exc
         self.input_stream = self._rec_proc
+        self._feed_late()
         self._reader = threading.Thread(target=self._read_loop, name="PWCapture", daemon=True)
         self._reader.start()
-        logger.success("PipeWire capture started (source={})", self._src if self._aec_ok else "default(no-AEC)")
+        logger.success("PipeWire capture started")
 
     def _read_loop(self) -> None:
         frame = int(self.SAMPLE_RATE * self.VAD_SIZE / 1000)  # 512 samples
@@ -179,6 +132,8 @@ class PipeWireAudioIO:
                 raw, buf = buf[:nbytes], buf[nbytes:]
                 try:
                     data = (np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0)
+                    if self._echo is not None:
+                        data = self._echo.clean(data)
                     vad = self._vad_model(np.expand_dims(data, 0))
                     self._sample_queue.put((data.copy(), float(vad)))  # the engine picks the threshold
                     bad = 0
@@ -209,6 +164,8 @@ class PipeWireAudioIO:
         if reader is None or not reader.is_alive():
             self._reader = None
         self.input_stream = None
+        if self._echo is not None:
+            self._echo.reset()
 
     def start_speaking(self, audio_data: NDArray[np.float32], sample_rate: int | None = None, text: str = "") -> None:
         if not isinstance(audio_data, np.ndarray) or audio_data.size == 0:
@@ -236,10 +193,7 @@ class PipeWireAudioIO:
             logger.warning("TTS temp write failed ({}); audio dropped", exc)
             self._is_playing = False
             return False, -1  # sentinel: nothing played (see measure_percentage_spoken contract)
-        cmd = ["pw-play"]
-        if self._aec_ok:
-            cmd += ["--target", self._sink]  # play to the AEC sink so it becomes the cancellation reference
-        cmd += [path]
+        cmd = ["pw-play", path]
         dur = len(audio) / sr if sr else 0.0
         interrupted = False
         dropped = False
@@ -247,6 +201,7 @@ class PipeWireAudioIO:
         play_rc: int | None = None
         t0 = time.monotonic()
         try:
+            self.hear_own(audio, sr)  # just before it plays: the reference may lead the echo, never follow it
             self._play_proc = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             while self._play_proc.poll() is None:
                 if stop.is_set():
@@ -277,6 +232,7 @@ class PipeWireAudioIO:
                 play_rc = p.returncode
             self._play_proc = None
             self._is_playing = False
+            self.stop_own()
             try:
                 os.unlink(path)
             except Exception:  # noqa: BLE001

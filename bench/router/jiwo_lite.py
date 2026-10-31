@@ -1,5 +1,5 @@
 """jiwo-0.8b without the jiwo package: transformers backbone + its readout layer. Prompt format follows
-jiwo's prompting.py (Apache-2.0, github.com/jiwidi/jiwo): identity option order, fitted choice temperature."""
+jiwo's prompting.py (MIT, LICENSES/jiwo.txt): identity option order, fitted choice temperature."""
 
 import glob
 import json

@@ -93,12 +93,14 @@ def write_wav(kind: str, path: str, volume: float = 1.0) -> None:
         w.writeframes(pcm.tobytes())
 
 
-def _play(kind: str, sink: str | None, volume: float) -> None:
+def _play(kind: str, volume: float, on_play) -> None:
     fd, path = tempfile.mkstemp(suffix=".wav", dir=os.environ.get("XDG_RUNTIME_DIR"))
     os.close(fd)
     try:
         write_wav(kind, path, volume)
-        subprocess.run(["pw-play", *(["--target", sink] if sink else []), path], timeout=4,
+        if on_play is not None:
+            on_play(tone(kind, volume), RATE)
+        subprocess.run(["pw-play", path], timeout=4,
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
@@ -106,7 +108,8 @@ def _play(kind: str, sink: str | None, volume: float) -> None:
         os.unlink(path)
 
 
-def play(kind: str, sink: str | None = None, volume: float = 1.0) -> None:
-    """Plays in the background; unknown kinds and a missing pw-play are ignored."""
+def play(kind: str, volume: float = 1.0, on_play=None) -> None:
+    """Plays in the background; unknown kinds and a missing pw-play are ignored. ``on_play(samples, rate)``: it starts
+    now."""
     if kind in NOTES:
-        threading.Thread(target=_play, args=(kind, sink, volume), name="Cue", daemon=True).start()
+        threading.Thread(target=_play, args=(kind, volume, on_play), name="Cue", daemon=True).start()

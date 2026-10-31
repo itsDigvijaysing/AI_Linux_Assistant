@@ -24,12 +24,22 @@ data/skills_vectors.json
 *.pt
 *.safetensors
 
-# Local development docs & tooling (kept out of the published repo)
-*CLAUDE.md
+# Local development docs (kept out of the published repo)
 docs/*
 MD/*
-.claude/*
-!.claude/settings.json
+
+# Coding-agent files stay on this machine: Claude, Codex, Gemini, Antigravity
+.claude/
+*CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+*AGENTS.md
+.codex/
+.agents/
+.agent/
+*GEMINI.md
+.gemini/
+.antigravity/
 
 # Local secrets (API tokens etc.), copy .env.example to .env and fill in real values
 .env

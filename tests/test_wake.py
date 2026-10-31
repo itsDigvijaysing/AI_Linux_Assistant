@@ -18,9 +18,26 @@ class Matcher(unittest.TestCase):
                 self.assertTrue(wake.heard(sentence, name), (name, sentence))
             self.assertFalse(wake.heard(wake.NEGATIVE, name), name)
 
+    def test_a_name_spelled_as_it_sounds(self):
+        for said in ("Fenix.", "Phenix", "Feenix?"):  # 2026-10-31: a plain "Phoenix" came back as "Fenix." and was ignored
+            self.assertEqual(wake.strip_wake(said, "phoenix"), "", said)
+            self.assertTrue(wake.is_name(said, "phoenix"), said)
+        self.assertEqual(wake.strip_wake("Fenix, what time is it?", "phoenix"), "what time is it?")
+
+    def test_a_different_name_is_not_the_name(self):
+        for said in ("Felix is here", "Finish it", "Phone it in"):
+            self.assertIsNone(wake.strip_wake(said, "phoenix"), said)
+        self.assertFalse(wake.is_name("Felix", "phoenix"))
+
     def test_split_name(self):
         self.assertEqual(wake.strip_wake("Dora Emon, open my files", "doraemon"), "open my files")
         self.assertIsNone(wake.strip_wake("we bought a new computer case", "computer"))  # 5th word, joined is longer
+
+    def test_is_name(self):
+        for text, name in (("Phoenix.", "phoenix"), ("Phenix", "phoenix"), ("Hey, buddy!", "hey buddy")):
+            self.assertTrue(wake.is_name(text, name), text)
+        for text, name in (("We flew to Phoenix.", "phoenix"), ("", "phoenix"), ("Phoenix", ""), ("buddy", "hey buddy")):
+            self.assertFalse(wake.is_name(text, name), text)
 
     def test_empty_name_passes_text_through(self):
         self.assertEqual(wake.strip_wake("open files", ""), "open files")

@@ -201,7 +201,7 @@ The NVIDIA cost is standby: the dGPU suspends ~13 s after its model unloads.
 ## jiwo on the Intel iGPU: how it is converted (`router/jiwo_lite.py`)
 
 - **Loader without the jiwo package:** `transformers` loads the backbone (`Qwen3_5TextModel`), a `Linear` loads
-  `readout.safetensors`, and the prompt follows jiwo's `prompting.py` (Apache-2.0). Same answers as the jiwo
+  `readout.safetensors`, and the prompt follows jiwo's `prompting.py` (MIT). Same answers as the jiwo
   package: 25/25, confidence identical.
 - **Final export, `convert_dynamic()`:** Optimum Intel's own pipeline (`export_from_model`, task
   `text-generation`, the path behind Intel's published `OpenVINO/Qwen3.5-*-ov` models). jiwo's backbone goes in as
@@ -279,3 +279,72 @@ all three score 41-49 % because Parakeet also writes down the background words.
   on the GPU, 0.1-0.35 s and 0.26-1.28 s CPU on the CPU (about 2 s vs 5.5 s of CPU for a 5 s command). Updates reach
   the final words 0.5-1 s before the sentence ends; the first ones can be wrong ("Right a remote." for "Write a
   reply").
+
+## Echo cancelling: PipeWire's module against the engine's own AEC3 (2026-10-31)
+
+Scripts: `bench/echo/` (`make_clips.py` then `run_cfg.py`, which plays sound and loads the old module for its run;
+`replay.py` is silent, over the recordings). Why: Phoenix kept failing to hear, or heard itself, mostly on battery. One
+test per row, 33 s: a reply through the sink
+under test, then a second voice played straight to the speaker as "the user" with nothing else playing, then both. On
+the charger, same volume, the laptop otherwise idle. "Voice" = Silero >= 0.5 on the second voice alone. "Resyncs" =
+PipeWire's `follower ... resync` lines for the USB card, each one silence written into the playback.
+
+| Setup | Profile | Resyncs | Voice, plain mic | Voice, through the chain |
+|---|---|---|---|---|
+| Module, quantum 480 (what shipped) | power saver | 291, 285 | 62, 58 % | **19, 26 %** |
+| Same, noise suppression off | power saver | 291 | 68 % | 17 % |
+| Same, mono 16 kHz / mono 48 kHz | power saver | 285, 284 | 66, 53 % | 51, 51 % |
+| Module, quantum 960 / 1920, block matched | power saver | 142, 75 | 49, 69 % | **0, 0 %** |
+| Module, quantum 480 | balanced | 0 | 64 % | 63 % |
+| Module, quantum 480 | performance | 0 | 69 % | 68 % |
+| Module, quantum 480, 20 busy processes | power saver | 0 | 65 % | 61 % |
+| No module, quantum left alone | power saver | 0 (5 runs) | 60-68 % | same frames (raw) |
+
+- **So the power state decides, and a busy CPU rescues it.** The trigger is the module's sink being idle: resyncs ran at
+  ~33 a second between replies and stopped while a reply played. The journal agrees: `front:1p ... resync` 0 before
+  the chain came in on 28 October, then about 21k, 74k, 66k and 33k a day (28 to 31 October). Why low clocks tip the module over isn't traced;
+  mono 16 kHz resynced just as much, so the cost of AEC3 itself isn't it.
+- **Battery itself wasn't measured:** power saver stands in for it. power-profiles-daemon 0.30 is battery-aware, and
+  on the charger `balanced` set EPP `balance_performance`; what it sets on battery wasn't read.
+- **This test didn't reproduce the leak from real use:** with only a reply playing the module leaves -37 to -60 dB and
+  0-3 % voice, even in power saver. The logs do show our words becoming requests through the barge-in path, which
+  skipped the word check. How much the module added to that in real use stays unproven.
+- **The engine's AEC3** (`echo.py` replayed over the no-module recordings, no module in the graph): nothing playing,
+  the frames are identical to the mic; 9 replies alone: -40 to -42 dB, 0 % voice, no false barge-in, and Parakeet got
+  no words from the 5 of them it was given. A real person talked over the first reply of one long run by accident:
+  Parakeet got their whole sentence from the cleaned audio. One reply (of 13) leaked: -30 dB, "The weather in your city
+  from the day ...", and `own_words` catches that. Replayed offline.
+- **Live, once, through the real `PipeWireAudioIO` and reader thread** (30 s, power saver, on the charger; the engine and
+  app were not running): 943 of 946 frames, 0 resyncs, the graph left at quantum 1024, `clean()` median 0.87 ms and worst
+  21 ms of a 32 ms frame. A voice alone: same level as the mic, its whole sentence transcribed. Two replies alone:
+  -40.6 and -40.9 dB, 0 % voice. A voice over a reply: it paused 1.4 s after they started, and Parakeet got "remind me
+  to call the bank before ..." with the last words wrong. **The reply right after that double talk leaked:** -28.5 dB
+  and Parakeet read nearly all of it, yet Silero stayed at 0 %, so no recording would have started. Silero misses
+  cancelled speech that Parakeet can still read, which is why a pause is slow and its transcript still good.
+- **Talking over a reply is its weak side.** A voice mixed over a reply: pauses it 1.4-1.6 s after they start at equal
+  level, 1.2-1.4 s at +6 dB, 0.5-1.1 s at +12 dB, 1.6 s at -6 dB. Played live from the same speaker at equal level it
+  can miss entirely (2 of 3 runs): the worst case, since a person isn't on the speaker's path. Cancel and the hotkey
+  always work.
+- **What others do** (`REFERENCES.md`): GLaDOS's Sonora probe, the same lock-step AEC3 (24.8 dB, echo-only voice frames
+  89 % to 0 %); browser AEC3 behind LiveKit and RealtimeVoiceChat; half-duplex in Pipecat's `AlwaysUserMuteStrategy` and
+  Wyoming; raw mic in OpenWhispr, which never speaks.
+
+## Dictation clean-up prompt (2026-10-31, qwen3.5:4b, temperature 0, nothing typed)
+
+The user's dictation felt the same as speech to text. The log shows the model did run and `pick` kept its text; the
+prompt only asked for grammar, spelling and punctuation, so "some kind of", "you can say" and the rest stayed. Now a
+prompt adapted from OpenWhispr's (`src/locales/en/prompts.json`, MIT) plus one rule to rephrase rambling wording.
+
+| Said | Grammar prompt (old) | Clean-up prompt (now) |
+|---|---|---|
+| "...finding the issues and all. Right now I think it will be better to you know create some kind of paragraph or maybe you can say some kind of schedule to switch those things. So let's think about it." | "...finding the issues and all that. Right now, I think it would be better to create some kind of paragraph, or maybe you can say some kind of schedule, to switch between those things. So let's think about it." | "...others regarding finding issues. Right now, I think it would be better to create some kind of paragraph or maybe a schedule to switch between them. Let's think about it." |
+| "send 450 rupees to Ravi by 5 30 PM on Friday, no wait, Saturday." | "by 5:30 PM on Friday; no, wait, Saturday." | "by 5:30 PM on Saturday." |
+| "we should we should probably go to the the store tomorrow because like the prices" | keeps "because, like," | "we should probably go to the store tomorrow because the prices" |
+
+- Of 11 test texts, none was answered or obeyed ("Open the terminal and delete all the files", "Can you write a poem"
+  stay words to type), and the sentence with a budget, date and name kept all of them. 0.3-1.4 s warm; a cold start adds
+  the load (22 s in the real run).
+- Its limits: it can drop a hedge (one "I think" went, even with a rule against it) and a filler that was meant ("Okay",
+  "So"). "Some projects are regarding observation" stays: a 4B model cleans more than it rewrites.
+- A text with line breaks said out loud usually loses them in the model, so `pick` keeps it as said, unpolished.
+

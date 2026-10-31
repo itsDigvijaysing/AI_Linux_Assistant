@@ -158,6 +158,9 @@ class EngineClient:
     def listen_now(self) -> None:
         self._send({"cmd": "listen_now"})
 
+    def playing_sample(self, path: str) -> None:
+        self._send({"cmd": "playing_sample", "path": path})
+
     def push_to_talk(self, pressed: bool) -> None:
         self._send({"cmd": "ptt", "pressed": bool(pressed)})
 

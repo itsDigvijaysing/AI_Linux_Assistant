@@ -101,7 +101,7 @@ PROFILE_KEYS = (
     "show_pill", "pill_always", "pill_position",
 )
 # State details the engine sends with "thinking" while the big model works; the bars and pill glow for them.
-BIG_WAKING, BIG_WORKING = "Waking the big model", "The big model is answering"
+BIG_WAKING, BIG_WORKING = "Waking up the big model", "The big model is answering"
 
 
 def is_big(detail: str) -> bool:

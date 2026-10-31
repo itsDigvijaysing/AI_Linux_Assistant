@@ -37,6 +37,10 @@ class Controller(GObject.Object):
             if self.engine is None:
                 client.close()
 
+    def playing_sample(self, path: str) -> None:
+        if self.engine is not None:
+            self.engine.playing_sample(path)
+
     def cancel_timer(self, tid: str) -> None:
         if self.engine is not None:
             self.engine.cancel_timer(tid)

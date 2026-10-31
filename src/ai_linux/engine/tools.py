@@ -86,6 +86,7 @@ class Tool:
     answers: bool = False  # its reply is the information asked for, so it is always spoken
     gate_id: str = ""  # MCP tools: mcp.<server>.<tool>
     asks: Callable[[dict], bool] = lambda args: False  # it asks the user itself for these arguments
+    writes: Callable[[dict], bool] = lambda args: False  # not gated, except with these arguments: they change things
 
     @property
     def speaks(self) -> bool:
@@ -95,6 +96,9 @@ class Tool:
     def gate_name(self) -> str:
         return {"desktop": f"desktop.{self.name}", "shell": "shell.run_command",
                 "mcp": self.gate_id}.get(self.family, self.name)
+
+    def gate_for(self, args: dict) -> str:
+        return f"desktop.{self.name}" if self.writes(args) else self.gate_name
 
     def schema(self) -> dict:
         return {"type": "function", "function": {
@@ -1280,7 +1284,8 @@ TOOLS: tuple[Tool, ...] = (
           "when": {"type": "string", "enum": ["today", "tomorrow", "overdue", "week"]},
           "task": {"type": "string", "description": "for complete: which task"}},
          run_todoist, _p_todoist, family="assistant", answers=True, required=("action",),
-         asks=lambda a: str(a.get("action")) == "complete"),
+         asks=lambda a: str(a.get("action")) == "complete",
+         writes=lambda a: str(a.get("action") or "list").lower() != "list"),
 )
 TODOIST_TOOLS = frozenset({"todoist"})  # on the menus only while a token is saved
 

@@ -23,6 +23,23 @@ log = logging.getLogger(__name__)
 PROTOCOL = "2025-06-18"
 START_S = 60.0  # npx/uvx may fetch the package on first start
 CALL_S = 30.0
+_running: set[McpServer] = set()  # from the moment each process exists: quitting can't wait for one to answer
+_running_lock = threading.Lock()
+
+
+def _close_each(servers: list) -> None:
+    """All at once: one can take 3 s to stop, and the app gives quitting 4 s."""
+    threads = [threading.Thread(target=server.close) for server in servers]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+
+def close_all() -> None:
+    with _running_lock:
+        servers = list(_running)
+    _close_each(servers)
 
 
 class McpError(Exception):
@@ -39,6 +56,8 @@ class McpServer:
         argv = [str(spec["command"]), *(str(a) for a in spec.get("args") or [])]
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                      env=env, start_new_session=True)
+        with _running_lock:
+            _running.add(self)
         self._id = 0
         self._lock = threading.Lock()
         self._pending: dict[int, tuple[threading.Event, dict]] = {}
@@ -134,6 +153,8 @@ class McpServer:
         return not result.get("isError"), "\n".join(parts).strip()
 
     def close(self) -> None:
+        with _running_lock:
+            _running.discard(self)
         if self.proc.poll() is None:
             try:
                 os.killpg(self.proc.pid, signal.SIGTERM)
@@ -200,6 +221,7 @@ class McpTools:
         self._tools: list[tuple[str, str, Tool]] = []  # (server, its own tool name, the tool)
         self.catalog: dict[str, list[dict]] = {}  # every tool each server offers, for the Tools page switches
         self._lock = threading.Lock()
+        self._closed = False
         notice = notice or (lambda level, text: None)
         taken = {t.name for t in TOOLS}
 
@@ -215,6 +237,9 @@ class McpTools:
                 notice("warning", f"The {spec.get('name')} server didn't start: {exc}")
                 return
             with self._lock:
+                if self._closed:  # slower than the wait below, and already replaced
+                    server.close()
+                    return
                 self.servers.append(server)
                 listed = []
                 for info in infos:
@@ -242,6 +267,8 @@ class McpTools:
             return [t for server, raw, t in self._tools if raw not in disabled.get(server, ())]
 
     def close(self) -> None:
-        for server in self.servers:
-            server.close()
+        with self._lock:
+            self._closed = True
+            servers = list(self.servers)
+        _close_each(servers)
 

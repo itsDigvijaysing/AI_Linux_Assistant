@@ -2,7 +2,7 @@
 //
 //   Source:  https://github.com/avifenesh/computer-use-linux
 //            gnome-shell-extension/computer-use-linux@avifenesh.dev/extension.js
-//   License: MIT. Copyright (c) 2026 Avi Fenesh  (see LICENSE.computer-use-linux)
+//   License: MIT. Copyright (c) 2026 Avi Fenesh  (see LICENSES/computer-use-linux.txt)
 //
 // Why it lives here: on Wayland, only code running inside gnome-shell can enumerate or focus
 // windows. The computer-use-linux Rust binary (the GUI-automation backend) calls this session

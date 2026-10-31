@@ -25,7 +25,7 @@ class PresetTests(unittest.TestCase):
             self.assertTrue(s["confirm"] and s["enabled"])  # asks before each use, like a hand-added server
             self.assertFalse(any("~" in a for a in s["args"]))
             self.assertRegex(s["name"], r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
-            self.assertNotIn("—", p.title + p.blurb)
+            self.assertNotIn("\u2014", p.title + p.blurb)
 
     def test_only_read_only_tools_start_on(self):
         self.assertNotIn("read_text_file", mcp_presets.get("files").off)

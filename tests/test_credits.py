@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -33,6 +34,14 @@ class CreditsTests(unittest.TestCase):
         for c in credits.by_kind("code"):
             self.assertTrue(c.licence_file and (ROOT / c.licence_file).is_file(), c.name)
             self.assertTrue(c.owner, c.name)
+
+    def test_licence_texts_live_in_one_folder(self):
+        for c in credits.by_kind("code"):
+            self.assertTrue(c.licence_file.startswith("LICENSES/"), c.name)
+
+    def test_the_copied_jiwo_prompt_is_credited_under_its_own_licence(self):
+        code = {c.name: c for c in credits.by_kind("code")}
+        self.assertEqual(code["jiwo"].licence, "MIT")
 
     def test_a_few_names_are_featured(self):
         self.assertIn(len(credits.featured()), (4, 5))
@@ -102,6 +111,21 @@ class SyncRefsTests(unittest.TestCase):
         self.make_clone(dirty=True)
         self.assertEqual(sync_refs.sync(self.credit, self.refs), "skipped: local edits")
         self.assertEqual((self.refs / "demo" / "a.txt").read_text(), "changed")
+
+
+
+class AboutTests(unittest.TestCase):
+    def test_about_links_the_repo_instead_of_a_name(self):
+        try:
+            from ai_linux import app
+        except (ImportError, ValueError):
+            self.skipTest("GTK 4 not available")
+        with mock.patch.object(app.Adw, "AboutDialog") as dialog:
+            app.App._about(mock.Mock())
+        kw = dialog.call_args.kwargs
+        self.assertEqual(kw["website"], "https://github.com/itsDigvijaysing/AI_Linux_Assistant")
+        self.assertEqual(kw["developer_name"], "github.com/itsDigvijaysing/AI_Linux_Assistant")
+        self.assertNotIn("comments", kw)  # with any, the website moves off the main page into Details
 
 
 if __name__ == "__main__":

@@ -288,3 +288,10 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+def stopped_note(settings) -> str:
+    """Off is set per power source, so plugging in or out can change it; muting is not the same and has no note."""
+    if settings.get("listen_mode") != "off" or settings.get("muted"):
+        return ""
+    return f"Listening is off {'on the charger' if settings.active_profile() == 'charger' else 'on battery'}"

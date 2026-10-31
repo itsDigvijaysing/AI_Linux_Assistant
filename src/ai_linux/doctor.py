@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import glob
 import json
 import logging
 import os
@@ -35,8 +34,6 @@ GROUPS = (
 FIXES = ("enable_autostart", "start_ollama", "open_models")
 # ydotool is optional: without its daemon, pasting goes through the desktop's RemoteDesktop portal.
 DESKTOP_TOOLS = {"brightnessctl": "brightnessctl", "playerctl": "playerctl", "wl-copy": "wl-clipboard"}
-AEC_GLOBS = ("/usr/lib/*/spa-0.2/aec/libspa-aec-webrtc.so", "/usr/lib/spa-0.2/aec/libspa-aec-webrtc.so",
-             "/usr/lib64/spa-0.2/aec/libspa-aec-webrtc.so")
 PCI_IDS = ("/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids")
 GPU_VENDORS = {"0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel"}
 SYS_ROOT = Path("/sys")
@@ -217,12 +214,17 @@ def check_microphone(probe: _Probe) -> Check:
 
 @_check("aec", "Echo cancellation", "voice")
 def check_aec(probe: _Probe) -> Check:
-    if any(glob.glob(p) for p in AEC_GLOBS):
+    from ai_linux.engine_client import find_python
+    python = find_python()
+    found = python is not None and subprocess.run(
+        [python, "-c", "import importlib.util as u, sys; sys.exit(u.find_spec('pywebrtc_audio') is None)"],
+        capture_output=True, timeout=10).returncode == 0
+    if found:
         return Check("aec", "Echo cancellation", "ok", "Available, so you can talk over replies on speakers",
                      group="voice")
     return Check("aec", "Echo cancellation", "warn",
-                 "WebRTC echo cancellation not found: interrupting on speakers won't work. "
-                 "Install libspa-0.2-modules.", group="voice")
+                 "pywebrtc-audio isn't in the engine's Python, so Phoenix doesn't listen while it speaks. Stop it with "
+                 "Cancel or the hotkey.", group="voice")
 
 
 # ---- Ollama and models ----
