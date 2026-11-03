@@ -382,11 +382,15 @@ class Engine:
             if self.state in ("loading", "muted", "off", "error"):
                 self.set_state("idle")
         elif mode == "hotkey":
+            self.followup_until = 0.0  # with the mic closed nothing would end the window
+            if self.ptt or time.monotonic() < self.armed_until:
+                return  # the hotkey is listening: its end closes the mic
             self._capture(False)
-            if self.state in ("loading", "muted", "off", "error"):
+            if self.state in ("loading", "muted", "off", "error", "followup"):
                 self.set_state("idle")
         else:
             self._capture(False)
+            self.followup_until = 0.0  # a timer's ring would bring the window back, and nothing would end it
             self.set_state("muted")
 
     def _starting(self) -> bool:
@@ -428,6 +432,9 @@ class Engine:
 
     def _rest(self) -> None:
         """Nothing going on: the mic and the state the listen mode asks for."""
+        if self.ptt:  # hold-to-talk is still held: its release ends listening and closes the mic
+            self.set_state("listening")
+            return
         self._mic_after_turn()
         self.set_state("muted" if self.s.get("listen_mode") == "off" else "idle")
 
@@ -548,7 +555,7 @@ class Engine:
             self._hold.clear()
             return
         log.info("barge-in heard %s: the reply stops", self._words_for_log(heard))
-        self.cancel_turn()
+        self.cancel_turn(listening=True)  # the mic stays open: what was said may be the name, waiting for more
         self.work.put(("heard", heard, 0.0))
 
     def _words_for_log(self, text: str) -> str:
@@ -709,10 +716,12 @@ class Engine:
             self.cue("sleep")  # woke, heard no request, going back to sleep
 
     def _settle(self) -> None:
-        """Back to what is still going on: the hotkey or hold-to-talk, a window, or nothing."""
+        """Back to what goes on: the hotkey or hold-to-talk, a request being answered, a window, or nothing."""
         now = time.monotonic()
         if self.ptt or now < self.armed_until:
             self.set_state("listening")
+        elif self._busy and not self.cancel.is_set():
+            self.set_state("thinking", self._think_detail)
         elif self.dictating or now < self.followup_until:
             self.set_state("followup", "Dictating" if self.dictating else "")
         else:
@@ -828,7 +837,7 @@ class Engine:
             if dictation.start(text) is not None:
                 self._dictate(text)  # typed where the cursor is, never acted on
                 return
-            if self.s.get("listen_mode") == "hotkey":
+            if self.s.get("listen_mode") == "hotkey" and not self.ptt:  # a held key's release closes it
                 self._capture(False)
         text = str(payload).strip() if kind == "text" else text
         if kind == "text" and self.dictating and dictation.split_stop(text)[1]:
@@ -944,7 +953,11 @@ class Engine:
                 if cancel.is_set():
                     continue
                 asked = self.asking and self.s.get("listen_mode") == "hotkey"  # the answer needs no second press
-                if self.sleep_after or (self.s.get("listen_mode") in ("hotkey", "off") and not asked):
+                if self._busy:  # the next request is already being answered: its own end opens the window
+                    self.set_state("thinking", self._think_detail)
+                elif self.dictating:  # a request typed while dictating: dictation's own window goes on
+                    self._settle()
+                elif self.sleep_after or (self.s.get("listen_mode") in ("hotkey", "off") and not asked):
                     self.sleep_after = False  # no mic to end a window
                     self.followup_until = 0.0
                     self._rest()
@@ -1081,7 +1094,8 @@ class Engine:
                     break
         finally:
             self.confirming = False
-            if not was_capturing and self.s.get("listen_mode") in ("hotkey", "off"):
+            pressed = self.ptt or time.monotonic() < self.armed_until  # the hotkey dropped the question to listen
+            if not was_capturing and self.s.get("listen_mode") in ("hotkey", "off") and not pressed:
                 self._capture(False)
 
     def _set_voice(self, voice: str, announce: bool = True) -> bool:

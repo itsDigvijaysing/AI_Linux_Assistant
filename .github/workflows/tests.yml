@@ -56,4 +56,4 @@ jobs:
       - name: Tests
         run: >-
           /tmp/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation
-          tests.test_wake tests.test_echo
+          tests.test_wake tests.test_echo tests.test_live_text tests.test_states

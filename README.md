@@ -115,7 +115,7 @@ OpenVINO or a downloaded model skip themselves when those are missing.
 ```
 
 ```bash
-~/.local/share/ai-linux/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation tests.test_wake tests.test_echo
+~/.local/share/ai-linux/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation tests.test_wake tests.test_echo tests.test_live_text tests.test_states
 ```
 
 GitHub runs both on every push and pull request (`.github/workflows/tests.yml`: Python 3.14 on Ubuntu 24.04, with

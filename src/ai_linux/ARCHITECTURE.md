@@ -298,11 +298,23 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   also closes the no-name window. `listen_now` running out now works with frames flowing (it used to be checked only
   on an empty queue, which a live mic never has), and releasing hold-to-talk keeps what was recorded wake-free
   (`PTT_END_S`; it was dropped unless the name was said).
+- **State tests** (`tests/test_states.py`, 2026-11-03): the real Engine with `create_autospec` fakes of the audio,
+  speech recognition, voice and Brain classes, driven by seeded random sequences of events (speech, hotkey,
+  hold-to-talk, listen modes, Mute, profile changes, dictation, timers, questions, typed text, quitting), with the
+  states, the mic and the requests checked after each. `PHOENIX_STATE_SEEDS=500` runs more. What they changed:
+  hotkey or off mode ends a follow-up window (nothing could close it with the mic shut); switching to hotkey mode
+  leaves the mic to a hotkey still listening; while hold-to-talk is held, `_rest` shows listening and neither it nor
+  a request in hotkey mode closes the mic, the release does; a question asked out loud doesn't close the
+  mic when the hotkey dropped it to listen; a barge-in that stops the reply keeps the mic open (`listening=True`), so
+  the name said over a reply while muted ends its window; `_settle` shows thinking while a request is answered (after
+  a ring or a noise); the end of a reply shows thinking when the next request is already answered, and keeps
+  dictation's window when the request was typed while dictating.
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)
 - Routing re-measured on 2026-10-29 for chat (above); a full task re-run on the 27-tool menu is still open.
-  Voice-not-heard follow-ups: follow a changed default mic, retry an empty transcription.
+  Voice-not-heard follow-ups are in (a changed default mic needs nothing; an empty decode is tried once more):
+  check both live, and drop the retry if engine.log never shows it bringing back words.
 - **Not committed yet:** everything since `a6a1c9c` (live words, pill caption, Dark theme, Knowledge, load modes,
   starting and big-model effects, colour blends, New Session, the Phoenix rename, the bare-wake-word and shortcut-text
   fixes, and the 2026-10-29 Home row, Speed and Battery, Delete This Session, About and Tools changes, and batches 2 and 3: sleep and quick rules, sounds, pill
