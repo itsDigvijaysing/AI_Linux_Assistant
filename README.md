@@ -84,7 +84,12 @@ GTK4 app (system Python)                    engine child process (venv)
 - `src/ai_linux/`: the app. `engine/` is the speech loop, `safety/` the action gate and denylist, `ui/` the pages.
 - Design, contracts and open work: [src/ai_linux/ARCHITECTURE.md](src/ai_linux/ARCHITECTURE.md).
 - Security model: [SECURITY.md](SECURITY.md).
-- `src/glados/` is the older v2 engine, kept only as the source the safety code was ported from.
+- v2 (a GNOME Shell extension on a GLaDOS-based engine) is no longer in the tree; the safety code was ported from
+  it. Find it in git history: `git log -- src/glados`.
+- Coming from v2: don't run its old `./ai-linux uninstall`, because it also deletes `~/.local/state/ai-linux` and
+  tools Phoenix still uses. Remove v2's own pieces by hand: `gnome-extensions uninstall ai-linux-assistant@local`,
+  `conda env remove -n AI_Linux`, and `~/.local/share/applications/ai-linux-assistant.desktop` with its icon
+  `ai-linux-assistant.svg`. Keep `/etc/udev/rules.d/99-ai-linux-uinput.rules` only if you type through ydotool.
 
 ## Development
 
@@ -116,4 +121,5 @@ tools, history, knowledge and health checks. Still to do: a long live voice run 
 ## License
 
 MIT. See [LICENSE](LICENSE). The models keep their own licences (Apache-2.0 for Qwen3.5, Gemma 4, jiwo and Laya;
-CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on. Copied code keeps its own licence: see [LICENSES/](LICENSES).
+CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on and whose speech recognition
+code Phoenix adapts. Copied code keeps its own licence: see [LICENSES/](LICENSES).

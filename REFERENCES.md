@@ -18,10 +18,10 @@ GPL-3.0 and RealtimeVoiceChat has no licence file: read them, copy nothing.
 
 ## Study of 2026-10-28 (clones refreshed the same day, about 95 MB)
 
-**GLaDOS** (`ea018f5`, 2026-10-10). Since our June copy, speech recognition and voice detection changed in one way
-only: `src/glados/onnx_runtime.py` picks a GPU backend (CUDA, MIGraphX, ROCm, OpenVINO) with CPU fallback for all
-audio models. No accuracy or bug fixes to port. The OpenVINO provider is the route for running Parakeet on the Intel
-GPU, if `onnxruntime-openvino` replaces the CPU-only `onnxruntime`.
+**GLaDOS** (`ea018f5`, 2026-10-10). Since the June copy v2 vendored, speech recognition and voice detection changed in
+one way only: upstream's `src/glados/onnx_runtime.py` picks a GPU backend (CUDA, MIGraphX, ROCm, OpenVINO) with
+CPU fallback for all audio models. No accuracy or bug fixes to port. The OpenVINO provider is the route for running
+Parakeet on the Intel GPU, if `onnxruntime-openvino` replaces the CPU-only `onnxruntime`.
 
 **computer-use-linux** (0.7.31, 2026-10-28). The `screenshot` tool and its `title` argument are unchanged, so
 `bin/ai-linux-screenshot` keeps working. The installed binary is the June build. Newer builds shrink screenshots by

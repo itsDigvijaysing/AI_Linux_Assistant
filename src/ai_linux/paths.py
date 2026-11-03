@@ -20,7 +20,7 @@ CONFIG_DIR = _xdg("XDG_CONFIG_HOME", ".config") / "ai-linux"
 DATA_DIR = _xdg("XDG_DATA_HOME", ".local/share") / "ai-linux"
 STATE_DIR = _xdg("XDG_STATE_HOME", ".local/state") / "ai-linux"
 CACHE_DIR = _xdg("XDG_CACHE_HOME", ".cache") / "ai-linux"
-# v2's launcher owns settings.json; v3 keeps its own file until v2 is removed.
+# app.json, not settings.json: v2's launcher used that name, so an old file is never misread.
 SETTINGS_FILE = CONFIG_DIR / "app.json"
 MODELS_DIR = DATA_DIR / "models"
 HISTORY_DB = DATA_DIR / "history.db"

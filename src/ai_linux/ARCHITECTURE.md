@@ -2,7 +2,9 @@
 
 One GTK4/libadwaita process on system Python 3.14 + python3-gi. No webview, no Shell extension.
 The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine`, venv `~/.local/share/ai-linux/venv`).
-`src/glados` (v2) stays only as the source the safety code was ported from; v3 imports nothing from it.
+v2 (`src/glados`, the GNOME Shell extension, `configs/` and the `./ai-linux` launcher) is removed; the safety code
+was ported from it and it stays in git history. `pyproject.toml` describes v3 (`ai-linux`, Python 3.14) with `app`
+and `engine` groups; `requirements-engine.txt` stays the engine's source of truth (`tests/test_pyproject.py`).
 
 ## Run
 - `bin/ai-linux-app` (window) · `--background` (tray only) · `--demo` (simulated turns) · `--toggle` / `--mute` / `--unmute` / `--quit` (forwarded to the running instance).
@@ -268,7 +270,6 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   command, hearing and barge-in fixes, 14 review fixes, Speed per profile with one model choice, Models page redesign). Ask before committing.
 - Laya: uploaded to `itsDigvijaysing/laya-typed-decisions-openvino` (commit `c1014fc`, pinned); one full download
   check through the Models page is still to do (it was cut off by a weak connection).
-- `pyproject.toml` is still the v2 `glados` package.
 - User-only: a live voice run on the real desktop (including the name test), and a look at the new pieces live:
   the pill while starting and with the big model's glow, the colour blends, Home's row, Mute, New Session and
   Delete This Session (with Undo), the Speed row on Home and the Models page, the About window's credits, the

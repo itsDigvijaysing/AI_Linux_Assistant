@@ -59,7 +59,7 @@ def main() -> int:
 
     binary = _resolve_binary()
     if not binary:
-        sys.stderr.write("computer-use-linux not found, run ./ai-linux setup\n")
+        sys.stderr.write("computer-use-linux not found, install it into ~/.local/bin\n")
         return 1
 
     # Minimal MCP (JSON-RPC over stdio) handshake + a single screenshot tool call.
@@ -101,7 +101,7 @@ def main() -> int:
                 b64 = block["data"]
                 break
     if not b64:
-        sys.stderr.write("no image returned (is screen capture permitted? re-run ./ai-linux setup)\n")
+        sys.stderr.write("no image returned (is screen capture permitted?)\n")
         return 1
 
     with open(out, "wb") as fh:

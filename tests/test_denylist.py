@@ -1,6 +1,6 @@
 """Regression tests for the catastrophic-command denylist (ai_linux.safety.denylist).
 
-Covers every case the old src/glados denylist blocked, each bypass the 2026-10-27 audit found, and
+Covers every case v2's denylist blocked (src/glados in git history), each bypass the 2026-10-27 audit found, and
 benign controls that MUST stay allowed (the denylist is catastrophic-only). Run:
     PYTHONPATH=src python3 -m unittest tests.test_denylist -v
 """

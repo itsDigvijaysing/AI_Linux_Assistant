@@ -1,6 +1,6 @@
 """Action safety gate (AI_Linux v3, GTK-free).
 
-Decides whether a tool call may run. Ported from src/glados/core/tool_safety.py, with the env-var
+Decides whether a tool call may run. Ported from v2's core/tool_safety.py (src/glados in git history), with the env-var
 policy (GLADOS_ALLOW_ACTIONS / GLADOS_CONFIRM_TOOLS) replaced by an explicit ``ActionGate`` config
 object, so the app wires it from Settings and tests construct it directly.
 
