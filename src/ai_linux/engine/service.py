@@ -32,6 +32,7 @@ END_SILENCE = 22  # silent frames that end an utterance (~0.7 s)
 MAX_FRAMES = 470  # ~15 s
 MIN_SPEECH = 8  # voiced frames for a real utterance (~0.25 s)
 MIN_NAME = 2  # waiting for the name: only the name can act on the words, and a quick "Phoenix" scores this low
+EMPTY_RETRY_RMS = 0.001  # OpenWhispr's silence floor: below it an empty decode is right, not worth a retry
 LISTEN_VAD = 0.5  # voice probability that starts a recording while we are silent (Silero's default)
 BARGE_VAD = 0.3  # echo cancelling eats half the user's frames while we talk; our cancelled voice stays well under
 BARGE_WINDOW, BARGE_FRAMES = 12, 5  # 5 voiced of the last 12 frames (~0.4 s) pause the reply (2026-10-30 tests)
@@ -97,6 +98,7 @@ class Engine:
         self._mcp_lock = threading.Lock()  # two quick setting changes must not each keep a set of servers
         self.timers = None
         self._mic = mic_watch.SilenceWatch()
+        self._sample_own = None  # the echo reference key of the voice sample the app is playing
         self._mic_reopened = False  # one quiet re-open before warning
         self._stop = threading.Event()
         self._lock = threading.RLock()
@@ -320,6 +322,17 @@ class Engine:
                 warm(MAX_FRAMES * FRAME_S, self._asr_lock)
         except Exception:
             log.exception("warming speech recognition")
+
+    def _transcribe(self, audio) -> str:
+        """The words of a finished recording. Voice that decodes to nothing gets one more try, as in OpenWhispr's
+        parakeetServer.js: an empty decode of audible audio loses the whole request."""
+        text = (self.asr.transcribe(audio) or "").strip()
+        if text or not isinstance(audio, np.ndarray) or not audio.size:
+            return text
+        if float(np.sqrt(np.mean(np.square(audio, dtype=np.float64)))) < EMPTY_RETRY_RMS:
+            return text
+        log.warning("voice decoded to nothing (%.1f s); trying once more", audio.size / 16000)
+        return (self.asr.transcribe(audio) or "").strip()
 
     # live words
 
@@ -752,7 +765,7 @@ class Engine:
             asked = pressed or t_start < self.followup_until
             t0 = time.monotonic()
             with self._asr_lock:  # waits for a live update still running (at most one, ~0.1 s on the GPU)
-                text = (self.asr.transcribe(payload) or "").strip()
+                text = self._transcribe(payload)
             asr_s = time.monotonic() - t0
             log.info("heard %s (%.2fs)", self._words_for_log(text), asr_s)
             if self.armed_until:
@@ -1103,16 +1116,18 @@ class Engine:
         time.sleep(1.2)  # let the sound finish before the voice
         self.say_q.put(("ring", text))
 
-    def _hear_own(self, samples, rate: int) -> None:
+    def _hear_own(self, samples, rate: int):
         if self.audio is not None:
-            self.audio.hear_own(np.asarray(samples, np.float32), rate)
+            return self.audio.hear_own(np.asarray(samples, np.float32), rate)
+        return None
 
     def playing_sample(self, path: str) -> None:
         """The app plays a voice sample: our own sound, not a request. Empty: it stopped."""
         if self.audio is None:
             return
         if not path:
-            self.audio.stop_own()
+            self.audio.stop_own(self._sample_own)  # only the sample: a reply or cue under it goes on
+            self._sample_own = None
             return
         import soundfile as sf
 
@@ -1121,7 +1136,7 @@ class Engine:
         except Exception:
             log.exception("reading a voice sample")
             return
-        self._hear_own(sound.mean(axis=1), rate)
+        self._sample_own = self._hear_own(sound.mean(axis=1), rate)
 
     def _sleep(self) -> None:
         self.followup_until = 0.0

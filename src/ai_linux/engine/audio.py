@@ -7,6 +7,7 @@ of what was said even with nothing playing (2026-10-31, bench/README.md).
 
 from __future__ import annotations
 
+import itertools
 import os
 import queue
 import secrets
@@ -41,7 +42,8 @@ class PipeWireAudioIO:
         self._sample_queue: queue.Queue[tuple[NDArray[np.float32], bool]] = queue.Queue()
 
         self._echo = echo.load()
-        self._late: tuple | None = None  # a sound that started with the mic closed: (samples, rate, when)
+        self._late: dict[int, tuple] = {}  # sounds that started with the mic closed: key -> (samples, rate, when)
+        self._keys = itertools.count(1)
 
         # capture state: `input_stream` mirrors the sounddevice attr the overlay bridge checks for "listening"
         self.input_stream: object | None = None
@@ -63,27 +65,36 @@ class PipeWireAudioIO:
         """False means no barge-in: the engine doesn't listen while it speaks."""
         return self._echo is not None and self._echo.ok
 
-    def hear_own(self, sound: NDArray[np.float32], rate: int) -> None:
-        """A sound of ours starts now. With the mic closed nothing would pace it, so only what is left when it opens."""
-        if self._echo is None:
-            return
-        if self._rec_proc is None:
-            self._late = (sound, rate, time.monotonic())
-            return
-        self._echo.feed(sound, rate)
+    def hear_own(self, sound: NDArray[np.float32], rate: int) -> int:
+        """A sound of ours starts now. With the mic closed nothing would pace it, so only what is left when it opens.
 
-    def stop_own(self) -> None:
-        self._late = None
+        The key it returns ends only this sound (``stop_own``), so a cue ending keeps the sentence under it."""
+        key = next(self._keys)
+        if self._echo is None:
+            return key
+        if self._rec_proc is None:
+            self._late[key] = (sound, rate, time.monotonic())
+            return key
+        self._echo.feed(sound, rate, key)
+        return key
+
+    def stop_own(self, key: int | None = None) -> None:
+        """That sound ended; with no key, every sound of ours."""
+        if key is None:
+            self._late.clear()
+        else:
+            self._late.pop(key, None)
         if self._echo is not None:
-            self._echo.stop()
+            self._echo.stop(key)
 
     def _feed_late(self) -> None:
-        late, self._late = self._late, None
-        if late is not None and self._echo is not None:
-            sound, rate, began = late
+        late, self._late = list(self._late.items()), {}  # a copy: stop_own on another thread may still change it
+        if self._echo is None:
+            return
+        for key, (sound, rate, began) in late:
             left = sound[int((time.monotonic() - began) * rate):]
             if left.size:
-                self._echo.feed(left, rate)
+                self._echo.feed(left, rate, key)
 
     def get_sample_queue(self) -> queue.Queue[tuple[NDArray[np.float32], bool]]:
         return self._sample_queue
@@ -200,8 +211,9 @@ class PipeWireAudioIO:
         timed_out = False
         play_rc: int | None = None
         t0 = time.monotonic()
+        own = None  # None until fed: then a failure still clears every reference, as before
         try:
-            self.hear_own(audio, sr)  # just before it plays: the reference may lead the echo, never follow it
+            own = self.hear_own(audio, sr)  # just before it plays: the reference may lead the echo, never follow it
             self._play_proc = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             while self._play_proc.poll() is None:
                 if stop.is_set():
@@ -232,7 +244,7 @@ class PipeWireAudioIO:
                 play_rc = p.returncode
             self._play_proc = None
             self._is_playing = False
-            self.stop_own()
+            self.stop_own(own)
             try:
                 os.unlink(path)
             except Exception:  # noqa: BLE001

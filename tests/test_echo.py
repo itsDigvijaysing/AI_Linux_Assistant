@@ -115,6 +115,46 @@ class WhatItIsFed(unittest.TestCase):
         c.clean(frame())
         self.assertAlmostEqual(float(aec.calls[0][1][0]), 0.3, places=5)
 
+    def test_a_cue_ending_leaves_the_sentence_under_it(self):
+        aec = FakeAec()
+        c = echo.Canceller(aec)
+        c.feed(np.full(16000, 0.1, np.float32), 16000, "sentence")
+        c.feed(np.full(16000, 0.2, np.float32), 16000, "cue")
+        c.stop("cue")
+        c.clean(frame())
+        self.assertAlmostEqual(float(aec.calls[0][1][0]), 0.1, places=5)
+        self.assertEqual(c.pending(), 16000 - len(aec.calls) * 160)
+
+    def test_the_sentence_ending_leaves_the_cue_over_it(self):
+        aec = FakeAec()
+        c = echo.Canceller(aec)
+        c.feed(np.full(16000, 0.1, np.float32), 16000, "sentence")
+        c.feed(np.full(1600, 0.2, np.float32), 16000, "cue")
+        c.stop("sentence")
+        c.clean(frame())
+        self.assertAlmostEqual(float(aec.calls[0][1][0]), 0.2, places=5)
+        self.assertEqual(c.pending(), 1600 - len(aec.calls) * 160)
+
+    def test_a_sound_that_ran_out_is_gone_but_the_other_plays_on(self):
+        aec = FakeAec()
+        c = echo.Canceller(aec)
+        c.feed(np.full(16000, 0.1, np.float32), 16000, "sentence")
+        c.feed(np.full(320, 0.2, np.float32), 16000, "cue")
+        for _ in range(2):
+            c.clean(frame())
+        self.assertAlmostEqual(float(aec.calls[-1][1][0]), 0.1, places=5)
+        c.stop("cue")  # already over: changes nothing
+        c.clean(frame())
+        self.assertAlmostEqual(float(aec.calls[-1][1][0]), 0.1, places=5)
+
+    def test_stopping_with_no_name_ends_every_sound(self):
+        aec = FakeAec()
+        c = echo.Canceller(aec)
+        c.feed(np.ones(16000, np.float32), 16000, "sentence")
+        c.feed(np.ones(16000, np.float32), 16000, "cue")
+        c.stop()
+        self.assertEqual(c.pending(), 0)
+
 
 class FailsSafe(unittest.TestCase):
     def test_a_broken_canceller_gives_back_the_plain_mic(self):

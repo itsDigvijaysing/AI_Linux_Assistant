@@ -114,13 +114,17 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   (pre-roll adjusted), not its end, so a long sentence begun in the window counts. During a confirmation a reply that
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
-  logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
+  logged, not fatal). `_drain` keeps timer rings when a turn is cancelled. A finished recording that decodes to
+  nothing although its RMS is at least 0.001 is decoded once more (`_transcribe`, OpenWhispr's parakeetServer.js),
+  then dropped quietly as before; the retry logs "voice decoded to nothing".
 - **Echo cancel** (`engine/echo.py`, 2026-10-31; numbers in `bench/README.md`): nothing is loaded into PipeWire and no
   quantum is forced. The mic is the plain default source. While we make a sound the reader thread runs each frame
   through WebRTC's AEC3 (pywebrtc-audio) with that exact sound as the reference, in lock-step 10 ms blocks, plus 0.5 s
   after it ends; otherwise the frame passes untouched, so this can't deafen the mic. The reference is fed just before
   `pw-play` starts, so it leads the echo (measured lag 118-180 ms) and AEC3 finds the delay. Cues and the Voice page's
-  samples are references too. Library missing or broken: `_aec_ok` is False and Phoenix doesn't listen while speaking.
+  samples are references too. Each sound is its own reference, mixed with any other playing (a cue over a sentence),
+  and ends on its own: `hear_own` returns a key, `stop_own(key)` drops only that sound, `stop_own()` all of them.
+  Library missing or broken: `_aec_ok` is False and Phoenix doesn't listen while speaking.
   PipeWire's `module-echo-cancel` was dropped: in power saver it lost most near speech even with nothing playing.
 - **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
   VAD 0.3 pause the reply. The reply is held, not dropped: every recording made during a hold is transcribed, however
@@ -191,6 +195,12 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   first reopens the capture once, quietly (OpenWhispr's re-acquire), then sends an error notice naming the desktop's
   input (`wpctl inspect @DEFAULT_AUDIO_SOURCE@`); a working mic after echo cancelling never measured below 51. Seen
   2026-10-28: the USB card's profile flipped to its S/PDIF input.
+- **Changed default mic**: nothing to do in the engine. `pw-record` without `--target` sets no `target.object`
+  (pw-cat.c, PipeWire 1.x), so WirePlumber links it to the default source, and WirePlumber 0.5 rescans on any change
+  of `default.audio.source` in the "default" metadata (`linking/rescan-trigger` in `scripts/linking/rescan.lua`) and
+  moves a stream that isn't linked to the target it now finds, unless the stream sets `node.dont-reconnect`
+  (`linking/prepare-link.lua`). So choosing another input in Settings moves the running capture, unlike OpenWhispr's
+  browser capture, which needs `activeMicRecovery.js`. Checked against WirePlumber 0.5.19's scripts, 2026-11-03.
 - **Paste** (`engine/tools.py` `paste_text`, OpenWhispr's GNOME order): clipboard, then the RemoteDesktop portal if a
   restore token is saved (`~/.local/state/ai-linux/portal-paste-token`), else ydotool when its daemon runs, else the
   portal with its one-time permission dialog, else "press Control V". Terminals (found through AT-SPI) get
