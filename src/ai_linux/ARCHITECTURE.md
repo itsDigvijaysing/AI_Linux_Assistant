@@ -12,6 +12,18 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   `scripts/headless-run.sh bin/ai-linux-app --screenshot /path/out.png --page home --state listening`
   (throwaway XDG dirs and app id; tray, pill and hotkey are skipped in screenshot mode).
 
+## Install (`scripts/install.sh`, `scripts/uninstall.sh`)
+- One sudo step for the missing apt packages, listed first. Then, as the user: the app copied to
+  `~/.local/share/ai-linux/app` (`--link`: the checkout), the engine venv from `requirements-engine.txt` (system
+  Python 3.14, else uv), `~/.local/bin/ai-linux-app` plus `desktop_entry.install()`, Ollama through
+  `ollama.install_release` and started by `OllamaManager._start_sync` (the transient user unit, no unit file), and
+  the speech and small models through `downloads` (the ones the user's settings pick; voices by loading
+  `engine/tts.py` once). An embedded Python helper calls these modules, so there is no second copy of them.
+- Re-runs skip done steps (venv stamped with the requirements' hash); `--dry-run` writes nothing; settings are read
+  from a copy, never migrated. `uninstall.sh` keeps settings, history, knowledge, logs, models and the voices
+  (`~/.cache/supertonic3`) unless `--purge`, and never touches `~/.ollama`, a system `ollama.service` or apt packages.
+- Health finds a stopped managed Ollama in `ollama/<version>/bin` (it used to say "Not installed" until it started).
+
 ## Foundation (shared, owned by the lead; builders read, do not edit)
 | Module | What |
 |---|---|

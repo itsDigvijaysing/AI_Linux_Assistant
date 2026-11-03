@@ -180,6 +180,22 @@ class OllamaTest(unittest.TestCase):
             manifest.write_text("{}")
             self.assertEqual(doctor.check_model_big(p).status, "ok")
 
+    def test_stopped_managed_ollama_is_installed(self):
+        # install_release (the Models page and scripts/install.sh) unpacks to ai-linux/ollama/<version>/bin/ollama
+        mgr = SimpleNamespace(status={"installed": True, "running": False, "binary": None}, start=lambda: None)
+        p = doctor._Probe(SimpleNamespace(settings=_Settings(), ollama=mgr))
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(doctor, "DATA_DIR", Path(tmp)), \
+                mock.patch.object(doctor, "_which", return_value=None), \
+                mock.patch.object(doctor, "_http_json", side_effect=OSError("refused")), \
+                mock.patch.object(os, "access", side_effect=lambda path, mode: str(path).startswith(tmp)):
+            binary = Path(tmp) / "ollama/0.40.11/bin/ollama"
+            binary.parent.mkdir(parents=True)
+            binary.write_text("")
+            self.assertEqual(doctor._ollama_binary(mgr), str(binary))
+            c = doctor.check_ollama(p)
+        self.assertEqual((c.status, c.fix_id), ("warn", "start_ollama"))
+
     def test_missing_ollama_fails(self):
         with mock.patch.object(doctor, "_http_json", side_effect=OSError("refused")), \
                 mock.patch.object(doctor, "_ollama_binary", return_value=None):

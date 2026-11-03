@@ -56,19 +56,25 @@ How they were chosen, with every measurement: [bench/README.md](bench/README.md)
 ```bash
 git clone https://github.com/itsDigvijaysing/AI_Linux_Assistant.git
 cd AI_Linux_Assistant
-
-# the speech engine's own environment (the GTK app itself uses system Python)
-python3 -m venv ~/.local/share/ai-linux/venv
-~/.local/share/ai-linux/venv/bin/pip install -r requirements-engine.txt
-
-bin/ai-linux-app
-
-# optional: add it to the app grid (user-level, no sudo; "uninstall" removes it)
-PYTHONPATH=src python3 -m ai_linux.desktop_entry install
+scripts/install.sh
 ```
 
-The first start walks through the microphone, the models and the listening mode. Models download from the Models page
-(big models through Ollama, the small model and speech models from Hugging Face and GitHub, with checksums).
+The installer lists the system packages it needs and asks once for sudo to install them; nothing needs sudo after
+that. The rest goes in your home folder: a copy of the app, the speech engine's Python 3.14 environment, Phoenix's own
+Ollama (a user service on port 11435; a system Ollama is left alone), the launcher in the app grid, and the speech
+recognition, voice and small router models (about 4 GB of downloads in all, checked and resumable). Run it again to
+update; `--dry-run` shows what it would do, `--help` lists the options. Then open Phoenix from the app grid: the first
+start walks through the microphone and the listening mode. Pick the big model on the Models page.
+
+`scripts/uninstall.sh` removes Phoenix and keeps your settings, history and models; `--purge` deletes those too.
+
+By hand, for development (`scripts/install.sh --link` does the same and runs the app from the checkout):
+
+```bash
+python3 -m venv ~/.local/share/ai-linux/venv
+~/.local/share/ai-linux/venv/bin/pip install -r requirements-engine.txt
+bin/ai-linux-app
+```
 
 Other ways to start: `bin/ai-linux-app --background` (tray only), `--demo` (simulated turns, no microphone),
 `--toggle`, `--mute`, `--unmute`, `--quit` (sent to the running app).
@@ -116,7 +122,7 @@ PyGObject from pip for the app's suite).
 ## Status
 
 v3 is a full rewrite as one desktop app. Working and tested: the app, engine, profiles, models, safety gate, MCP
-tools, history, knowledge and health checks. Still to do: a long live voice run on the real desktop, and an installer.
+tools, history, knowledge and health checks. Still to do: a long live voice run on the real desktop.
 
 ## License
 

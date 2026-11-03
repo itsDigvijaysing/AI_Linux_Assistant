@@ -270,7 +270,12 @@ def _ollama_binary(mgr) -> str | None:
     found = _which("ollama")
     if found:
         return found
-    for cand in (DATA_DIR / "ollama/bin/ollama", Path("/usr/local/bin/ollama"), Path("/usr/bin/ollama")):
+    # Our own builds live in ollama/<version>/bin (ollama.install_release), newest first as ollama.find_binary.
+    try:
+        managed = sorted((DATA_DIR / "ollama").glob("*/bin/ollama"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        managed = []
+    for cand in (*managed, DATA_DIR / "ollama/bin/ollama", Path("/usr/local/bin/ollama"), Path("/usr/bin/ollama")):
         if os.access(cand, os.X_OK):
             return str(cand)
     return None
