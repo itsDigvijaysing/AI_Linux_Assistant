@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import os
 import signal
 import subprocess
@@ -27,6 +28,14 @@ log = logging.getLogger(__name__)
 
 PROTOCOL = 1
 _STATES = {s.value for s in AssistantState}
+ENGINE_LOG_BYTES, ENGINE_LOG_BACKUPS = 1_000_000, 3  # like app.log
+
+
+def engine_log() -> logging.handlers.RotatingFileHandler:
+    """engine.log: only the app writes it (two processes rotating one file lose lines)."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return logging.handlers.RotatingFileHandler(LOG_DIR / "engine.log", maxBytes=ENGINE_LOG_BYTES,
+                                                backupCount=ENGINE_LOG_BACKUPS, encoding="utf-8", errors="replace")
 
 
 def find_python() -> str | None:
@@ -89,8 +98,7 @@ class EngineClient:
             self.bus.set_state(AssistantState.OFF, "Speech engine not installed")
             return
         self._stopping = False
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        err = open(LOG_DIR / "engine.log", "ab")
+        err = engine_log()
         env = {**os.environ, "PYTHONPATH": str(PACKAGE_DIR.parent), "PYTHONUNBUFFERED": "1"}
         bindir = Path.home() / ".local/bin"
         if str(bindir) not in env.get("PATH", ""):
@@ -188,12 +196,14 @@ class EngineClient:
 
     # events
 
-    def _log(self, proc: subprocess.Popen, sink) -> None:
-        with sink:
+    def _log(self, proc: subprocess.Popen, sink: logging.Handler) -> None:
+        """Copies the engine's stderr, so even a crash before its logging starts is kept."""
+        try:
             for line in proc.stderr:
                 self._tail.append(line.rstrip())
-                sink.write(line.encode(errors="replace"))
-                sink.flush()
+                sink.emit(logging.makeLogRecord({"msg": line.rstrip("\n")}))  # no args: a "%" stays as it is
+        finally:
+            sink.close()
 
     def _read(self, proc: subprocess.Popen) -> None:
         for line in proc.stdout:

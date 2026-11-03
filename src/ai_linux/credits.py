@@ -39,7 +39,8 @@ CREDITS: tuple[Credit, ...] = (
            "https://github.com/dnhkng/GLaDOS", "code", "David Ng", "LICENSES/GLaDOS.txt",
            "https://github.com/dnhkng/GLaDOS.git", featured=True),
     Credit("OpenWhispr", "Pasting at the cursor through the desktop portal; reopening a silent microphone; "
-           "pacing of the words shown while you speak; the dictation clean-up prompt", "MIT",
+           "trying once more when speech decodes to nothing; pacing of the words shown while you speak; "
+           "the dictation clean-up prompt", "MIT",
            "https://github.com/OpenWhispr/openwhispr", "code", "OpenWhispr Team", "LICENSES/OpenWhispr.txt",
            "https://github.com/OpenWhispr/openwhispr.git"),
     Credit("whisper-flow", "Which words shown while you speak have settled", "MIT",

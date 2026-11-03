@@ -49,9 +49,9 @@ _THANKS = re.compile(r"(?i)^(?:thanks|thank you|thanks a lot|thank you so much|c
 _HELP = re.compile(r"(?i)^(?:help|help me|what can you do|what else can you do|what do you do|what are you able to do|"
                    r"what can i ask you|what can i say|what are your (?:features|skills|abilities)|"
                    r"what things can you do|how can you help(?: me)?)[.!?]*$")
-_YOUTUBE = re.compile(r"(?i)^(?:please )?(?:(?:open|go to|launch) youtube (?:and |then )?)?"
-                      r"(?:play|search(?: for)?|find|put on|show me)\s+(.+?)"
-                      r"(?:\s+(?:on|in|from|using)\s+youtube)?[.!]*$")
+_YOUTUBE = re.compile(r"(?i)^(?:please )?(?:(?:can|could) you (?:please )?)?(?:(?:open|go to|launch) youtube "
+                      r"(?:and |then )?)?(play|search(?: for)?|find|put on|show me)\s+(.+?)"
+                      r"(?:\s+(?:on|in|from|using)\s+youtube)?[.!?]*$")
 
 HELP = ("I can open apps, files and websites, search the web or YouTube, change the volume and brightness, "
         "control music, lock the screen, take screenshots, tell the time and battery level, read your screen, "
@@ -102,7 +102,8 @@ def quick(text: str, name: str = "Phoenix") -> Quick | None:
                          "when you're done.")
     m = _YOUTUBE.match(t)
     if m and ("youtube" in t.lower()):
-        q = re.sub(r"(?i)\s+(?:video|videos)$", "", m.group(1)).strip()
+        q = re.sub(r"(?i)\s+(?:video|videos)$", "", m.group(2)).strip()
         if q and q.lower() not in ("it", "something", "music", "a video"):
-            return Quick("search_web", {"query": q, "site": "youtube"})
+            play = {"play": True} if m.group(1).lower() in ("play", "put on") else {}  # the first video, not a list
+            return Quick("search_web", {"query": q, "site": "youtube", **play})
     return None

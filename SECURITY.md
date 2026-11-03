@@ -17,9 +17,10 @@ code that does it, so it can be checked.
   small router (jiwo) and the big model (Ollama) all run on this computer. Ollama is Phoenix's own server on
   `127.0.0.1:11435`; Phoenix itself listens on no port.
 - **The internet only when you turn it on.** Model downloads; Web Access (weather from Open-Meteo, look-ups
-  from DuckDuckGo and Wikipedia, `engine/web.py`, fixed https hosts, off by default); Todoist once you save a
-  token (`engine/todoist.py`, `api.todoist.com` only); MCP servers you add. Web searches you ask for open in
-  your browser. OpenVINO's analytics sender is blocked inside the process (`engine/jiwo.py`).
+  from DuckDuckGo and Wikipedia, the first video of a YouTube search you ask to play, `engine/web.py`, fixed
+  https hosts, off by default); Todoist once you save a token (`engine/todoist.py`, `api.todoist.com` only); MCP
+  servers you add. Web searches you ask for open in your browser. OpenVINO's analytics sender is blocked inside
+  the process (`engine/jiwo.py`).
 - **Tokens never sit in a file.** The Todoist token is kept in your login keyring through the freedesktop
   Secret Service (`secret_store.py`); the settings file only records that one is saved. The app passes it to
   the engine over a private pipe, where it stays in memory and is never logged.

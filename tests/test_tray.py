@@ -15,8 +15,8 @@ import tempfile
 import time
 import unittest
 import importlib.util  # noqa: E402
-if importlib.util.find_spec("gi") is None:
-    raise unittest.SkipTest("needs PyGObject (python3-gi)")
+if importlib.util.find_spec("gi") is None or importlib.util.find_spec("cairo") is None:
+    raise unittest.SkipTest("needs PyGObject and pycairo (python3-gi, python3-gi-cairo)")
 from pathlib import Path
 
 from gi.repository import Gio, GLib

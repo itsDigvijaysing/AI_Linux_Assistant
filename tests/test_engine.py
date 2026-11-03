@@ -7,10 +7,10 @@ import tempfile
 import threading
 import time
 import unittest
-import numpy as np
 import importlib.util  # noqa: E402
 if importlib.util.find_spec("numpy") is None:
     raise unittest.SkipTest("needs numpy (the engine's requirements)")
+import numpy as np  # noqa: E402
 from pathlib import Path
 from unittest import mock
 
@@ -259,7 +259,7 @@ class BrainTests(unittest.TestCase):
         b, said, cues = self.make({})
         with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
             turn = b.handle("open YouTube and play Believer", "text", threading.Event())
-        self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube"})
+        self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube", "play": True})
         self.assertIn("youtube.com/results?search_query=Believer", b.env.executor.calls[0][-1])
 
     def test_cold_big_model_says_it_is_waking(self):
@@ -733,6 +733,62 @@ class EngineSettingsTests(unittest.TestCase):
         e.set_secrets({"todoist": ""})
         self.assertIsNone(e._secrets.get("todoist"))
 
+class HeardInLogTests(unittest.TestCase):
+    """"Keep what I say in the log" off: the engine log has the length and the decision, never the words."""
+
+    WORDS = "please call my dentist tomorrow"
+
+    def logged(self, settings, run):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, settings)
+        e.asr = mock.Mock(transcribe=mock.Mock(return_value=self.WORDS))
+        e.audio = mock.Mock()
+        with self.assertLogs("ai_linux.engine.service", "INFO") as cm:
+            run(e)
+        return "\n".join(cm.output)
+
+    def heard(self, e):
+        e.name_test_until = time.monotonic() + 10  # the name test returns right after the "heard" line
+        e._one("audio", np.zeros(16000, dtype=np.float32), time.monotonic())
+
+    def barge(self, e):
+        e._saying = "The weather is sunny."
+        e._pause_reply()
+        e._barge_verdict(np.zeros(16000, dtype=np.float32))
+
+    def test_the_setting_is_on_by_default(self):
+        self.assertIs(DEFAULTS["log_heard"], True)
+
+    def test_words_are_logged_by_default(self):
+        self.assertIn(self.WORDS, self.logged({}, self.heard))
+        self.assertIn(self.WORDS, self.logged({}, self.barge))
+
+    def test_off_logs_the_length_not_the_words(self):
+        out = self.logged({"log_heard": False}, self.heard)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"heard {len(self.WORDS)} characters", out)
+
+    def test_off_hides_barge_in_words(self):
+        out = self.logged({"log_heard": False}, self.barge)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"{len(self.WORDS)} characters: the reply stops", out)
+
+    def test_off_hides_our_own_voice(self):
+        self.WORDS = "the weather is sunny"
+        out = self.logged({"log_heard": False}, self.barge)
+        self.assertNotIn("sunny", out)
+        self.assertIn("our own voice", out)
+
+    def test_off_hides_dropped_speech(self):
+        def own_voice(e):
+            e._saying = e._said_before = self.WORDS
+            e._spoke_until = time.monotonic()
+            e._one("audio", np.zeros(16000, dtype=np.float32), time.monotonic() - 0.5)  # began as we stopped
+        out = self.logged({"log_heard": False}, own_voice)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"our own voice, dropped {len(self.WORDS)} characters", out)
+
+
 class TimerEventTests(unittest.TestCase):
     def test_timer_list_goes_to_the_app_and_one_can_be_cancelled(self):
         from ai_linux.engine.service import Engine
@@ -749,6 +805,84 @@ class TimerEventTests(unittest.TestCase):
         e.cancel_timer(item["id"])
         self.assertEqual([ev for ev in events if ev.get("ev") == "timers"][-1]["items"], [])
         e.cancel_timer("nope")  # unknown or already rung: nothing happens
+
+class AskBackTests(unittest.TestCase):
+    """A timer with no time: "How long?", and the next thing said is the answer."""
+
+    def brain(self):
+        b, said, cues = BrainTests.make(self, {"set_timer": 0.97, "none": 0.03})
+        added = []
+        b.env.timers = mock.Mock(add=lambda seconds, message: added.append((round(seconds), message)))
+        return b, said, added
+
+    def test_the_next_thing_said_is_the_answer(self):
+        b, said, added = self.brain()
+        turn = b.handle("remind me to stretch", "voice", threading.Event())
+        self.assertEqual((said, added, turn.get("asks")), (["When should I remind you to stretch?"], [], True))
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            turn = b.handle("ten minutes", "voice", threading.Event())
+        self.assertEqual(added, [(600, "stretch")])
+        self.assertEqual((turn["route"], turn.get("asks")), ("rule", None))
+        self.assertEqual(said[-1], "Okay, I'll remind you to stretch in 10 minutes.")
+
+    def test_anything_else_drops_the_question(self):
+        b, said, added = self.brain()
+        b.handle("set a timer", "voice", threading.Event())
+        self.assertEqual(said, ["How long should the timer be?"])
+        turn = b.handle("what's up", "voice", threading.Event())
+        self.assertEqual(turn["route"], "rule")  # small talk, answered as usual
+        self.assertIsNone(b.waiting)
+        b.handle("set a timer", "voice", threading.Event())
+        b.new_session()
+        self.assertIsNone(b.waiting)
+        self.assertEqual(added, [])
+
+    def test_the_answer_needs_no_wake_word_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "How long?", "asks": True}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("heard", "set a timer", 0.0)  # said, already transcribed
+        deadline = time.monotonic() + 3
+        while e.state != "followup":
+            self.assertLess(time.monotonic(), deadline, "no window for the answer")
+            time.sleep(0.005)
+        self.assertTrue(e.capturing)  # the hotkey isn't needed again to answer
+        self.assertTrue(e._wake_free())
+        e.followup_until = 0.0
+        e._check_followup()  # nothing said: the mic closes as after any reply in hotkey mode
+        self.assertEqual((e.capturing, e.state), (False, "idle"))
+
+    def test_a_typed_question_keeps_the_mic_closed_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "How long?", "asks": True}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("text", "set a timer", 0.0)  # typed: the answer is typed too, so the mic stays shut
+        deadline = time.monotonic() + 3
+        while e.state != "idle":
+            self.assertLess(time.monotonic(), deadline, "the mic opened for a typed question")
+            time.sleep(0.005)
+        self.assertFalse(e.capturing)
+
+    def test_a_reply_that_asks_nothing_closes_the_mic_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "It's noon."}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("text", "what time is it", 0.0)
+        deadline = time.monotonic() + 3
+        while e.state != "idle":
+            self.assertLess(time.monotonic(), deadline, "still waiting")
+            time.sleep(0.005)
+        self.assertFalse(e.capturing)
+
 
 class DictationEngineTests(unittest.TestCase):
     def make(self, armed=True, **settings):
@@ -1396,7 +1530,7 @@ class BargeInTests(unittest.TestCase):
         sound, rate = e.audio.hear_own.call_args.args
         self.assertEqual((sound.shape, rate), ((800,), 16000))
         e.playing_sample("")
-        e.audio.stop_own.assert_called_once()
+        e.audio.stop_own.assert_called_once_with(e.audio.hear_own.return_value)  # only the sample's reference
 
     def test_paused_sentence_is_said_again_after_an_echo(self):
         from ai_linux.engine.service import Engine
@@ -1416,6 +1550,44 @@ class BargeInTests(unittest.TestCase):
         e._play("Hello there.")
         self.assertEqual(len(calls), 2)
 
+
+
+class EmptyDecodeTests(unittest.TestCase):
+    """A recording with voice in it that decodes to nothing is tried once more (as OpenWhispr does)."""
+
+    def make(self, *heard):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {})
+        e.asr = mock.Mock(transcribe=mock.Mock(side_effect=list(heard)))
+        return e
+
+    def test_an_empty_decode_of_voice_is_tried_once_more(self):
+        e = self.make("", "open my files")
+        self.assertEqual(e._transcribe(np.full(16000, 0.1, np.float32)), "open my files")
+        self.assertEqual(e.asr.transcribe.call_count, 2)
+
+    def test_it_gives_up_quietly_after_the_second_try(self):
+        e = self.make("", " ")
+        self.assertEqual(e._transcribe(np.full(16000, 0.1, np.float32)), "")
+        self.assertEqual(e.asr.transcribe.call_count, 2)
+
+    def test_near_silence_is_not_tried_again(self):
+        e = self.make("")
+        self.assertEqual(e._transcribe(np.zeros(16000, np.float32)), "")
+        self.assertEqual(e.asr.transcribe.call_count, 1)
+
+    def test_words_on_the_first_try_are_kept(self):
+        e = self.make(" hello ")
+        self.assertEqual(e._transcribe(np.full(16000, 0.1, np.float32)), "hello")
+        self.assertEqual(e.asr.transcribe.call_count, 1)
+
+    def test_a_request_is_heard_on_the_second_try(self):
+        e = self.make("", "what time is it")
+        e.brain = mock.Mock()
+        e.brain.handle.return_value = {"id": "t", "latency": {}}
+        e.s.update(listen_mode="always", wake_word="")
+        e._one("audio", np.full(16000, 0.1, np.float32), time.monotonic())
+        self.assertEqual(e.brain.handle.call_args.args[0], "what time is it")
 
 
 @unittest.skipIf(importlib.util.find_spec("onnxruntime") is None, "the VAD needs the engine's onnxruntime")
@@ -1493,7 +1665,7 @@ class AudioIoTests(unittest.TestCase):
         order = []
         c = mock.Mock(ok=True)
         c.feed.side_effect = lambda *a: order.append("feed")
-        c.stop.side_effect = lambda: order.append("stop")
+        c.stop.side_effect = lambda *a: order.append("stop")
         io = self.make(c)
         io._rec_proc = mock.Mock()  # the mic is open
         self.popen.side_effect = lambda *a, **k: (order.append("play"), self.popen.return_value)[1]
@@ -1502,6 +1674,38 @@ class AudioIoTests(unittest.TestCase):
         io.measure_percentage_spoken(1600, 16000)
         self.assertEqual(order, ["feed", "play", "stop"])
         self.assertNotIn("--target", self.popen.call_args.args[0])
+
+    def test_a_reply_ending_stops_only_its_own_reference(self):
+        c = mock.Mock(ok=True)
+        io = self.make(c)
+        io._rec_proc = mock.Mock()  # the mic is open
+        cue = io.hear_own(np.zeros(1600, np.float32), 16000)
+        io.start_speaking(np.zeros(1600, np.float32), 16000)
+        io.measure_percentage_spoken(1600, 16000)
+        reply = c.feed.call_args_list[1].args[2]
+        self.assertNotEqual(reply, cue)
+        c.stop.assert_called_once_with(reply)
+
+    def test_a_sound_fed_late_keeps_its_name(self):
+        c = mock.Mock(ok=True)
+        io = self.make(c)
+        self.addCleanup(io.stop_listening)
+        cue = io.hear_own(np.zeros(16000, np.float32), 16000)
+        sample = io.hear_own(np.zeros(16000, np.float32), 16000)
+        io.stop_own(sample)  # the Voice page's sample ended before the mic opened
+        io.start_listening()
+        self.assertEqual([k.args[2] for k in c.feed.call_args_list], [cue])
+
+    def test_a_sound_ending_while_the_late_ones_are_fed_breaks_nothing(self):
+        c = mock.Mock(ok=True)
+        io = self.make(c)
+        self.addCleanup(io.stop_listening)
+        cue = io.hear_own(np.zeros(16000, np.float32), 16000)
+        reply = io.hear_own(np.zeros(16000, np.float32), 16000)
+        late = io._late  # the Speak thread still holds the dict from before the mic opened
+        c.feed.side_effect = lambda *a: late.pop(reply, None)  # the reply ends while the cue is fed
+        io.start_listening()
+        self.assertEqual(c.feed.call_args_list[0].args[2], cue)
 
     def test_without_the_canceller_there_is_no_barge_in(self):
         from ai_linux.engine import audio

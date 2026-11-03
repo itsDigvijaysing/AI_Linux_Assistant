@@ -2,13 +2,27 @@
 
 One GTK4/libadwaita process on system Python 3.14 + python3-gi. No webview, no Shell extension.
 The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine`, venv `~/.local/share/ai-linux/venv`).
-`src/glados` (v2) stays only as the source the safety code was ported from; v3 imports nothing from it.
+v2 (`src/glados`, the GNOME Shell extension, `configs/` and the `./ai-linux` launcher) is removed; the safety code
+was ported from it and it stays in git history. `pyproject.toml` describes v3 (`ai-linux`, Python 3.14) with `app`
+and `engine` groups; `requirements-engine.txt` stays the engine's source of truth (`tests/test_pyproject.py`).
 
 ## Run
 - `bin/ai-linux-app` (window) · `--background` (tray only) · `--demo` (simulated turns) · `--toggle` / `--mute` / `--unmute` / `--quit` (forwarded to the running instance).
 - Headless check, nothing on the real screen:
   `scripts/headless-run.sh bin/ai-linux-app --screenshot /path/out.png --page home --state listening`
   (throwaway XDG dirs and app id; tray, pill and hotkey are skipped in screenshot mode).
+
+## Install (`scripts/install.sh`, `scripts/uninstall.sh`)
+- One sudo step for the missing apt packages, listed first. Then, as the user: the app copied to
+  `~/.local/share/ai-linux/app` (`--link`: the checkout), the engine venv from `requirements-engine.txt` (system
+  Python 3.14, else uv), `~/.local/bin/ai-linux-app` plus `desktop_entry.install()`, Ollama through
+  `ollama.install_release` and started by `OllamaManager._start_sync` (the transient user unit, no unit file), and
+  the speech and small models through `downloads` (the ones the user's settings pick; voices by loading
+  `engine/tts.py` once). An embedded Python helper calls these modules, so there is no second copy of them.
+- Re-runs skip done steps (venv stamped with the requirements' hash); `--dry-run` writes nothing; settings are read
+  from a copy, never migrated. `uninstall.sh` keeps settings, history, knowledge, logs, models and the voices
+  (`~/.cache/supertonic3`) unless `--purge`, and never touches `~/.ollama`, a system `ollama.service` or apt packages.
+- Health finds a stopped managed Ollama in `ollama/<version>/bin` (it used to say "Not installed" until it started).
 
 ## Foundation (shared, owned by the lead; builders read, do not edit)
 | Module | What |
@@ -76,7 +90,8 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   The Voice page's Sounds group previews each one (rendered to the runtime dir).
 - **Quick rules** (`engine/quick.py`, at most 9 words, before routing; `route` = "rule", chip "Quick reply", no model):
   sleep words (stop, that's all, go to sleep, never mind, bye, good night), greetings, thanks, "what can you do",
-  "play X on YouTube", small talk ("what are you doing", "how are you feeling", "are you there", "who are you": varied
+  "play X on YouTube" (also after "can you" or "could you"; play and put on set `play`, search and find don't),
+  small talk ("what are you doing", "how are you feeling", "are you there", "who are you": varied
   replies, `_CHAT`), "don't sleep", "that's wrong". Anything with content ("thoughts on electric cars") still routes.
   Kept facts' rules run there too.
 - **Sleep:** `go_to_sleep` sets `Engine.sleep_after`, so the end of the turn goes idle instead of reopening the
@@ -100,13 +115,17 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   (pre-roll adjusted), not its end, so a long sentence begun in the window counts. During a confirmation a reply that
   isn't yes or no and isn't junk becomes a new request (`("heard", text, t)` work item), not lost. The mic opens after
   start-up even if the state changed meanwhile (`_get_ready` always calls `apply_listen_mode`; a failed warm-up is
-  logged, not fatal). `_drain` keeps timer rings when a turn is cancelled.
+  logged, not fatal). `_drain` keeps timer rings when a turn is cancelled. A finished recording that decodes to
+  nothing although its RMS is at least 0.001 is decoded once more (`_transcribe`, OpenWhispr's parakeetServer.js),
+  then dropped quietly as before; the retry logs "voice decoded to nothing".
 - **Echo cancel** (`engine/echo.py`, 2026-10-31; numbers in `bench/README.md`): nothing is loaded into PipeWire and no
   quantum is forced. The mic is the plain default source. While we make a sound the reader thread runs each frame
   through WebRTC's AEC3 (pywebrtc-audio) with that exact sound as the reference, in lock-step 10 ms blocks, plus 0.5 s
   after it ends; otherwise the frame passes untouched, so this can't deafen the mic. The reference is fed just before
   `pw-play` starts, so it leads the echo (measured lag 118-180 ms) and AEC3 finds the delay. Cues and the Voice page's
-  samples are references too. Library missing or broken: `_aec_ok` is False and Phoenix doesn't listen while speaking.
+  samples are references too. Each sound is its own reference, mixed with any other playing (a cue over a sentence),
+  and ends on its own: `hear_own` returns a key, `stop_own(key)` drops only that sound, `stop_own()` all of them.
+  Library missing or broken: `_aec_ok` is False and Phoenix doesn't listen while speaking.
   PipeWire's `module-echo-cancel` was dropped: in power saver it lost most near speech even with nothing playing.
 - **Barge-in (pause, then verdict; LiveKit's false-interruption idea):** while speaking, 5 frames of the last 12 at
   VAD 0.3 pause the reply. The reply is held, not dropped: every recording made during a hold is transcribed, however
@@ -115,6 +134,12 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   became requests. After 2 echo pauses in one turn barge-in sits out the rest of that reply. A recording that starts
   within `ECHO_TAIL_S` of our last word is dropped if it is our own words (`own_words`). Each reply logs
   `while speaking: voice up to X, N of 12 frames`.
+- **Logs** (`~/.local/state/ai-linux/logs`): `app.log` and `engine.log` rotate at 1 MB with 3 backups. The engine
+  writes only to stderr, a pipe the app reads; `EngineClient._log` copies each line into `engine.log` through a
+  `RotatingFileHandler` (`engine_log()`), so a crash before the engine's logging starts is still kept and only one
+  process rotates the file. `log_heard` (Safety page, "Keep what I say in the log", on by default): off, the lines for
+  what was heard, barge-ins, dropped speech and spoken confirm replies give the length, not the words
+  (`Engine._words_for_log`: "heard 42 characters"); the decision is on that line or the next one.
 - **Confirmations** show a dialog and, with audio, can be answered by voice (`spoken_confirm`); `confirm_done` closes it.
   The pill shows the whole command ("Run this? <cmd> Say yes or no.") while the voice says "this command"
   (`Engine._say(text, shown)`).
@@ -171,6 +196,12 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   first reopens the capture once, quietly (OpenWhispr's re-acquire), then sends an error notice naming the desktop's
   input (`wpctl inspect @DEFAULT_AUDIO_SOURCE@`); a working mic after echo cancelling never measured below 51. Seen
   2026-10-28: the USB card's profile flipped to its S/PDIF input.
+- **Changed default mic**: nothing to do in the engine. `pw-record` without `--target` sets no `target.object`
+  (pw-cat.c, PipeWire 1.x), so WirePlumber links it to the default source, and WirePlumber 0.5 rescans on any change
+  of `default.audio.source` in the "default" metadata (`linking/rescan-trigger` in `scripts/linking/rescan.lua`) and
+  moves a stream that isn't linked to the target it now finds, unless the stream sets `node.dont-reconnect`
+  (`linking/prepare-link.lua`). So choosing another input in Settings moves the running capture, unlike OpenWhispr's
+  browser capture, which needs `activeMicRecovery.js`. Checked against WirePlumber 0.5.19's scripts, 2026-11-03.
 - **Paste** (`engine/tools.py` `paste_text`, OpenWhispr's GNOME order): clipboard, then the RemoteDesktop portal if a
   restore token is saved (`~/.local/state/ai-linux/portal-paste-token`), else ydotool when its daemon runs, else the
   portal with its one-time permission dialog, else "press Control V". Terminals (found through AT-SPI) get
@@ -203,9 +234,20 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   speech queue). One missed by under an hour while the app was closed rings at start; longer than 7 days is capped.
   Spans parse number words and halves ("an hour and a half" = 90 min); a bare hour already past ("at 5", 17:00) means
   the evening; "cancel the timer" with several running asks which (`which`: its length or message, or all).
+  No time said ("set a timer", "remind me to stretch"): it asks how long, and the next request is the answer
+  (`Result.followup`, kept as `Brain.waiting` for `ANSWER_S`, 60 s; anything that isn't a length or a clock time drops
+  the question and is handled as usual). The turn carries `asks`, so in hotkey mode the mic stays open for the
+  follow-up window instead of closing (`Engine.asking`); wake and always modes have that window anyway. A typed
+  request's question doesn't open the mic: its answer is typed too.
+- **Voice and music** (`engine/tools.py`): "change your voice" (switch, another, a different, next) picks the next
+  voice in `VOICES`, wrapping round; "default voice" picks SuperTonic F1. "Play some music" or "play a song" (`music`)
+  searches YouTube for music when `playerctl play` finds no player; plain "play" or "resume" still says nothing is
+  playing.
 - **Web Access** (`web_access`, off by default; `weather_city`): `engine/web.py` (stdlib, 6 s timeout, fixed https
   hosts): weather from Open-Meteo, look-up from DuckDuckGo Instant Answer then Wikipedia. While off, `WEB_TOOLS` are
   left off every routing menu, so questions still reach the big model; called anyway they say how to turn it on.
+  With it on, "play X on YouTube" (`search_web` with `play`) reads YouTube's results page (`web.first_video`, the
+  first `videoRenderer`, so ads are skipped) and opens that video; off, offline or nothing found: the results page.
 - **Todoist** (`engine/todoist.py`, API v1, stdlib, 8 s timeout; tool `todoist`, family assistant, not gated): add
   with Quick Add (Todoist reads the date from the sentence, so the model only picks the tool), list today / tomorrow
   / overdue / this week, complete after "Mark ... as done?" (`Tool.asks`, so an unsure router doesn't ask twice). On
@@ -256,11 +298,23 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   also closes the no-name window. `listen_now` running out now works with frames flowing (it used to be checked only
   on an empty queue, which a live mic never has), and releasing hold-to-talk keeps what was recorded wake-free
   (`PTT_END_S`; it was dropped unless the name was said).
+- **State tests** (`tests/test_states.py`, 2026-11-03): the real Engine with `create_autospec` fakes of the audio,
+  speech recognition, voice and Brain classes, driven by seeded random sequences of events (speech, hotkey,
+  hold-to-talk, listen modes, Mute, profile changes, dictation, timers, questions, typed text, quitting), with the
+  states, the mic and the requests checked after each. `PHOENIX_STATE_SEEDS=500` runs more. What they changed:
+  hotkey or off mode ends a follow-up window (nothing could close it with the mic shut); switching to hotkey mode
+  leaves the mic to a hotkey still listening; while hold-to-talk is held, `_rest` shows listening and neither it nor
+  a request in hotkey mode closes the mic, the release does; a question asked out loud doesn't close the
+  mic when the hotkey dropped it to listen; a barge-in that stops the reply keeps the mic open (`listening=True`), so
+  the name said over a reply while muted ends its window; `_settle` shows thinking while a request is answered (after
+  a ring or a noise); the end of a reply shows thinking when the next request is already answered, and keeps
+  dictation's window when the request was typed while dictating.
 - Measurements and model choices: `bench/README.md`.
 
 ## Open work (2026-10-29)
 - Routing re-measured on 2026-10-29 for chat (above); a full task re-run on the 27-tool menu is still open.
-  Voice-not-heard follow-ups: follow a changed default mic, retry an empty transcription.
+  Voice-not-heard follow-ups are in (a changed default mic needs nothing; an empty decode is tried once more):
+  check both live, and drop the retry if engine.log never shows it bringing back words.
 - **Not committed yet:** everything since `a6a1c9c` (live words, pill caption, Dark theme, Knowledge, load modes,
   starting and big-model effects, colour blends, New Session, the Phoenix rename, the bare-wake-word and shortcut-text
   fixes, and the 2026-10-29 Home row, Speed and Battery, Delete This Session, About and Tools changes, and batches 2 and 3: sleep and quick rules, sounds, pill
@@ -268,7 +322,6 @@ The speech loop runs in `engine/` as a child process (`python -m ai_linux.engine
   command, hearing and barge-in fixes, 14 review fixes, Speed per profile with one model choice, Models page redesign). Ask before committing.
 - Laya: uploaded to `itsDigvijaysing/laya-typed-decisions-openvino` (commit `c1014fc`, pinned); one full download
   check through the Models page is still to do (it was cut off by a weak connection).
-- `pyproject.toml` is still the v2 `glados` package.
 - User-only: a live voice run on the real desktop (including the name test), and a look at the new pieces live:
   the pill while starting and with the big model's glow, the colour blends, Home's row, Mute, New Session and
   Delete This Session (with Undo), the Speed row on Home and the Models page, the About window's credits, the

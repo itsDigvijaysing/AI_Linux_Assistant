@@ -1,4 +1,4 @@
-"""Safety page: arm actions, see what is gated, test a command against the block list, recent actions."""
+"""Safety page: arm actions, see what is gated, keep speech out of the log, test a command, recent actions."""
 
 from __future__ import annotations
 
@@ -124,13 +124,14 @@ class Page(Adw.NavigationPage):
         prefs = Adw.PreferencesPage()
         prefs.add(self._build_actions())
         prefs.add(self._build_gated())
+        prefs.add(self._build_log())
         prefs.add(self._build_checker())
         prefs.add(self._build_recent())
         self._toasts.set_child(prefs)
         view.set_content(self._toasts)
         self.set_child(view)
 
-        for key in ("actions_armed", "confirm_shell"):
+        for key in ("actions_armed", "confirm_shell", "log_heard"):
             self._handlers.append((self.settings, self.settings.connect(f"changed::{key}", self._on_setting)))
         if self.history is not None and hasattr(self.history, "add_listener"):
             self.history.add_listener(self._on_history)
@@ -182,6 +183,7 @@ class Page(Adw.NavigationPage):
         self._syncing = True
         self._armed_row.set_active(armed)
         self._confirm_row.set_active(confirm)
+        self._log_row.set_active(bool(self.settings.get("log_heard")))
         self._syncing = False
         self._confirm_row.set_sensitive(armed)
         if armed:
@@ -230,6 +232,20 @@ class Page(Adw.NavigationPage):
         floor.add_prefix(_icon_tile("action-unavailable-symbolic", "error"))
         floor.add_suffix(_tag("Always on", "error"))
         group.add(floor)
+        return group
+
+    # The log
+
+    def _build_log(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Log")
+        self._log_row = Adw.SwitchRow(
+            title="Keep what I say in the log",
+            subtitle="The speech engine's log keeps the words it heard, which helps find problems. "
+                     "When off, it keeps only how long they were and what was done with them.",
+        )
+        self._log_row.add_prefix(_icon_tile("document-edit-symbolic"))
+        self._log_row.connect("notify::active", self._on_switch, "log_heard")
+        group.add(self._log_row)
         return group
 
     # Test a command

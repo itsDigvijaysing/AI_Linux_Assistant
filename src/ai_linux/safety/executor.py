@@ -1,7 +1,7 @@
 """Gated command executor (AI_Linux v3).
 
 The single chokepoint every tool runs through, so the denylist, the action gate and the kernel
-resource caps can never be skipped. Ported from src/glados/mcp/shell_exec.py::run_shell, with the
+resource caps can never be skipped. Ported from v2's mcp/shell_exec.py::run_shell (src/glados in git history), with the
 gate made explicit (an ``ActionGate`` instance) instead of env vars, and an argv path and a
 desktop-app launcher added for the typed tools.
 

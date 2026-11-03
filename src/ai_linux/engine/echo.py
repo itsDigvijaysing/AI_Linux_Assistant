@@ -49,23 +49,29 @@ class Canceller:
         self._forget()
 
     def _forget(self) -> None:
-        self._far = self._near = self._out = np.zeros(0, np.float32)
+        self._sounds: dict[object, np.ndarray] = {}  # what is still to play of each sound, from now on
+        self._near = self._out = np.zeros(0, np.float32)
         self._tail = 0
 
-    def feed(self, sound: np.ndarray, rate: int) -> None:
-        """A sound starts playing now; over one still playing, the room hears both."""
+    def feed(self, sound: np.ndarray, rate: int, key: object = None) -> object:
+        """A sound starts playing now; over one still playing, the room hears both. The key names it for stop."""
         x = _to_16k(sound, rate)
+        key = object() if key is None else key
         with self._lock:
-            mixed = np.zeros(max(self._far.size, x.size), np.float32)
-            mixed[:self._far.size] = self._far
-            mixed[:x.size] += x
-            self._far = mixed
+            if x.size:
+                self._sounds[key] = x
             self._tail = int(TAIL_S * RATE)
+        return key
 
-    def stop(self) -> None:
-        """The sound ended or was cut: what wasn't played is not in the room, what was still is for a moment."""
+    def stop(self, key: object = None) -> None:
+        """A sound ended or was cut: what wasn't played is not in the room, what was still is for a moment.
+
+        With a key only that sound goes, so a cue ending doesn't take the sentence under it; without one, all go."""
         with self._lock:
-            self._far = np.zeros(0, np.float32)
+            if key is None:
+                self._sounds.clear()
+            else:
+                self._sounds.pop(key, None)
             self._tail = int(TAIL_S * RATE)
 
     def reset(self) -> None:
@@ -74,12 +80,12 @@ class Canceller:
             self._forget()
 
     def pending(self) -> int:
-        return self._far.size
+        return max((s.size for s in self._sounds.values()), default=0)
 
     def clean(self, frame: np.ndarray) -> np.ndarray:
         """One mic frame, with our own sound taken out; the same length, 10 ms later while it runs."""
         with self._lock:
-            if not self.ok or (not self._far.size and self._tail <= 0):
+            if not self.ok or (not self._sounds and self._tail <= 0):
                 self._near = self._out = np.zeros(0, np.float32)
                 return frame
             try:
@@ -94,11 +100,15 @@ class Canceller:
         whole = near.size // BLOCK * BLOCK
         out = [self._out if self._out.size else np.zeros(BLOCK, np.float32)]  # the frame stays whole on the first go
         for i in range(0, whole, BLOCK):
-            far = self._far[:BLOCK]
-            self._far = self._far[BLOCK:]
-            if far.size < BLOCK:
-                self._tail -= BLOCK - far.size
-                far = np.pad(far, (0, BLOCK - far.size))
+            far, played = np.zeros(BLOCK, np.float32), 0
+            for key, sound in list(self._sounds.items()):  # overlapping sounds mix in the room
+                far[:min(sound.size, BLOCK)] += sound[:BLOCK]
+                played = max(played, min(sound.size, BLOCK))
+                if sound.size > BLOCK:
+                    self._sounds[key] = sound[BLOCK:]
+                else:
+                    del self._sounds[key]
+            self._tail -= BLOCK - played
             out.append(self._aec.process(near[i:i + BLOCK], far))
         self._near = near[whole:]
         done = np.concatenate(out)

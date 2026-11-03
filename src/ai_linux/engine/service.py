@@ -32,6 +32,7 @@ END_SILENCE = 22  # silent frames that end an utterance (~0.7 s)
 MAX_FRAMES = 470  # ~15 s
 MIN_SPEECH = 8  # voiced frames for a real utterance (~0.25 s)
 MIN_NAME = 2  # waiting for the name: only the name can act on the words, and a quick "Phoenix" scores this low
+EMPTY_RETRY_RMS = 0.001  # OpenWhispr's silence floor: below it an empty decode is right, not worth a retry
 LISTEN_VAD = 0.5  # voice probability that starts a recording while we are silent (Silero's default)
 BARGE_VAD = 0.3  # echo cancelling eats half the user's frames while we talk; our cancelled voice stays well under
 BARGE_WINDOW, BARGE_FRAMES = 12, 5  # 5 voiced of the last 12 frames (~0.4 s) pause the reply (2026-10-30 tests)
@@ -78,6 +79,7 @@ class Engine:
         self.followup_until = 0.0
         self.called = False  # the name alone was said: the request is still to come
         self.sleep_after = False  # "go to sleep": no follow-up window after this turn
+        self.asking = False  # this turn's reply asked something ("How long?"): the mic waits for the answer
         self.dictating = ""  # polish | exact: what is said is collected, then typed at the cursor once
         self._dictated: list[str] = []
         self._dictation_over = 0.0  # when it last ended: speech begun before this is never a request
@@ -97,6 +99,7 @@ class Engine:
         self._mcp_lock = threading.Lock()  # two quick setting changes must not each keep a set of servers
         self.timers = None
         self._mic = mic_watch.SilenceWatch()
+        self._sample_own = None  # the echo reference key of the voice sample the app is playing
         self._mic_reopened = False  # one quiet re-open before warning
         self._stop = threading.Event()
         self._lock = threading.RLock()
@@ -321,6 +324,17 @@ class Engine:
         except Exception:
             log.exception("warming speech recognition")
 
+    def _transcribe(self, audio) -> str:
+        """The words of a finished recording. Voice that decodes to nothing gets one more try, as in OpenWhispr's
+        parakeetServer.js: an empty decode of audible audio loses the whole request."""
+        text = (self.asr.transcribe(audio) or "").strip()
+        if text or not isinstance(audio, np.ndarray) or not audio.size:
+            return text
+        if float(np.sqrt(np.mean(np.square(audio, dtype=np.float64)))) < EMPTY_RETRY_RMS:
+            return text
+        log.warning("voice decoded to nothing (%.1f s); trying once more", audio.size / 16000)
+        return (self.asr.transcribe(audio) or "").strip()
+
     # live words
 
     def _on_live(self, utt: int, text: str) -> None:
@@ -368,11 +382,15 @@ class Engine:
             if self.state in ("loading", "muted", "off", "error"):
                 self.set_state("idle")
         elif mode == "hotkey":
+            self.followup_until = 0.0  # with the mic closed nothing would end the window
+            if self.ptt or time.monotonic() < self.armed_until:
+                return  # the hotkey is listening: its end closes the mic
             self._capture(False)
-            if self.state in ("loading", "muted", "off", "error"):
+            if self.state in ("loading", "muted", "off", "error", "followup"):
                 self.set_state("idle")
         else:
             self._capture(False)
+            self.followup_until = 0.0  # a timer's ring would bring the window back, and nothing would end it
             self.set_state("muted")
 
     def _starting(self) -> bool:
@@ -414,6 +432,9 @@ class Engine:
 
     def _rest(self) -> None:
         """Nothing going on: the mic and the state the listen mode asks for."""
+        if self.ptt:  # hold-to-talk is still held: its release ends listening and closes the mic
+            self.set_state("listening")
+            return
         self._mic_after_turn()
         self.set_state("muted" if self.s.get("listen_mode") == "off" else "idle")
 
@@ -529,13 +550,17 @@ class Engine:
             return
         if echo_of(heard, self._recent_speech()):
             self._false_barges += 1
-            log.info("barge-in was our own voice (%r): the reply goes on", heard)
+            log.info("barge-in was our own voice (%s): the reply goes on", self._words_for_log(heard))
             self._hold_resume = True
             self._hold.clear()
             return
-        log.info("barge-in heard %r: the reply stops", heard)
-        self.cancel_turn()
+        log.info("barge-in heard %s: the reply stops", self._words_for_log(heard))
+        self.cancel_turn(listening=True)  # the mic stays open: what was said may be the name, waiting for more
         self.work.put(("heard", heard, 0.0))
+
+    def _words_for_log(self, text: str) -> str:
+        """What was heard, for engine.log: only its length when "Keep what I say in the log" is off."""
+        return repr(text) if self.s.get("log_heard", True) else f"{len(text)} characters"
 
     def _recent_speech(self) -> str:
         return f"{self._said_before} {self._saying}"
@@ -691,10 +716,12 @@ class Engine:
             self.cue("sleep")  # woke, heard no request, going back to sleep
 
     def _settle(self) -> None:
-        """Back to what is still going on: the hotkey or hold-to-talk, a window, or nothing."""
+        """Back to what goes on: the hotkey or hold-to-talk, a request being answered, a window, or nothing."""
         now = time.monotonic()
         if self.ptt or now < self.armed_until:
             self.set_state("listening")
+        elif self._busy and not self.cancel.is_set():
+            self.set_state("thinking", self._think_detail)
         elif self.dictating or now < self.followup_until:
             self.set_state("followup", "Dictating" if self.dictating else "")
         else:
@@ -748,9 +775,9 @@ class Engine:
             asked = pressed or t_start < self.followup_until
             t0 = time.monotonic()
             with self._asr_lock:  # waits for a live update still running (at most one, ~0.1 s on the GPU)
-                text = (self.asr.transcribe(payload) or "").strip()
+                text = self._transcribe(payload)
             asr_s = time.monotonic() - t0
-            log.info("heard %r (%.2fs)", text, asr_s)
+            log.info("heard %s (%.2fs)", self._words_for_log(text), asr_s)
             if self.armed_until:
                 self.armed_until = 0.0
         if kind == "audio" and time.monotonic() < self.name_test_until:
@@ -764,14 +791,14 @@ class Engine:
                 self._dictate(text)
                 return
             if not asked and t_start + PREROLL * FRAME_S < self._dictation_over:  # begun while dictating: not a request
-                log.info("dictation over, dropped %r", text)
+                log.info("dictation over, dropped %s", self._words_for_log(text))
                 self._clear_live()
                 self._after_noise()
                 self.notice("info", "Dictation had ended, so that wasn't typed.")
                 return
             if (kind == "audio" and not pressed and t_start + PREROLL * FRAME_S < self._spoke_until + ECHO_TAIL_S
                     and own_words(text, self._recent_speech())):
-                log.info("our own voice, dropped %r", text)  # it once made the model answer itself
+                log.info("our own voice, dropped %s", self._words_for_log(text))  # it once made the model answer itself
                 self._clear_live()
                 self._after_noise()
                 return
@@ -802,7 +829,7 @@ class Engine:
                 return
             if (self.s.get("listen_mode") == "always" and self.s.get("addressed_check") and not asked
                     and not self.brain.addressed(text)):
-                log.info("not for me: %r", text)
+                log.info("not for me: %s", self._words_for_log(text))
                 self._clear_live()
                 if self.state == "listening":
                     self.set_state("idle")
@@ -810,7 +837,7 @@ class Engine:
             if dictation.start(text) is not None:
                 self._dictate(text)  # typed where the cursor is, never acted on
                 return
-            if self.s.get("listen_mode") == "hotkey":
+            if self.s.get("listen_mode") == "hotkey" and not self.ptt:  # a held key's release closes it
                 self._capture(False)
         text = str(payload).strip() if kind == "text" else text
         if kind == "text" and self.dictating and dictation.split_stop(text)[1]:
@@ -836,6 +863,7 @@ class Engine:
         if marked is not None:  # "that's wrong": the app saves the earlier request's new status
             self.emit({"ev": "turn_update", "turn": marked})
         self.emit({"ev": "turn", "turn": turn})
+        self.asking = bool(turn.get("asks")) and kind != "text"  # a typed question's answer is typed too
         self.say_q.put(("end", turn["id"], cancel))
 
     # dictation
@@ -924,11 +952,18 @@ class Engine:
                 self.speaking = False
                 if cancel.is_set():
                     continue
-                if self.sleep_after or self.s.get("listen_mode") in ("hotkey", "off"):  # no mic to end a window
-                    self.sleep_after = False
+                asked = self.asking and self.s.get("listen_mode") == "hotkey"  # the answer needs no second press
+                if self._busy:  # the next request is already being answered: its own end opens the window
+                    self.set_state("thinking", self._think_detail)
+                elif self.dictating:  # a request typed while dictating: dictation's own window goes on
+                    self._settle()
+                elif self.sleep_after or (self.s.get("listen_mode") in ("hotkey", "off") and not asked):
+                    self.sleep_after = False  # no mic to end a window
                     self.followup_until = 0.0
                     self._rest()
                 else:
+                    if asked:
+                        self._capture(True)
                     self.followup_until = time.monotonic() + FOLLOWUP_S
                     self.set_state("followup")
                     self.emit({"ev": "followup", "seconds": FOLLOWUP_S})
@@ -1046,7 +1081,7 @@ class Engine:
                 else:
                     reply = str(payload)
                 answer = self.brain.yes_no(question, reply)
-                log.info("confirm reply %r -> %s", reply, answer)
+                log.info("confirm reply %s -> %s", self._words_for_log(reply), answer)
                 if answer is not None:
                     box["ok"] = answer
                     ev.set()
@@ -1059,7 +1094,8 @@ class Engine:
                     break
         finally:
             self.confirming = False
-            if not was_capturing and self.s.get("listen_mode") in ("hotkey", "off"):
+            pressed = self.ptt or time.monotonic() < self.armed_until  # the hotkey dropped the question to listen
+            if not was_capturing and self.s.get("listen_mode") in ("hotkey", "off") and not pressed:
                 self._capture(False)
 
     def _set_voice(self, voice: str, announce: bool = True) -> bool:
@@ -1099,16 +1135,18 @@ class Engine:
         time.sleep(1.2)  # let the sound finish before the voice
         self.say_q.put(("ring", text))
 
-    def _hear_own(self, samples, rate: int) -> None:
+    def _hear_own(self, samples, rate: int):
         if self.audio is not None:
-            self.audio.hear_own(np.asarray(samples, np.float32), rate)
+            return self.audio.hear_own(np.asarray(samples, np.float32), rate)
+        return None
 
     def playing_sample(self, path: str) -> None:
         """The app plays a voice sample: our own sound, not a request. Empty: it stopped."""
         if self.audio is None:
             return
         if not path:
-            self.audio.stop_own()
+            self.audio.stop_own(self._sample_own)  # only the sample: a reply or cue under it goes on
+            self._sample_own = None
             return
         import soundfile as sf
 
@@ -1117,7 +1155,7 @@ class Engine:
         except Exception:
             log.exception("reading a voice sample")
             return
-        self._hear_own(sound.mean(axis=1), rate)
+        self._sample_own = self._hear_own(sound.mean(axis=1), rate)
 
     def _sleep(self) -> None:
         self.followup_until = 0.0

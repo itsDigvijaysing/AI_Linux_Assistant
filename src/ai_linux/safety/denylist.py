@@ -7,7 +7,7 @@ allowed (``shutdown``/``reboot``, ``rm file.txt``, ``rm -rf ./build``, ``cd ~/pr
 deleting a single sub-folder such as ``~/Downloads`` or ``~/.config``), because a small model
 over-refuses and these are legitimate voice commands. The real boundary is the action gate.
 
-Ported from src/glados/mcp/shell_exec.py::_destructive_reason and hardened against the bypasses a
+Ported from v2's mcp/shell_exec.py::_destructive_reason (src/glados in git history) and hardened against the bypasses a
 2026-10-27 audit found (path traversal with ``..``, ``${HOME:?}`` and other parameter forms, simple
 variable indirection, ``sh -c`` nesting, decode-and-execute pipes, ``find`` with ``-exec rm``,
 recursive ``chmod``/``chown`` of a root, ``mv`` of a root, and a ``python -c`` rmtree of home).

@@ -30,6 +30,8 @@ Demo video (v2, the older GNOME Shell extension version): https://www.youtube.co
 - **Speed** on Home, one row: Save Battery (the big model loads when needed, freed after 2 minutes), Automatic (kept
   30 minutes) or Max Performance (stays loaded). The pill shows when it is starting and when the big model takes over.
 - **History** of every turn, searchable, kept on disk only. **New Session** on Home starts a fresh conversation.
+- **Logs** stay small: each rotates at 1 MB. Turn off "Keep what I say in the log" on the Safety page and the log
+  keeps only how long each sentence was, not your words.
 - **Health page** that checks every part (audio, echo cancellation, GPUs, Ollama, models, shortcut, tray) and says how to fix what is missing.
 
 ## Models
@@ -56,19 +58,25 @@ How they were chosen, with every measurement: [bench/README.md](bench/README.md)
 ```bash
 git clone https://github.com/itsDigvijaysing/AI_Linux_Assistant.git
 cd AI_Linux_Assistant
-
-# the speech engine's own environment (the GTK app itself uses system Python)
-python3 -m venv ~/.local/share/ai-linux/venv
-~/.local/share/ai-linux/venv/bin/pip install -r requirements-engine.txt
-
-bin/ai-linux-app
-
-# optional: add it to the app grid (user-level, no sudo; "uninstall" removes it)
-PYTHONPATH=src python3 -m ai_linux.desktop_entry install
+scripts/install.sh
 ```
 
-The first start walks through the microphone, the models and the listening mode. Models download from the Models page
-(big models through Ollama, the small model and speech models from Hugging Face and GitHub, with checksums).
+The installer lists the system packages it needs and asks once for sudo to install them; nothing needs sudo after
+that. The rest goes in your home folder: a copy of the app, the speech engine's Python 3.14 environment, Phoenix's own
+Ollama (a user service on port 11435; a system Ollama is left alone), the launcher in the app grid, and the speech
+recognition, voice and small router models (about 4 GB of downloads in all, checked and resumable). Run it again to
+update; `--dry-run` shows what it would do, `--help` lists the options. Then open Phoenix from the app grid: the first
+start walks through the microphone and the listening mode. Pick the big model on the Models page.
+
+`scripts/uninstall.sh` removes Phoenix and keeps your settings, history and models; `--purge` deletes those too.
+
+By hand, for development (`scripts/install.sh --link` does the same and runs the app from the checkout):
+
+```bash
+python3 -m venv ~/.local/share/ai-linux/venv
+~/.local/share/ai-linux/venv/bin/pip install -r requirements-engine.txt
+bin/ai-linux-app
+```
 
 Other ways to start: `bin/ai-linux-app --background` (tray only), `--demo` (simulated turns, no microphone),
 `--toggle`, `--mute`, `--unmute`, `--quit` (sent to the running app).
@@ -84,22 +92,42 @@ GTK4 app (system Python)                    engine child process (venv)
 - `src/ai_linux/`: the app. `engine/` is the speech loop, `safety/` the action gate and denylist, `ui/` the pages.
 - Design, contracts and open work: [src/ai_linux/ARCHITECTURE.md](src/ai_linux/ARCHITECTURE.md).
 - Security model: [SECURITY.md](SECURITY.md).
-- `src/glados/` is the older v2 engine, kept only as the source the safety code was ported from.
+- v2 (a GNOME Shell extension on a GLaDOS-based engine) is no longer in the tree; the safety code was ported from
+  it. Find it in git history: `git log -- src/glados`.
+- Coming from v2: don't run its old `./ai-linux uninstall`, because it also deletes `~/.local/state/ai-linux` and
+  tools Phoenix still uses. Remove v2's own pieces by hand: `gnome-extensions uninstall ai-linux-assistant@local`,
+  `conda env remove -n AI_Linux`, and `~/.local/share/applications/ai-linux-assistant.desktop` with its icon
+  `ai-linux-assistant.svg`. Keep `/etc/udev/rules.d/99-ai-linux-uinput.rules` only if you type through ydotool.
 
 ## Development
 
-- Tests: `/usr/bin/python3 -m unittest discover -s tests`. Parts that need GTK, OpenVINO or a downloaded model skip
-  themselves when those are missing.
 - See a page without touching your desktop:
   `scripts/headless-run.sh bin/ai-linux-app --screenshot /tmp/out.png --page models`
 - Benchmarks and model exports: `bench/router/`.
 
+### Tests
+
+The app's tests run on the app's Python, the engine's tests in the engine's environment. Parts that need GTK, numpy,
+OpenVINO or a downloaded model skip themselves when those are missing.
+
+```bash
+/usr/bin/python3 -m unittest discover -s tests
+```
+
+```bash
+~/.local/share/ai-linux/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation tests.test_wake tests.test_echo tests.test_live_text tests.test_states
+```
+
+GitHub runs both on every push and pull request (`.github/workflows/tests.yml`: Python 3.14 on Ubuntu 24.04, with
+PyGObject from pip for the app's suite).
+
 ## Status
 
 v3 is a full rewrite as one desktop app. Working and tested: the app, engine, profiles, models, safety gate, MCP
-tools, history, knowledge and health checks. Still to do: a long live voice run on the real desktop, and an installer.
+tools, history, knowledge and health checks. Still to do: a long live voice run on the real desktop.
 
 ## License
 
 MIT. See [LICENSE](LICENSE). The models keep their own licences (Apache-2.0 for Qwen3.5, Gemma 4, jiwo and Laya;
-CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on. Copied code keeps its own licence: see [LICENSES/](LICENSES).
+CC-BY-4.0 for Parakeet). Thanks to the GLaDOS project (MIT), whose engine v2 was built on and whose speech recognition
+code Phoenix adapts. Copied code keeps its own licence: see [LICENSES/](LICENSES).

@@ -1,0 +1,59 @@
+# Both test suites on every push and pull request. No secrets and no model downloads: tests that need a model skip.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App suite (Python 3.14, GTK 4)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: System packages
+        # GTK 4 and libadwaita, what PyGObject and pycairo build against, gnome-keyring and shellcheck for their tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gir1.2-gtk-4.0 gir1.2-adw-1 libgirepository-2.0-dev libcairo2-dev pkg-config \
+              libsndfile1 desktop-file-utils gnome-keyring dbus-daemon shellcheck
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-suffix: app
+      - name: Python 3.14 with PyGObject
+        # not the runner's Python 3.12 with apt's python3-gi: the app unpacks Ollama's .tar.zst, which needs 3.14
+        run: |
+          uv venv --python 3.14 /tmp/app
+          uv pip install --python /tmp/app/bin/python PyGObject==3.58.1 pycairo==1.29.2 numpy==2.4.6
+      - name: Tests
+        run: /tmp/app/bin/python -m unittest discover -s tests
+
+  engine:
+    name: Engine suite (Python 3.14)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: System packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsndfile1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-suffix: engine
+      - name: Engine venv
+        run: |
+          uv venv --python 3.14 /tmp/venv
+          uv pip install --python /tmp/venv/bin/python -r requirements-engine.txt
+      - name: Tests
+        run: >-
+          /tmp/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation
+          tests.test_wake tests.test_echo tests.test_live_text tests.test_states

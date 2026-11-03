@@ -1,5 +1,6 @@
-"""Web Access tools' network side: weather from Open-Meteo (free, no key) and short answers from DuckDuckGo's
-Instant Answer API with a Wikipedia summary as the fallback. Standard library only; every call has a timeout."""
+"""Web Access tools' network side: weather from Open-Meteo (free, no key), short answers from DuckDuckGo's
+Instant Answer API with a Wikipedia summary as the fallback, and the first video of a YouTube search.
+Standard library only; every call has a timeout."""
 
 from __future__ import annotations
 
@@ -24,6 +25,19 @@ def get_json(url: str) -> dict | list:
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # noqa: S310  fixed https hosts only
         return json.loads(r.read(1_000_000).decode("utf-8", "replace"))
+
+
+def get_text(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "en", "Cookie": "SOCS=CAI"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # noqa: S310  fixed https hosts only
+        return r.read(3_000_000).decode("utf-8", "replace")
+
+
+def first_video(query: str, fetch=get_text) -> str | None:
+    """The id of the first video YouTube lists for ``query`` (ads skipped), or None."""
+    page = fetch("https://www.youtube.com/results?" + urllib.parse.urlencode({"search_query": query}))
+    m = re.search(r'"videoRenderer":\{"videoId":"([\w-]{11})"', page)
+    return m.group(1) if m else None
 
 
 def place(city: str, fetch=get_json) -> dict | None:
