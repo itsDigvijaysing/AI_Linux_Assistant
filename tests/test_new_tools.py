@@ -71,7 +71,8 @@ class TimerTests(unittest.TestCase):
         self.assertEqual(T._p_timer("how long is left on my timer", e), {"action": "list"})
         self.assertEqual(T.span_seconds("one hour and thirty minutes"), 5400)
         self.assertEqual(T.span_seconds("half an hour"), 1800)
-        self.assertIsNone(T._p_timer("set a timer", e))
+        self.assertEqual(T._p_timer("set a timer", e), {"action": "set", "message": ""})  # asks how long
+        self.assertIsNone(T._p_timer("what time is it", e))
 
     def test_spoken_span(self):
         self.assertEqual(spoken_span(300), "5 minutes")
@@ -332,6 +333,116 @@ class ReviewFixTests(unittest.TestCase):
         from ai_linux.wake import strip_wake
         self.assertEqual(strip_wake("Stop Phoenix", "phoenix"), "Stop")
         self.assertEqual(strip_wake("I told Phoenix", "phoenix"), "")
+
+
+class RequestFixTests(unittest.TestCase):
+    """Wrong answers seen on the laptop: changing the voice, YouTube, music with no player, timers with no time."""
+
+    def test_change_your_voice_picks_the_next_one(self):
+        names = list(T.VOICES)
+        for now, want in ((names[0], names[1]), ("supertonic:F1", "supertonic:F2"), (names[-1], names[0])):
+            self.assertEqual(T._p_voice("change your voice", env(setting={"voice": now}.get)), {"voice": want}, now)
+        e = env(setting={"voice": "supertonic:F3"}.get)
+        for text in ("Change your voice.", "switch your voice please", "can you change your voice",
+                     "use a different voice", "next voice"):
+            self.assertEqual(T._p_voice(text, e), {"voice": "supertonic:F4"}, text)
+
+    def test_default_voice_is_supertonic_f1(self):
+        e = env(setting={"voice": "supertonic:M3"}.get)
+        for text in ("change your voice to the default", "default voice", "use your default voice please"):
+            self.assertEqual(T._p_voice(text, e), {"voice": "supertonic:F1"}, text)
+        self.assertEqual(T._p_voice("use male voice 4", e), {"voice": "supertonic:M4"})
+        self.assertEqual(T._p_voice("switch to a male voice", e), {"voice": "supertonic:M1"})
+
+    def test_youtube_requests_that_start_with_can_you(self):
+        for text in ("can you play Believer on YouTube", "Could you play Believer on YouTube?",
+                     "can you please play Believer on YouTube", "play Believer on YouTube"):
+            q = quick(text)
+            self.assertEqual((q.tool, q.args), ("search_web", {"query": "Believer", "site": "youtube", "play": True}),
+                             text)
+        q = quick("could you find lofi beats on YouTube")
+        self.assertEqual(q.args, {"query": "lofi beats", "site": "youtube"})  # a search shows the results
+
+    def test_play_on_youtube_opens_the_first_video_with_web_access(self):
+        e = env(setting={"web_access": True}.get)
+        with unittest.mock.patch.object(web, "first_video", return_value="abcdefghijk") as first:
+            r = T.run_search({"query": "Believer", "site": "youtube", "play": True}, e)
+        first.assert_called_once_with("Believer")
+        self.assertEqual(e.executor.calls[-1],
+                         ["setsid", "-f", "xdg-open", "https://www.youtube.com/watch?v=abcdefghijk"])
+        self.assertEqual((r.ok, r.say), (True, "Playing Believer on YouTube."))
+
+    def test_play_on_youtube_falls_back_to_the_results(self):
+        results = "https://www.youtube.com/results?search_query=Believer"
+        play = {"query": "Believer", "site": "youtube", "play": True}
+        with unittest.mock.patch.object(web, "first_video", side_effect=AssertionError("web access is off")):
+            e = env()
+            T.run_search(play, e)
+            self.assertEqual(e.executor.calls[-1][-1], results)
+            e = env(setting={"web_access": True}.get)
+            T.run_search({"query": "Believer", "site": "youtube"}, e)  # a search, not a play
+            self.assertEqual(e.executor.calls[-1][-1], results)
+        for found in ({"return_value": None}, {"side_effect": OSError("offline")}):
+            e = env(setting={"web_access": True}.get)
+            with unittest.mock.patch.object(web, "first_video", **found):
+                self.assertTrue(T.run_search(play, e).ok)
+            self.assertEqual(e.executor.calls[-1][-1], results)
+
+    def test_first_video_reads_the_results_page(self):
+        page = ('{"promotedVideoRenderer":{"videoId":"AAAAAAAAAAA"}},{"videoRenderer":{"videoId":"7wtfhZwyrcc",'
+                '"thumbnail":{}}},{"videoRenderer":{"videoId":"BBBBBBBBBBB"}}')
+        urls = []
+        self.assertEqual(web.first_video("Believer song", fetch=lambda u: (urls.append(u), page)[1]), "7wtfhZwyrcc")
+        self.assertEqual(urls, ["https://www.youtube.com/results?search_query=Believer+song"])
+        self.assertIsNone(web.first_video("x", fetch=lambda u: "<html>Before you continue</html>"))
+
+    def test_play_music_with_no_player_searches_youtube(self):
+        e = env()
+        for text in ("play some music", "play a song", "Play music please", "can you play some music"):
+            self.assertEqual(T._p_media(text, e), {"action": "play", "music": True}, text)
+        self.assertEqual(T._p_media("play", e), {"action": "play"})
+        self.assertEqual(T._p_media("resume the music", e), {"action": "play"})
+
+        class NoPlayer(Runs):
+            def run_argv(self, argv, **kw):
+                super().run_argv(argv, **kw)
+                if argv[0] == "playerctl":
+                    return {"returncode": 1, "stdout": "", "stderr": "No players found"}
+                return {"returncode": 0, "stdout": "", "stderr": ""}
+
+        e = env(executor=NoPlayer())
+        r = T.run_media({"action": "play", "music": True}, e)
+        self.assertTrue(r.ok)
+        youtube = ["setsid", "-f", "xdg-open", "https://www.youtube.com/results?search_query=music"]
+        self.assertEqual(e.executor.calls, [["playerctl", "play"], youtube])
+        r = T.run_media({"action": "play"}, env(executor=NoPlayer()))  # "resume" with nothing to resume
+        self.assertEqual((r.ok, r.say), (False, "Nothing is playing."))
+        e = env()
+        self.assertTrue(T.run_media({"action": "play", "music": True}, e).ok)  # a player is there: it plays
+        self.assertEqual(e.executor.calls, [["playerctl", "play"]])
+
+    def test_timer_with_no_time_asks_how_long(self):
+        e = env()
+        self.assertEqual(T._p_timer("remind me to stretch", e), {"action": "set", "message": "stretch"})
+        self.assertEqual(T._p_timer("can you set a reminder", e), {"action": "set", "message": ""})
+        added = []
+
+        class Fake:
+            def add(self, seconds, message):
+                added.append((round(seconds), message))
+
+        r = T.run_timer({"action": "set", "message": "stretch"}, env(timers=Fake()))
+        self.assertEqual((r.ok, r.say), (True, "When should I remind you to stretch?"))
+        self.assertEqual(r.followup("in ten minutes"), {"action": "set", "message": "stretch", "seconds": 600})
+        self.assertEqual(r.followup("5 minutes."), {"action": "set", "message": "stretch", "seconds": 300})
+        self.assertEqual(r.followup("at 5 pm")["at"], "17:00")
+        self.assertIsNone(r.followup("what's the weather"))
+        self.assertIsNone(r.followup("remind me in 5 minutes to call mom"))  # a new request, handled as one
+        r = T.run_timer({"action": "set", "message": ""}, env(timers=Fake()))
+        self.assertEqual(r.say, "How long should the timer be?")
+        self.assertEqual(r.followup("half an hour"), {"action": "set", "message": "", "seconds": 1800})
+        self.assertEqual(added, [])
+        self.assertIsNone(T.run_timer({"seconds": 60}, env(timers=Fake())).followup)
 
 
 if __name__ == "__main__":

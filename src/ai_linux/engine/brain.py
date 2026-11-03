@@ -99,6 +99,7 @@ _NO = {"no", "nope", "nah", "cancel", "stop", "deny", "don't", "dont", "do not",
 CHAT_SURE = 0.5  # the big model routing: "none" at least this likely means plain chat
 ASK_P = 0.5  # an action this likely (but under the threshold) is asked about; wrong actions sat at 0.4-0.65
 ALTS = 3  # router guesses kept with each request, for reviewing mistakes
+ANSWER_S = 60.0  # a tool's question ("How long should the timer be?") waits this long for its answer
 MEMORY_NAMES = frozenset(t.name for t in MEMORY_TOOLS)
 _SELF = re.compile(r"(?i)\b(?:i|i'm|im|i've|i'd|i am|my|mine|myself)\b")
 _ASKS = re.compile(r"(?i)^(?:what|what's|whats|who|whom|whose|when|where|why|how|which|is|are|am|do|does|did|can|could|"
@@ -125,6 +126,7 @@ class Brain:
         self._status = status or (lambda detail: None)  # what the big model is doing, for the pill
         self._waking = False
         self.history: list[dict] = []
+        self.waiting: tuple[str, Callable[[str], dict | None], float] | None = None  # a tool's open question
         self.extra_tools: list[Tool] = []  # from MCP servers
         self._small = None
         self._small_key: tuple | None = None
@@ -233,6 +235,7 @@ class Brain:
     def new_session(self) -> None:
         self.session += 1
         self.history = []
+        self.waiting = None
 
     def handle(self, text: str, source: str = "voice", cancel: threading.Event | None = None) -> dict:
         cancel = cancel or threading.Event()
@@ -262,6 +265,13 @@ class Brain:
         return turn
 
     def _handle(self, text: str, turn: dict, cancel: threading.Event) -> None:
+        waiting, self.waiting = self.waiting, None
+        if waiting is not None and time.monotonic() < waiting[2]:
+            args = waiting[1](text)
+            if args is not None:  # the answer to the question; anything else drops it
+                turn["route"] = "rule"
+                self._run_tools([(waiting[0], args)], turn, cancel)
+                return
         rule = parse_memory(text)
         if rule is not None:  # "remember that ..." works without any model, even on battery
             turn["route"] = "rule"
@@ -502,6 +512,9 @@ class Brain:
                                   "exit_code": 0 if res.ok else 1, "output": (res.output or "")[-2000:]})
             if not res.ok:
                 turn["status"] = "partial" if len(calls) > 1 else "failed"
+            if res.followup is not None and not cancel.is_set():
+                self.waiting = (name, res.followup, time.monotonic() + ANSWER_S)
+                turn["asks"] = True  # the engine keeps listening for the answer
             out.append(res)
             if speak:
                 if res.summarise and res.ok is not None:

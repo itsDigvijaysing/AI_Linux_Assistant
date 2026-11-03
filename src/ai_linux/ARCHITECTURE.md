@@ -90,7 +90,8 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   The Voice page's Sounds group previews each one (rendered to the runtime dir).
 - **Quick rules** (`engine/quick.py`, at most 9 words, before routing; `route` = "rule", chip "Quick reply", no model):
   sleep words (stop, that's all, go to sleep, never mind, bye, good night), greetings, thanks, "what can you do",
-  "play X on YouTube", small talk ("what are you doing", "how are you feeling", "are you there", "who are you": varied
+  "play X on YouTube" (also after "can you" or "could you"; play and put on set `play`, search and find don't),
+  small talk ("what are you doing", "how are you feeling", "are you there", "who are you": varied
   replies, `_CHAT`), "don't sleep", "that's wrong". Anything with content ("thoughts on electric cars") still routes.
   Kept facts' rules run there too.
 - **Sleep:** `go_to_sleep` sets `Engine.sleep_after`, so the end of the turn goes idle instead of reopening the
@@ -233,9 +234,20 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   speech queue). One missed by under an hour while the app was closed rings at start; longer than 7 days is capped.
   Spans parse number words and halves ("an hour and a half" = 90 min); a bare hour already past ("at 5", 17:00) means
   the evening; "cancel the timer" with several running asks which (`which`: its length or message, or all).
+  No time said ("set a timer", "remind me to stretch"): it asks how long, and the next request is the answer
+  (`Result.followup`, kept as `Brain.waiting` for `ANSWER_S`, 60 s; anything that isn't a length or a clock time drops
+  the question and is handled as usual). The turn carries `asks`, so in hotkey mode the mic stays open for the
+  follow-up window instead of closing (`Engine.asking`); wake and always modes have that window anyway. A typed
+  request's question doesn't open the mic: its answer is typed too.
+- **Voice and music** (`engine/tools.py`): "change your voice" (switch, another, a different, next) picks the next
+  voice in `VOICES`, wrapping round; "default voice" picks SuperTonic F1. "Play some music" or "play a song" (`music`)
+  searches YouTube for music when `playerctl play` finds no player; plain "play" or "resume" still says nothing is
+  playing.
 - **Web Access** (`web_access`, off by default; `weather_city`): `engine/web.py` (stdlib, 6 s timeout, fixed https
   hosts): weather from Open-Meteo, look-up from DuckDuckGo Instant Answer then Wikipedia. While off, `WEB_TOOLS` are
   left off every routing menu, so questions still reach the big model; called anyway they say how to turn it on.
+  With it on, "play X on YouTube" (`search_web` with `play`) reads YouTube's results page (`web.first_video`, the
+  first `videoRenderer`, so ads are skipped) and opens that video; off, offline or nothing found: the results page.
 - **Todoist** (`engine/todoist.py`, API v1, stdlib, 8 s timeout; tool `todoist`, family assistant, not gated): add
   with Quick Add (Todoist reads the date from the sentence, so the model only picks the tool), list today / tomorrow
   / overdue / this week, complete after "Mark ... as done?" (`Tool.asks`, so an unsure router doesn't ask twice). On

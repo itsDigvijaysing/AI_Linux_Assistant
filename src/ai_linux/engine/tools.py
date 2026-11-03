@@ -40,6 +40,7 @@ class Result:
     summarise: bool = False  # the big model turns `output` into the spoken reply
     speak: bool | None = None  # True: always say it, even when finished actions only get a sound
     cue: str = ""  # the sound instead of "ok" / "fail"
+    followup: Callable[[str], dict | None] | None = None  # it asked: the next thing said as its args, or None
 
 
 @dataclass
@@ -343,7 +344,12 @@ MEDIA = {"play": "play or resume what is paused", "pause": "pause what is playin
          "next": "skip to the next track", "previous": "go back to the previous track", "stop": "stop playback"}
 
 
+_PLAY_MUSIC = re.compile(r"(?i)\bplay\s+(?:me\s+)?(?:a\s+|some\s+|any\s+)?(?:music|songs?)(?:\s+please)?[.!?]*$")
+
+
 def _p_media(text: str, env: Env) -> dict | None:
+    if _PLAY_MUSIC.search(text):
+        return {"action": "play", "music": True}  # with no player, YouTube instead of "Nothing is playing"
     t = text.lower()
     for words, act in ((("next", "skip"), "next"), (("previous", "back", "last song", "last track"), "previous"),
                        (("pause", "hold"), "pause"), (("stop",), "stop"), (("play", "resume", "continue"), "play")):
@@ -359,7 +365,11 @@ def run_media(a: dict, env: Env) -> Result:
     if not cmd:
         return Result(False, "Play, pause, next or previous?")
     say = {"play": "Playing.", "pause": "Paused.", "next": "Next track.", "previous": "Previous track.", "stop": "Stopped."}
-    return _argv(env, "control_media", ["playerctl", cmd], say[cmd], "Nothing is playing.", a)
+    nothing = "Nothing is playing."
+    r = _argv(env, "control_media", ["playerctl", cmd], say[cmd], nothing, a)
+    if cmd == "play" and a.get("music") and r.say == nothing:  # not when actions are off
+        return run_search({"query": "music", "site": "youtube"}, env)
+    return r
 
 
 def _p_toggle(text: str, env: Env) -> dict | None:
@@ -518,6 +528,14 @@ def run_search(a: dict, env: Env) -> Result:
     if not q:
         return Result(False, "What should I search for?")
     site = str(a.get("site") or "web").lower()
+    if site == "youtube" and a.get("play") and env.setting("web_access"):
+        try:
+            video = web.first_video(q)
+        except Exception:  # offline or the page changed: the results page still works
+            video = None
+        if video:
+            return _argv(env, "search_web", ["xdg-open", "https://www.youtube.com/watch?v=" + video],
+                         f"Playing {q} on YouTube.", "I couldn't open the browser.", a, detach=True)
     base = SITES.get(site, SITES["web"])
     where = "" if site in ("web", "google") else f" on {site.capitalize()}"
     return _argv(env, "search_web", ["xdg-open", base + urllib.parse.quote(q)], f"Searching{where} for {q}.",
@@ -543,6 +561,11 @@ VOICES = {"supertonic:M1": "male voice 1", "supertonic:M3": "male voice 3", "sup
           "supertonic:F3": "female voice 3", "supertonic:F4": "female voice 4", "supertonic:F5": "female voice 5"}
 
 
+DEFAULT_VOICE = "supertonic:F1"
+_NEXT_VOICE = re.compile(r"(?i)\b(?:change|switch|swap)\s+(?:your\s+|the\s+)?voice(?:\s+(?:please|again|now))*[.!?]*$|"
+                         r"\b(?:another|a different|a new|the next|next)\s+voice\b")
+
+
 def _p_voice(text: str, env: Env) -> dict | None:
     t = text.lower()
     m = re.search(r"\b(male|female)\s+(?:voice\s+)?(?:number\s+)?(\d)\b", t)
@@ -553,6 +576,12 @@ def _p_voice(text: str, env: Env) -> dict | None:
         return {"voice": "supertonic:F1"}
     if _has(t, "male", "man", "guy", "boy"):
         return {"voice": "supertonic:M1"}
+    if _has(t, "default"):
+        return {"voice": DEFAULT_VOICE}
+    if _NEXT_VOICE.search(t):  # the next one in the list, wrapping round; the model once picked any
+        names = list(VOICES)
+        now = str(env.setting("voice") or DEFAULT_VOICE)
+        return {"voice": names[(names.index(now) + 1) % len(names) if now in names else 0]}
     return None
 
 
@@ -958,8 +987,9 @@ def _p_timer(text: str, env: Env) -> dict | None:
     message = m.group(1).strip() if m else ""
     bare = text.replace(message, " ") if message else text  # lengths inside the message aren't the timer's
     seconds, at = span_seconds(bare), _clock(bare)
-    if not seconds and not at:
-        return None
+    if not seconds and not at:  # "set a timer", "remind me to stretch": run_timer asks how long
+        asked = _SET_START.search(text) and re.search(rf"(?i)\b(?:{_TIMER_WORDS}|remind me|wake me)\b", text)
+        return {"action": "set", "message": message} if asked else None
     args: dict = {"action": "set", "message": message}
     if at:
         args["at"], args["exact"] = at
@@ -979,6 +1009,16 @@ def _which_timers(which: str, items: list[dict]) -> list[dict]:
     said = set(re.findall(r"[a-z']{3,}", t)) - {"cancel", "stop", "delete", "remove", "clear", "the", "timer",
                                                  "reminder", "alarm", "for", "about", "please", "you", "can", "turn"}
     return [it for it in items if said & set(re.findall(r"[a-z']{3,}", str(it.get("message") or "").lower()))]
+
+
+def _timer_answer(message: str, text: str) -> dict | None:
+    """The reply to "How long?": the timer's args, or None when it is something else (a new request is its own)."""
+    if _SET_START.search(text):
+        return None
+    seconds, at = span_seconds(text), _clock(text)
+    if at:
+        return {"action": "set", "message": message, "at": at[0], "exact": at[1]}
+    return {"action": "set", "message": message, "seconds": seconds} if seconds else None
 
 
 def run_timer(a: dict, env: Env) -> Result:
@@ -1021,7 +1061,8 @@ def run_timer(a: dict, env: Env) -> Result:
         except (TypeError, ValueError):
             seconds = 0
         if seconds <= 0:
-            return Result(False, "How long should the timer be?")
+            ask = f"When should I remind you to {message}?" if message else "How long should the timer be?"
+            return Result(True, ask, followup=lambda text: _timer_answer(message, text))
         when = "in " + spoken_span(seconds)
     env.timers.add(seconds, message)
     if message:

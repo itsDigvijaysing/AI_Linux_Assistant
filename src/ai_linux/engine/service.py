@@ -79,6 +79,7 @@ class Engine:
         self.followup_until = 0.0
         self.called = False  # the name alone was said: the request is still to come
         self.sleep_after = False  # "go to sleep": no follow-up window after this turn
+        self.asking = False  # this turn's reply asked something ("How long?"): the mic waits for the answer
         self.dictating = ""  # polish | exact: what is said is collected, then typed at the cursor once
         self._dictated: list[str] = []
         self._dictation_over = 0.0  # when it last ended: speech begun before this is never a request
@@ -853,6 +854,7 @@ class Engine:
         if marked is not None:  # "that's wrong": the app saves the earlier request's new status
             self.emit({"ev": "turn_update", "turn": marked})
         self.emit({"ev": "turn", "turn": turn})
+        self.asking = bool(turn.get("asks")) and kind != "text"  # a typed question's answer is typed too
         self.say_q.put(("end", turn["id"], cancel))
 
     # dictation
@@ -941,11 +943,14 @@ class Engine:
                 self.speaking = False
                 if cancel.is_set():
                     continue
-                if self.sleep_after or self.s.get("listen_mode") in ("hotkey", "off"):  # no mic to end a window
-                    self.sleep_after = False
+                asked = self.asking and self.s.get("listen_mode") == "hotkey"  # the answer needs no second press
+                if self.sleep_after or (self.s.get("listen_mode") in ("hotkey", "off") and not asked):
+                    self.sleep_after = False  # no mic to end a window
                     self.followup_until = 0.0
                     self._rest()
                 else:
+                    if asked:
+                        self._capture(True)
                     self.followup_until = time.monotonic() + FOLLOWUP_S
                     self.set_state("followup")
                     self.emit({"ev": "followup", "seconds": FOLLOWUP_S})

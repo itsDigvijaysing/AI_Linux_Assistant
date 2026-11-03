@@ -259,7 +259,7 @@ class BrainTests(unittest.TestCase):
         b, said, cues = self.make({})
         with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
             turn = b.handle("open YouTube and play Believer", "text", threading.Event())
-        self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube"})
+        self.assertEqual(turn["tools"][0]["args"], {"query": "Believer", "site": "youtube", "play": True})
         self.assertIn("youtube.com/results?search_query=Believer", b.env.executor.calls[0][-1])
 
     def test_cold_big_model_says_it_is_waking(self):
@@ -805,6 +805,84 @@ class TimerEventTests(unittest.TestCase):
         e.cancel_timer(item["id"])
         self.assertEqual([ev for ev in events if ev.get("ev") == "timers"][-1]["items"], [])
         e.cancel_timer("nope")  # unknown or already rung: nothing happens
+
+class AskBackTests(unittest.TestCase):
+    """A timer with no time: "How long?", and the next thing said is the answer."""
+
+    def brain(self):
+        b, said, cues = BrainTests.make(self, {"set_timer": 0.97, "none": 0.03})
+        added = []
+        b.env.timers = mock.Mock(add=lambda seconds, message: added.append((round(seconds), message)))
+        return b, said, added
+
+    def test_the_next_thing_said_is_the_answer(self):
+        b, said, added = self.brain()
+        turn = b.handle("remind me to stretch", "voice", threading.Event())
+        self.assertEqual((said, added, turn.get("asks")), (["When should I remind you to stretch?"], [], True))
+        with mock.patch.object(b, "route", side_effect=AssertionError("routed")):
+            turn = b.handle("ten minutes", "voice", threading.Event())
+        self.assertEqual(added, [(600, "stretch")])
+        self.assertEqual((turn["route"], turn.get("asks")), ("rule", None))
+        self.assertEqual(said[-1], "Okay, I'll remind you to stretch in 10 minutes.")
+
+    def test_anything_else_drops_the_question(self):
+        b, said, added = self.brain()
+        b.handle("set a timer", "voice", threading.Event())
+        self.assertEqual(said, ["How long should the timer be?"])
+        turn = b.handle("what's up", "voice", threading.Event())
+        self.assertEqual(turn["route"], "rule")  # small talk, answered as usual
+        self.assertIsNone(b.waiting)
+        b.handle("set a timer", "voice", threading.Event())
+        b.new_session()
+        self.assertIsNone(b.waiting)
+        self.assertEqual(added, [])
+
+    def test_the_answer_needs_no_wake_word_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "How long?", "asks": True}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("heard", "set a timer", 0.0)  # said, already transcribed
+        deadline = time.monotonic() + 3
+        while e.state != "followup":
+            self.assertLess(time.monotonic(), deadline, "no window for the answer")
+            time.sleep(0.005)
+        self.assertTrue(e.capturing)  # the hotkey isn't needed again to answer
+        self.assertTrue(e._wake_free())
+        e.followup_until = 0.0
+        e._check_followup()  # nothing said: the mic closes as after any reply in hotkey mode
+        self.assertEqual((e.capturing, e.state), (False, "idle"))
+
+    def test_a_typed_question_keeps_the_mic_closed_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "How long?", "asks": True}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("text", "set a timer", 0.0)  # typed: the answer is typed too, so the mic stays shut
+        deadline = time.monotonic() + 3
+        while e.state != "idle":
+            self.assertLess(time.monotonic(), deadline, "the mic opened for a typed question")
+            time.sleep(0.005)
+        self.assertFalse(e.capturing)
+
+    def test_a_reply_that_asks_nothing_closes_the_mic_in_hotkey_mode(self):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, {"listen_mode": "hotkey", "wake_word": "phoenix"})
+        e.audio, e.brain, e.state = mock.Mock(), mock.Mock(), "idle"
+        e.brain.handle.return_value = {"id": "t", "latency": {}, "tools": [], "reply": "It's noon."}
+        threading.Thread(target=e._speak_loop, daemon=True).start()
+        self.addCleanup(lambda: (e._stop.set(), e.say_q.put(("say", "", ""))))
+        e._one("text", "what time is it", 0.0)
+        deadline = time.monotonic() + 3
+        while e.state != "idle":
+            self.assertLess(time.monotonic(), deadline, "still waiting")
+            time.sleep(0.005)
+        self.assertFalse(e.capturing)
+
 
 class DictationEngineTests(unittest.TestCase):
     def make(self, armed=True, **settings):
