@@ -129,6 +129,12 @@ and `engine` groups; `requirements-engine.txt` stays the engine's source of trut
   became requests. After 2 echo pauses in one turn barge-in sits out the rest of that reply. A recording that starts
   within `ECHO_TAIL_S` of our last word is dropped if it is our own words (`own_words`). Each reply logs
   `while speaking: voice up to X, N of 12 frames`.
+- **Logs** (`~/.local/state/ai-linux/logs`): `app.log` and `engine.log` rotate at 1 MB with 3 backups. The engine
+  writes only to stderr, a pipe the app reads; `EngineClient._log` copies each line into `engine.log` through a
+  `RotatingFileHandler` (`engine_log()`), so a crash before the engine's logging starts is still kept and only one
+  process rotates the file. `log_heard` (Safety page, "Keep what I say in the log", on by default): off, the lines for
+  what was heard, barge-ins, dropped speech and spoken confirm replies give the length, not the words
+  (`Engine._words_for_log`: "heard 42 characters"); the decision is on that line or the next one.
 - **Confirmations** show a dialog and, with audio, can be answered by voice (`spoken_confirm`); `confirm_done` closes it.
   The pill shows the whole command ("Run this? <cmd> Say yes or no.") while the voice says "this command"
   (`Engine._say(text, shown)`).

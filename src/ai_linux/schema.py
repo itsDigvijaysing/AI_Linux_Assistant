@@ -61,6 +61,7 @@ DEFAULTS: dict[str, object] = {
     "actions_armed": True,
     "confirm_shell": True,
     "spoken_confirm": True,  # a pending confirmation can also be answered by saying yes or no
+    "log_heard": True,  # engine.log keeps the words heard; off: only their length and what was done with them
     # desktop
     "show_pill": True,
     "pill_always": False,

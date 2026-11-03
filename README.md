@@ -30,6 +30,8 @@ Demo video (v2, the older GNOME Shell extension version): https://www.youtube.co
 - **Speed** on Home, one row: Save Battery (the big model loads when needed, freed after 2 minutes), Automatic (kept
   30 minutes) or Max Performance (stays loaded). The pill shows when it is starting and when the big model takes over.
 - **History** of every turn, searchable, kept on disk only. **New Session** on Home starts a fresh conversation.
+- **Logs** stay small: each rotates at 1 MB. Turn off "Keep what I say in the log" on the Safety page and the log
+  keeps only how long each sentence was, not your words.
 - **Health page** that checks every part (audio, echo cancellation, GPUs, Ollama, models, shortcut, tray) and says how to fix what is missing.
 
 ## Models

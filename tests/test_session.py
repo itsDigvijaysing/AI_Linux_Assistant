@@ -100,3 +100,48 @@ class EngineClientStartTests(unittest.TestCase):
                 mock.patch.object(engine_client.subprocess, "Popen", side_effect=OSError("no such file")):
             client.start()
         self.assertTrue(opened and all(f.closed for f in opened))
+
+
+class EngineLogTests(unittest.TestCase):
+    """engine.log is the engine's stderr, copied by the app: it rotates like app.log instead of growing forever."""
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+
+        from ai_linux import engine_client
+        self.ec = engine_client
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        for name, value in (("LOG_DIR", self.dir), ("ENGINE_LOG_BYTES", 2000), ("ENGINE_LOG_BACKUPS", 2)):
+            patcher = mock.patch.object(engine_client, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.client = engine_client.EngineClient.__new__(engine_client.EngineClient)
+        from collections import deque
+        self.client._tail = deque(maxlen=20)
+
+    def copy(self, lines):
+        from unittest import mock
+        proc = mock.Mock(stderr=iter(lines))
+        self.client._log(proc, self.ec.engine_log())
+
+    def test_the_log_rotates_and_keeps_a_few_backups(self):
+        self.copy([f"line {i:04d} " + "x" * 80 + "\n" for i in range(500)])
+        names = sorted(p.name for p in self.dir.iterdir())
+        self.assertEqual(names, ["engine.log", "engine.log.1", "engine.log.2"])
+        for p in self.dir.iterdir():
+            self.assertLessEqual(p.stat().st_size, 2000)
+        self.assertTrue((self.dir / "engine.log").read_text().rstrip().endswith("line 0499 " + "x" * 80))
+        self.assertEqual(self.client._tail[-1], "line 0499 " + "x" * 80)
+
+    def test_lines_are_copied_as_they_are(self):
+        self.copy(["Traceback (most recent call last):\n", "  100% done, café\n"])
+        self.assertEqual((self.dir / "engine.log").read_text(encoding="utf-8"),
+                         "Traceback (most recent call last):\n  100% done, café\n")
+
+    def test_a_new_start_appends_to_the_log(self):
+        (self.dir / "engine.log").write_text("before\n")
+        self.copy(["after\n"])
+        self.assertEqual((self.dir / "engine.log").read_text(), "before\nafter\n")

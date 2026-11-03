@@ -529,13 +529,17 @@ class Engine:
             return
         if echo_of(heard, self._recent_speech()):
             self._false_barges += 1
-            log.info("barge-in was our own voice (%r): the reply goes on", heard)
+            log.info("barge-in was our own voice (%s): the reply goes on", self._words_for_log(heard))
             self._hold_resume = True
             self._hold.clear()
             return
-        log.info("barge-in heard %r: the reply stops", heard)
+        log.info("barge-in heard %s: the reply stops", self._words_for_log(heard))
         self.cancel_turn()
         self.work.put(("heard", heard, 0.0))
+
+    def _words_for_log(self, text: str) -> str:
+        """What was heard, for engine.log: only its length when "Keep what I say in the log" is off."""
+        return repr(text) if self.s.get("log_heard", True) else f"{len(text)} characters"
 
     def _recent_speech(self) -> str:
         return f"{self._said_before} {self._saying}"
@@ -750,7 +754,7 @@ class Engine:
             with self._asr_lock:  # waits for a live update still running (at most one, ~0.1 s on the GPU)
                 text = (self.asr.transcribe(payload) or "").strip()
             asr_s = time.monotonic() - t0
-            log.info("heard %r (%.2fs)", text, asr_s)
+            log.info("heard %s (%.2fs)", self._words_for_log(text), asr_s)
             if self.armed_until:
                 self.armed_until = 0.0
         if kind == "audio" and time.monotonic() < self.name_test_until:
@@ -764,14 +768,14 @@ class Engine:
                 self._dictate(text)
                 return
             if not asked and t_start + PREROLL * FRAME_S < self._dictation_over:  # begun while dictating: not a request
-                log.info("dictation over, dropped %r", text)
+                log.info("dictation over, dropped %s", self._words_for_log(text))
                 self._clear_live()
                 self._after_noise()
                 self.notice("info", "Dictation had ended, so that wasn't typed.")
                 return
             if (kind == "audio" and not pressed and t_start + PREROLL * FRAME_S < self._spoke_until + ECHO_TAIL_S
                     and own_words(text, self._recent_speech())):
-                log.info("our own voice, dropped %r", text)  # it once made the model answer itself
+                log.info("our own voice, dropped %s", self._words_for_log(text))  # it once made the model answer itself
                 self._clear_live()
                 self._after_noise()
                 return
@@ -802,7 +806,7 @@ class Engine:
                 return
             if (self.s.get("listen_mode") == "always" and self.s.get("addressed_check") and not asked
                     and not self.brain.addressed(text)):
-                log.info("not for me: %r", text)
+                log.info("not for me: %s", self._words_for_log(text))
                 self._clear_live()
                 if self.state == "listening":
                     self.set_state("idle")
@@ -1046,7 +1050,7 @@ class Engine:
                 else:
                     reply = str(payload)
                 answer = self.brain.yes_no(question, reply)
-                log.info("confirm reply %r -> %s", reply, answer)
+                log.info("confirm reply %s -> %s", self._words_for_log(reply), answer)
                 if answer is not None:
                     box["ok"] = answer
                     ev.set()

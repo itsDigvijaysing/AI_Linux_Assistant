@@ -733,6 +733,62 @@ class EngineSettingsTests(unittest.TestCase):
         e.set_secrets({"todoist": ""})
         self.assertIsNone(e._secrets.get("todoist"))
 
+class HeardInLogTests(unittest.TestCase):
+    """"Keep what I say in the log" off: the engine log has the length and the decision, never the words."""
+
+    WORDS = "please call my dentist tomorrow"
+
+    def logged(self, settings, run):
+        from ai_linux.engine.service import Engine
+        e = Engine(lambda ev: None, settings)
+        e.asr = mock.Mock(transcribe=mock.Mock(return_value=self.WORDS))
+        e.audio = mock.Mock()
+        with self.assertLogs("ai_linux.engine.service", "INFO") as cm:
+            run(e)
+        return "\n".join(cm.output)
+
+    def heard(self, e):
+        e.name_test_until = time.monotonic() + 10  # the name test returns right after the "heard" line
+        e._one("audio", np.zeros(16000, dtype=np.float32), time.monotonic())
+
+    def barge(self, e):
+        e._saying = "The weather is sunny."
+        e._pause_reply()
+        e._barge_verdict(np.zeros(16000, dtype=np.float32))
+
+    def test_the_setting_is_on_by_default(self):
+        self.assertIs(DEFAULTS["log_heard"], True)
+
+    def test_words_are_logged_by_default(self):
+        self.assertIn(self.WORDS, self.logged({}, self.heard))
+        self.assertIn(self.WORDS, self.logged({}, self.barge))
+
+    def test_off_logs_the_length_not_the_words(self):
+        out = self.logged({"log_heard": False}, self.heard)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"heard {len(self.WORDS)} characters", out)
+
+    def test_off_hides_barge_in_words(self):
+        out = self.logged({"log_heard": False}, self.barge)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"{len(self.WORDS)} characters: the reply stops", out)
+
+    def test_off_hides_our_own_voice(self):
+        self.WORDS = "the weather is sunny"
+        out = self.logged({"log_heard": False}, self.barge)
+        self.assertNotIn("sunny", out)
+        self.assertIn("our own voice", out)
+
+    def test_off_hides_dropped_speech(self):
+        def own_voice(e):
+            e._saying = e._said_before = self.WORDS
+            e._spoke_until = time.monotonic()
+            e._one("audio", np.zeros(16000, dtype=np.float32), time.monotonic() - 0.5)  # began as we stopped
+        out = self.logged({"log_heard": False}, own_voice)
+        self.assertNotIn("dentist", out)
+        self.assertIn(f"our own voice, dropped {len(self.WORDS)} characters", out)
+
+
 class TimerEventTests(unittest.TestCase):
     def test_timer_list_goes_to_the_app_and_one_can_be_cancelled(self):
         from ai_linux.engine.service import Engine
