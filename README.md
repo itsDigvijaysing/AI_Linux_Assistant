@@ -88,11 +88,25 @@ GTK4 app (system Python)                    engine child process (venv)
 
 ## Development
 
-- Tests: `/usr/bin/python3 -m unittest discover -s tests`. Parts that need GTK, OpenVINO or a downloaded model skip
-  themselves when those are missing.
 - See a page without touching your desktop:
   `scripts/headless-run.sh bin/ai-linux-app --screenshot /tmp/out.png --page models`
 - Benchmarks and model exports: `bench/router/`.
+
+### Tests
+
+The app's tests run on the app's Python, the engine's tests in the engine's environment. Parts that need GTK, numpy,
+OpenVINO or a downloaded model skip themselves when those are missing.
+
+```bash
+/usr/bin/python3 -m unittest discover -s tests
+```
+
+```bash
+~/.local/share/ai-linux/venv/bin/python -m unittest tests.test_laya tests.test_engine tests.test_new_tools tests.test_dictation tests.test_wake tests.test_echo
+```
+
+GitHub runs both on every push and pull request (`.github/workflows/tests.yml`: Python 3.14 on Ubuntu 24.04, with
+PyGObject from pip for the app's suite).
 
 ## Status
 

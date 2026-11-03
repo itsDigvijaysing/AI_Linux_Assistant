@@ -8,7 +8,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import numpy as np
+if importlib.util.find_spec("numpy") is None:
+    raise unittest.SkipTest("needs numpy (the engine's requirements)")
+import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 

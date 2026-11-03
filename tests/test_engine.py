@@ -7,10 +7,10 @@ import tempfile
 import threading
 import time
 import unittest
-import numpy as np
 import importlib.util  # noqa: E402
 if importlib.util.find_spec("numpy") is None:
     raise unittest.SkipTest("needs numpy (the engine's requirements)")
+import numpy as np  # noqa: E402
 from pathlib import Path
 from unittest import mock
 
